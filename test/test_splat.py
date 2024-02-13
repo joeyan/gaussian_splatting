@@ -6,7 +6,7 @@ from structs import Gaussians, Camera
 import cv2
 
 
-class TestSplat(unittest.TestCase):
+class TestSplatFull(unittest.TestCase):
     def setup_gaussians(self):
         xyz = torch.tensor(
             [
@@ -102,7 +102,7 @@ class TestSplat(unittest.TestCase):
         self.gaussians = Gaussians(xyz, rgb, opacities, scales, quaternions)
 
     def setup_camera(self):
-        # anamorphic
+        # different fx and fy to test computation of gaussian projection
         K = torch.tensor(
             [430.0, 0.0, 320.0, 0.0, 410.0, 240.0, 0.0, 0.0, 1.0],
             dtype=torch.float32,

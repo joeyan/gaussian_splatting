@@ -42,8 +42,7 @@ def compute_projection_jacobian(
     https://www.cs.umd.edu/~zwicker/publications/EWAVolumeSplatting-VIS01.pdf
     """
 
-    # the paper uses a plane at z=1 as the focal plane
-    # so we need to premultiply by the focal length
+    # the paper uses a plane at z=1 as the focal plane - so we need to scale by fx, fy
     # the third row is dropped because only the first two rows/cols are used
     # in the 2d covariance matrix
 
@@ -131,6 +130,138 @@ def compute_probability(
     return prob
 
 
+def compute_obb(
+    uv,
+    sigma_image,
+    mh_dist=1.0,
+):
+    """
+    https://cookierobotics.com/007/
+
+    Compute the oriented bounding box of a 2D gaussian at a specific confidence level
+    """
+    a = sigma_image[0, 0]
+    b = sigma_image[0, 1]
+    c = sigma_image[1, 0]
+    d = sigma_image[1, 1]
+
+    # compute the two radii of the 2d gaussian
+    left = (a + d) / 2
+    right = torch.sqrt(torch.square(a - d) / 4 + b * c)
+    lambda_1 = left + right
+    r1 = mh_dist * torch.sqrt(lambda_1)  # major axis
+    r2 = mh_dist * torch.sqrt(left - right)  # minor axis
+
+    # compute angle of major axis
+    # theta is ccw from +x axis
+    if b < 1e-4:
+        if a >= d:
+            theta = 0
+        else:
+            theta = math.pi / 2
+    else:
+        theta = math.atan2((lambda_1 - a), b)
+
+    R = torch.tensor(
+        [[math.cos(theta), -math.sin(theta)], [math.sin(theta), math.cos(theta)]],
+        dtype=torch.float32,
+        device=uv.device,
+    )
+
+    obb = torch.zeros(4, 2, dtype=torch.float32, device=uv.device)
+    obb[0, :] = uv + R @ torch.tensor(
+        [-r1, -r2], dtype=torch.float32, device=uv.device
+    )  # top left aabb corner
+    obb[1, :] = uv + R @ torch.tensor(
+        [r1, -r2], dtype=torch.float32, device=uv.device
+    )  # top right aabb corner
+    obb[2, :] = uv + R @ torch.tensor(
+        [-r1, r2], dtype=torch.float32, device=uv.device
+    )  # bottom left aabb corner
+    obb[3, :] = uv + R @ torch.tensor(
+        [r1, r2], dtype=torch.float32, device=uv.device
+    )  # bottom right aabb corner
+
+    return obb
+
+
+def compute_bbox_tile_intersection(
+    bbox_gaussian,
+    bbox_tile,
+):
+    """
+    compute the intersection of a bbox and a tile bbox
+
+    Use the split axis theorem with simplifications:
+    1) There are 4 axes to check for overlap since there are two sets of parallel edges in each rectangle
+    2) Taking the normal of each edge is not required since the edges in a rectangle are always perpendicular
+    3) Two axes to check are the x and y axes since the tile bbox is axis aligned
+
+    bbox format:
+    torch.tensor([
+        top left,
+        top right,
+        bottom left,
+        bottom right
+    ])
+
+    For more details: https://dyn4j.org/2010/01/sat/
+    """
+
+    # check x axis for overlap
+    min_x_gaussian = torch.min(bbox_gaussian[:, 0])
+    max_x_gaussian = torch.max(bbox_gaussian[:, 0])
+    min_x_tile = bbox_tile[0, 0]
+    max_x_tile = bbox_tile[1, 0]
+
+    if min_x_gaussian > max_x_tile or max_x_gaussian < min_x_tile:
+        return False
+
+    # check y axis
+    min_y_gaussian = torch.min(bbox_gaussian[:, 1])
+    max_y_gaussian = torch.max(bbox_gaussian[:, 1])
+    min_y_tile = bbox_tile[0, 1]
+    max_y_tile = bbox_tile[2, 1]
+
+    if min_y_gaussian > max_y_tile or max_y_gaussian < min_y_tile:
+        return False
+
+    # bbox_gaussian axis 0: top left to top right
+    axis_0 = bbox_gaussian[1, :] - bbox_gaussian[0, :]
+    # bbox_gaussian axis 1: top left to bottom left
+    axis_1 = bbox_gaussian[2, :] - bbox_gaussian[0, :]
+
+    for axis in [axis_0, axis_1]:
+        projected_gaussian_0 = torch.dot(axis, bbox_gaussian[0, :])
+        projected_tile_0 = torch.dot(axis, bbox_tile[0, :])
+
+        min_projected_gaussian = projected_gaussian_0
+        max_projected_gaussian = projected_gaussian_0
+        min_projected_tile = projected_tile_0
+        max_projected_tile = projected_tile_0
+
+        for i in range(1, 4):
+            projected_gaussian_pt = torch.dot(axis, bbox_gaussian[i, :])
+            min_projected_gaussian = torch.min(
+                min_projected_gaussian, projected_gaussian_pt
+            )
+            max_projected_gaussian = torch.max(
+                max_projected_gaussian, projected_gaussian_pt
+            )
+
+            projected_tile_pt = torch.dot(axis, bbox_tile[i, :])
+            min_projected_tile = torch.min(min_projected_tile, projected_tile_pt)
+            max_projected_tile = torch.max(max_projected_tile, projected_tile_pt)
+
+        if (
+            min_projected_gaussian > max_projected_tile
+            or max_projected_gaussian < min_projected_tile
+        ):
+            return False
+
+    return True
+
+
 def match_gaussians_to_tiles(
     uvs,
     global_culling_mask,
@@ -142,49 +273,19 @@ def match_gaussians_to_tiles(
     """
     gaussian_to_tile_idx = []
     for gaussian_idx in range(uvs.shape[0]):
+        gaussian_to_tile_idx.append([])
         if global_culling_mask[gaussian_idx]:
-            gaussian_to_tile_idx.append({})
             continue
 
-        tile_x = torch.floor(uvs[gaussian_idx, 0] / tiles.tile_edge_size).int()
-        tile_y = torch.floor(uvs[gaussian_idx, 1] / tiles.tile_edge_size).int()
-        tile_index = tile_y * tiles.x_tiles_count + tile_x
-        # add the tile that the gaussian projects into
-        gaussian_to_tile_idx.append({tile_index.item()})
-
-        a = sigma_image[gaussian_idx, 0, 0]
-        b = sigma_image[gaussian_idx, 0, 1]
-        c = sigma_image[gaussian_idx, 1, 0]
-        d = sigma_image[gaussian_idx, 1, 1]
-
-        # compute the two radii of the 2d gaussian
-        left = (a + d) / 2
-        right = torch.sqrt(torch.square(a - d) / 4 + b * c)
-        r1 = torch.sqrt(left + right)
-        r2 = torch.sqrt(left - right)
-        # use the larger of the two radii, three sigma = 99.7%, for simplicity use a square, axis-aligned bounding box
-        max_r = 3 * torch.max(r1, r2)
-
-        bbox_top = uvs[gaussian_idx, 1] - max_r
-        bbox_bottom = uvs[gaussian_idx, 1] + max_r
-        bbox_left = uvs[gaussian_idx, 0] - max_r
-        bbox_right = uvs[gaussian_idx, 0] + max_r
-
+        bbox = compute_obb(
+            uvs[gaussian_idx, :], sigma_image[gaussian_idx, :, :], mh_dist=3.0
+        )
         # add the tiles that the bounding box intersects
-        for tile_x in range(tiles.x_tiles_count):
-            for tile_y in range(tiles.y_tiles_count):
-                tile_index = tile_y * tiles.x_tiles_count + tile_x
-
-                tile_top = tiles.tile_corners[tile_index, 0, 1]
-                tile_bottom = tiles.tile_corners[tile_index, 1, 1]
-                tile_left = tiles.tile_corners[tile_index, 0, 0]
-                tile_right = tiles.tile_corners[tile_index, 1, 0]
-
-                # there needs to be overlap in both x and y
-                if (bbox_top < tile_bottom or bbox_bottom > tile_top) and (
-                    bbox_left < tile_right or bbox_right > tile_left
-                ):
-                    gaussian_to_tile_idx[gaussian_idx].add(tile_index)
+        for tile_index in range(tiles.tile_count):
+            if compute_bbox_tile_intersection(
+                bbox, tiles.tile_corners[tile_index, :, :].float()
+            ):
+                gaussian_to_tile_idx[gaussian_idx].append(tile_index)
 
     return gaussian_to_tile_idx
 
@@ -229,14 +330,9 @@ def render_tiles(
         b = sigma_image[idx, 0, 1]
         c = sigma_image[idx, 1, 0]
         d = sigma_image[idx, 1, 1]
-        det = a * d - b * c
 
         opa = gaussians.opacities[idx]
         color = gaussians.rgb[idx]
-
-        if det < 1e-14:
-            print("det < 1e-14 at index: ", idx)
-            continue
 
         tile_indexes = gaussian_to_tile_idx[idx]
 
@@ -263,7 +359,6 @@ def render_tiles(
                     # this way the opacity and scale of the gaussian are decoupled
                     # additionally, this allows opacity based culling to behave similarly for
                     # gaussians with different scales
-                    # prob = torch.exp(-0.5 * mh_dist_sq) / (2 * math.pi * torch.sqrt(det))
                     prob = torch.exp(-0.5 * mh_dist_sq)
                     if prob < 1e-24:
                         continue
