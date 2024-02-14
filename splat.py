@@ -3,6 +3,7 @@ import math
 
 from utils import quaternion_to_rotation_torch, transform_points_torch
 from structs import Tiles
+import splat_cuda
 
 
 def compute_sigma_world(
@@ -79,8 +80,10 @@ def camera_projection(
     Project 3D gaussians into 2D
     Cull gaussians outside of camera frustrum
     """
+    n_gaussians = gaussians.xyz.shape[0]
+
     culling_mask = torch.zeros(
-        gaussians.xyz.shape[0], dtype=torch.bool, device=gaussians.xyz.device
+        n_gaussians, dtype=torch.bool, device=gaussians.xyz.device
     )
 
     # transform gaussian centers to camera frame
@@ -88,9 +91,18 @@ def camera_projection(
 
     culling_mask = culling_mask | (xyz_camera_frame[:, 2] < 1e-6)
 
-    # project 3D gaussian centers to 2D
-    homogenous_xy1 = torch.div(xyz_camera_frame, xyz_camera_frame[:, 2].unsqueeze(1))
-    uv = torch.matmul(camera.K, homogenous_xy1.transpose(0, 1)).transpose(0, 1)[:, :2]
+    uv = torch.zeros(
+        n_gaussians, 2, dtype=torch.float32, device=xyz_camera_frame.device
+    )
+    for i in range(n_gaussians):
+        uv[i, 0] = (
+            camera.K[0, 0] * xyz_camera_frame[i, 0] / xyz_camera_frame[i, 2]
+            + camera.K[0, 2]
+        )
+        uv[i, 1] = (
+            camera.K[1, 1] * xyz_camera_frame[i, 1] / xyz_camera_frame[i, 2]
+            + camera.K[1, 2]
+        )
 
     culling_mask = (
         culling_mask
@@ -272,6 +284,8 @@ def match_gaussians_to_tiles(
     Determine which tiles each gaussian is in
     """
     gaussian_to_tile_idx = []
+
+    num_gaussians = torch.tensor(0, dtype=torch.int32, device=uvs.device)
     for gaussian_idx in range(uvs.shape[0]):
         gaussian_to_tile_idx.append([])
         if global_culling_mask[gaussian_idx]:
@@ -286,8 +300,27 @@ def match_gaussians_to_tiles(
                 bbox, tiles.tile_corners[tile_index, :, :].float()
             ):
                 gaussian_to_tile_idx[gaussian_idx].append(tile_index)
+                num_gaussians += 1
 
-    return gaussian_to_tile_idx
+    gaussian_indices_by_tile = torch.zeros(
+        num_gaussians, dtype=torch.int32, device=uvs.device
+    )
+    gaussian_start_end_indices = torch.zeros(
+        tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
+    )
+
+    gaussian_start_end_indices[0] = 0
+    current_index = 0
+
+    for tile_idx in range(tiles.tile_count):
+        gaussian_start_end_indices[tile_idx] = current_index
+        for gaussian_idx in range(uvs.shape[0]):
+            if tile_idx in gaussian_to_tile_idx[gaussian_idx]:
+                gaussian_indices_by_tile[current_index] = gaussian_idx
+                current_index += 1
+    gaussian_start_end_indices[tiles.tile_count] = current_index
+
+    return gaussian_indices_by_tile, gaussian_start_end_indices
 
 
 def render_tiles(
@@ -300,55 +333,40 @@ def render_tiles(
 
     tiles = Tiles(camera.height, camera.width, uvs.device)
 
-    gaussian_to_tile_idx = match_gaussians_to_tiles(
+    gaussian_indices_by_tile, gaussian_start_end_indices = match_gaussians_to_tiles(
         uvs, culling_mask, tiles, sigma_image
     )
     image = torch.zeros(
-        tiles.image_height_padded,
-        tiles.image_width_padded,
+        tiles.image_height,
+        tiles.image_width,
         3,
         dtype=torch.float32,
         device=uvs.device,
     )
-    alpha_accum = torch.zeros(
-        tiles.image_height_padded,
-        tiles.image_width_padded,
-        dtype=torch.float32,
-        device=uvs.device,
-    )
 
-    n_gaussians = uvs.shape[0]
-    for idx in range(n_gaussians):
-        if culling_mask[idx]:
-            continue
-        if len(gaussian_to_tile_idx[idx]) == 0:
-            continue
+    # iterate through each tile
+    for tile_idx in range(tiles.tile_count):
+        start_index = gaussian_start_end_indices[tile_idx]
+        end_index = gaussian_start_end_indices[tile_idx + 1]
 
-        uv = uvs[idx, :]
+        # iterate through each pixel in the tile
+        for row_offset in range(tiles.tile_edge_size):
+            for col_offset in range(tiles.tile_edge_size):
+                row = tiles.tile_corners[tile_idx, 0, 1] + row_offset
+                col = tiles.tile_corners[tile_idx, 0, 0] + col_offset
 
-        a = sigma_image[idx, 0, 0]
-        b = sigma_image[idx, 0, 1]
-        c = sigma_image[idx, 1, 0]
-        d = sigma_image[idx, 1, 1]
+                alpha_accum = 0.0
 
-        opa = gaussians.opacities[idx]
-        color = gaussians.rgb[idx]
-
-        tile_indexes = gaussian_to_tile_idx[idx]
-
-        for tile_idx in tile_indexes:
-            for row_offset in range(tiles.tile_edge_size):
-                for col_offset in range(tiles.tile_edge_size):
-                    row = tiles.tile_corners[tile_idx, 0, 1] + row_offset
-                    col = tiles.tile_corners[tile_idx, 0, 0] + col_offset
-
-                    if alpha_accum[row, col] > 0.99:
+                # splat each gaussian for each pixel
+                for list_idx in range(start_index, end_index):
+                    idx = gaussian_indices_by_tile[list_idx]
+                    if alpha_accum > 0.99:
                         continue
 
                     uv_pixel = torch.tensor(
                         [col, row], dtype=torch.float32, device=uvs.device
                     )
-                    uv_diff = uv_pixel - uv
+                    uv_diff = uv_pixel - uvs[idx, :]
 
                     mh_dist_sq = torch.dot(
                         uv_diff, torch.matmul(torch.inverse(sigma_image[idx]), uv_diff)
@@ -360,13 +378,44 @@ def render_tiles(
                     # additionally, this allows opacity based culling to behave similarly for
                     # gaussians with different scales
                     prob = torch.exp(-0.5 * mh_dist_sq)
-                    if prob < 1e-24:
+                    if prob < 1e-14:
                         continue
 
-                    alpha = opa * prob
-                    weight = alpha * (1.0 - alpha_accum[row, col])
+                    alpha = gaussians.opacities[idx] * prob
+                    weight = alpha * (1.0 - alpha_accum)
 
-                    image[row, col, :] += color * weight
-                    alpha_accum[row, col] += weight.squeeze(0)
+                    image[row, col, :] += gaussians.rgb[idx] * weight
+                    alpha_accum += weight.squeeze(0)
 
+    return image
+
+
+def render_tiles_gpu(
+    uvs,
+    gaussians,
+    sigma_image,
+    culling_mask,
+    camera,
+):
+    tiles = Tiles(camera.height, camera.width, uvs.device)
+
+    gaussian_indices_by_tile, gaussian_start_end_indices = match_gaussians_to_tiles(
+        uvs, culling_mask, tiles, sigma_image
+    )
+    image = torch.zeros(
+        tiles.image_height,
+        tiles.image_width,
+        3,
+        dtype=torch.float32,
+        device=uvs.device,
+    )
+    splat_cuda.render_tiles_cuda(
+        uvs,
+        gaussians.opacities,
+        gaussians.rgb,
+        sigma_image,
+        gaussian_start_end_indices,
+        gaussian_indices_by_tile,
+        image,
+    )
     return image

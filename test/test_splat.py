@@ -1,7 +1,8 @@
 import unittest
 import numpy as np
 import torch
-from splat import camera_projection, render_tiles
+
+from splat import camera_projection, render_tiles, render_tiles_gpu
 from structs import Gaussians, Camera
 import cv2
 
@@ -134,16 +135,24 @@ class TestSplatFull(unittest.TestCase):
             device=self.device,
         ).reshape(4, 4)
 
-    def setUp(self):
-        self.device = torch.device("cpu")
+    def setup_gpu(self):
+        self.assertTrue(torch.cuda.is_available())
+        self.device = torch.device("cuda")
 
         self.setup_gaussians()
-        print(self.gaussians.xyz.shape)
-
         self.setup_camera()
         self.setup_world_T_image()
 
-    def test_camera_projection(self):
+    def setup_cpu(self):
+        self.device = torch.device("cpu")
+
+        self.setup_gaussians()
+        self.setup_camera()
+        self.setup_world_T_image()
+
+    def test_splat_cpu(self):
+        self.setup_cpu()
+
         with torch.no_grad():
             uv, gaussian_2d, culling_mask = camera_projection(
                 self.world_T_image, self.camera, self.gaussians
@@ -152,18 +161,64 @@ class TestSplatFull(unittest.TestCase):
                 uv, self.gaussians, gaussian_2d, culling_mask, self.camera
             )
 
+            # near red gaussian center
             self.assertAlmostEqual(
-                image[340, 348, 0].detach().cpu().numpy(), 0.477, places=3
+                image[340, 348, 0].detach().cpu().numpy(), 0.47702518, places=6
             )
             self.assertAlmostEqual(
-                image[340, 348, 1].detach().cpu().numpy(), 0.0, places=3
+                image[340, 348, 1].detach().cpu().numpy(), 0.0, places=6
             )
             self.assertAlmostEqual(
-                image[340, 348, 2].detach().cpu().numpy(), 0.0, places=3
+                image[340, 348, 2].detach().cpu().numpy(), 0.0, places=6
+            )
+
+            # overlap of red and blue gaussian
+            self.assertAlmostEqual(
+                image[200, 348, 0].detach().cpu().numpy(), 0.07165284, places=6
+            )
+            self.assertAlmostEqual(
+                image[200, 348, 1].detach().cpu().numpy(), 0.0, places=6
+            )
+            self.assertAlmostEqual(
+                image[200, 348, 2].detach().cpu().numpy(), 0.22922967, places=6
             )
 
             image = image.clip(0, 1).detach().cpu().numpy()
-            cv2.imwrite("test_splat.png", (image * 255).astype(np.uint8)[..., ::-1])
+            cv2.imwrite("test_splat_cpu.png", (image * 255).astype(np.uint8)[..., ::-1])
+
+    def test_splat_gpu(self):
+        self.setup_gpu()
+
+        with torch.no_grad():
+            uv, gaussian_2d, culling_mask = camera_projection(
+                self.world_T_image, self.camera, self.gaussians
+            )
+            image = render_tiles_gpu(
+                uv, self.gaussians, gaussian_2d, culling_mask, self.camera
+            )
+            # near red gaussian center
+            self.assertAlmostEqual(
+                image[340, 348, 0].detach().cpu().numpy(), 0.47702518, places=6
+            )
+            self.assertAlmostEqual(
+                image[340, 348, 1].detach().cpu().numpy(), 0.0, places=6
+            )
+            self.assertAlmostEqual(
+                image[340, 348, 2].detach().cpu().numpy(), 0.0, places=6
+            )
+
+            # overlap of red and blue gaussian
+            self.assertAlmostEqual(
+                image[200, 348, 0].detach().cpu().numpy(), 0.07165284, places=6
+            )
+            self.assertAlmostEqual(
+                image[200, 348, 1].detach().cpu().numpy(), 0.0, places=6
+            )
+            self.assertAlmostEqual(
+                image[200, 348, 2].detach().cpu().numpy(), 0.22922967, places=6
+            )
+            image = image.clip(0, 1).detach().cpu().numpy()
+            cv2.imwrite("test_splat_gpu.png", (image * 255).astype(np.uint8)[..., ::-1])
 
 
 if __name__ == "__main__":
