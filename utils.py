@@ -59,5 +59,5 @@ def transform_points_torch(pts, transform):  # N x 3  # N x 4 x 4
     pts = torch.cat(
         [pts, torch.ones(pts.shape[0], 1, dtype=pts.dtype, device=pts.device)], dim=1
     )
-    pts = torch.matmul(transform, pts.unsqueeze(-1)).squeeze(-1)
-    return pts[:, :3]
+    pts = torch.matmul(transform, pts.unsqueeze(-1)).squeeze(-1)[:, :3]
+    return pts.contiguous()

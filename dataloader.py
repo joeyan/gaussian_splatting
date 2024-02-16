@@ -45,9 +45,10 @@ class GaussianSplattingDataset:
         self.verify_loaded_points()
 
         N = self.xyz.shape[0]
-        initial_opacities = torch.ones(N, 1) * inverse_sigmoid(
-            options.initial_opacity_value
-        )
+        # initial_opacities = torch.ones(N, 1) * inverse_sigmoid(
+        #     options.initial_opacity_value
+        # )
+        initial_opacities = torch.ones(N, 1) * options.initial_opacity_value
         # compute scale based on the density of the points around each point
         initial_scales = compute_initial_scale_from_sparse_points(
             self.xyz,

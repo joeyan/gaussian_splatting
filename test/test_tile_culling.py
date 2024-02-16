@@ -1,11 +1,14 @@
-import math
 import unittest
 import sys
 import torch
 import cv2
 
 sys.path.append("../")
-from splat import compute_obb, compute_bbox_tile_intersection
+from tile_culling import (
+    compute_obb,
+    compute_bbox_tile_intersection,
+    match_gaussians_to_tiles_gpu,
+)
 from structs import Tiles
 
 
@@ -30,7 +33,7 @@ def save_bboxes_to_image(bboxes, filename="culling_test_0.png"):
     cv2.imwrite(filename, image)
 
 
-def draw_intersect_mask(intersect_mask, tiles, bbox, filename="culling_test_1.png"):
+def draw_intersect_mask(intersect_mask, tiles, bboxes, filename="culling_test_1.png"):
     image = torch.zeros(
         (tiles.image_height, tiles.image_width, 3), dtype=torch.uint8
     ).numpy()
@@ -43,7 +46,8 @@ def draw_intersect_mask(intersect_mask, tiles, bbox, filename="culling_test_1.pn
                 color=(255, 255, 255),
                 thickness=-1,
             )
-    plot_bbox(bbox, image)
+    for bbox in bboxes:
+        plot_bbox(bbox, image)
     cv2.imwrite(filename, image)
 
 
@@ -54,22 +58,19 @@ class TestCulling(unittest.TestCase):
     def test_obb_aligned(self):
         uv = torch.tensor(
             [
-                15.0,
-                15.0,
+                [15.0, 15.0],
             ],
             dtype=torch.float32,
             device=self.device,
         )
         sigma_image = torch.tensor(
             [
-                9.0,
-                5.0,
-                5.0,
-                4.0,
+                [9.0, 5.0],
+                [5.0, 4.0],
             ],
             dtype=torch.float32,
             device=self.device,
-        ).reshape(2, 2)
+        )
         obb = compute_obb(uv, sigma_image, mh_dist=1.0)
 
         self.assertAlmostEqual(obb[0, 0].item(), 12.5437, places=4)
@@ -84,34 +85,26 @@ class TestCulling(unittest.TestCase):
     def test_obb_intersection_0(self):
         tile = torch.tensor(
             [
-                0.0,
-                0.0,  # top left
-                16.0,
-                0.0,  # top right
-                0.0,
-                16.0,  # bottom left
-                16.0,
-                16.0,  # bottom right
+                [0.0, 0.0],  # top left
+                [16.0, 0.0],  # top right
+                [0.0, 16.0],  # bottom left
+                [16.0, 16.0],  # bottom right
             ],
             dtype=torch.float32,
             device=self.device,
-        ).reshape(4, 2)
+        )
 
         # square centered at zero, rotated ccw by 45 degrees
         obb = torch.tensor(
             [
-                -5.0,
-                0.0,  # top left
-                0.0,
-                -5.0,  # top right
-                0.0,
-                5.0,  # bottom left
-                5.0,
-                0.0,  # bottom right
+                [-5.0, 0.0],  # top left
+                [0.0, -5.0],  # top right
+                [0.0, 5.0],  # bottom left
+                [5.0, 0.0],  # bottom right
             ],
             dtype=torch.float32,
             device=self.device,
-        ).reshape(4, 2)
+        )
         self.assertTrue(compute_bbox_tile_intersection(obb, tile))
 
         # tiny intersection
@@ -149,14 +142,12 @@ class TestCulling(unittest.TestCase):
         )
         sigma_image = torch.tensor(
             [
-                900.0,
-                500.0,
-                500.0,
-                400.0,
+                [900.0, 500.0],
+                [500.0, 400.0],
             ],
             dtype=torch.float32,
             device=self.device,
-        ).reshape(2, 2)
+        )
         obb = compute_obb(uv, sigma_image)
 
         tiles = Tiles(128, 128, self.device)
@@ -202,14 +193,12 @@ class TestCulling(unittest.TestCase):
         )
         sigma_image = torch.tensor(
             [
-                1.3287e04,
-                9.7362e03,
-                9.7362e03,
-                7.3605e03,
+                [1.3287e04, 9.7362e03],
+                [9.7362e03, 7.3605e03],
             ],
             dtype=torch.float32,
             device=self.device,
-        ).reshape(2, 2)
+        )
         obb = compute_obb(uv, sigma_image, mh_dist=3.0)
 
         tiles = Tiles(480, 640, self.device)
@@ -225,7 +214,51 @@ class TestCulling(unittest.TestCase):
             if intersect_mask[tile]:
                 intersecting_tiles.append(tile)
 
-        draw_intersect_mask(intersect_mask, tiles, obb)
+        draw_intersect_mask(
+            intersect_mask, tiles, [obb], filename="test_obb_intersection_2.png"
+        )
+
+    def test_compute_tiles_cuda(self):
+        cuda_device = torch.device("cuda")
+        uv = torch.tensor(
+            [
+                [632.8523, 248.8553],
+                [50.0, 50.0],
+            ],
+            dtype=torch.float32,
+            device=cuda_device,
+        )
+        sigma_image = torch.tensor(
+            [
+                [[1.3287e04, 9.7362e03], [9.7362e03, 7.3605e03]],
+                [[900.0, 500.0], [500.0, 400.0]],
+            ],
+            dtype=torch.float32,
+            device=cuda_device,
+        )
+
+        tiles = Tiles(480, 640, cuda_device)
+
+        gaussian_indices_per_tile, gaussian_start_end_indices = (
+            match_gaussians_to_tiles_gpu(uv, tiles, sigma_image, mh_dist=1.0)
+        )
+        obb_0 = compute_obb(uv[0], sigma_image[0], mh_dist=1.0)
+        obb_1 = compute_obb(uv[1], sigma_image[1], mh_dist=1.0)
+
+        intersect_mask = torch.zeros(
+            tiles.tile_count, dtype=torch.bool, device=cuda_device
+        )
+        for tile in range(tiles.tile_count):
+            intersect_mask[tile] = (
+                gaussian_start_end_indices[tile] != gaussian_start_end_indices[tile + 1]
+            )
+
+        draw_intersect_mask(
+            intersect_mask,
+            tiles,
+            [obb_0, obb_1],
+            filename="test_compute_tiles_cuda.png",
+        )
 
 
 if __name__ == "__main__":

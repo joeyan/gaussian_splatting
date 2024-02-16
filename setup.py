@@ -9,7 +9,10 @@ setup(
         CUDAExtension(
             name="splat_cuda",
             sources=[
+                "src/bindings.cpp",
                 "src/splat_cuda.cu",
+                "src/projection.cu",
+                "src/tile_culling.cu",
             ],
         ),
     ],

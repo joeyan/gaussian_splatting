@@ -100,7 +100,6 @@ void render_tiles_cuda(
     int image_width = rendered_image.size(1);
     int num_tiles_x = (image_width + 16 - 1) / 16;
     int num_tiles_y = (image_height + 16 - 1) / 16;
-    int num_tiles = num_tiles_x * num_tiles_y;
 
     dim3 block_size(16, 16, 1);
     dim3 grid_size(num_tiles_x, num_tiles_y, 1);
@@ -118,8 +117,4 @@ void render_tiles_cuda(
     );
     cudaDeviceSynchronize();
 
-}
-
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("render_tiles_cuda", &render_tiles_cuda, "Render tiles CUDA");
 }
