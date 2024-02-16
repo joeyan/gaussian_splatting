@@ -31,35 +31,168 @@ __global__ void compute_tiles_kernel (
     float lambda2 = left - right;
 
     float r_major = mh_dist * sqrtf(lambda1);
-    float r_minor = mh_dist * sqrtf(lambda2);
 
-    float box_left = uvs[gaussian_idx * 2] - r_major;
-    float box_right = uvs[gaussian_idx * 2] + r_major;
-    float box_top = uvs[gaussian_idx * 2 + 1] - r_major;
-    float box_bottom = uvs[gaussian_idx * 2 + 1] + r_major;
+    // Use square AABB for small gaussians, use OBB for large gaussians
+    if (r_major < 32.0f) {
+        float box_left = uvs[gaussian_idx * 2] - r_major;
+        float box_right = uvs[gaussian_idx * 2] + r_major;
+        float box_top = uvs[gaussian_idx * 2 + 1] - r_major;
+        float box_bottom = uvs[gaussian_idx * 2 + 1] + r_major;
 
-    // iterate through tiles
-    for (int tile_x = 0; tile_x < n_tiles_x; tile_x++) {
-        for (int tile_y = 0; tile_y < n_tiles_y; tile_y++) {
-            int tile_idx = tile_y * n_tiles_x + tile_x;
-            // if the tile is already full, skip
-            if (num_gaussians_per_tile[tile_idx] >= max_gaussians_per_tile) {
-                continue;
+        // don't need to search the entire image, only need to look at all tiles within max radius of the projected center of the gaussian
+        int radius_tiles = ceilf(r_major / 16.0f) + 1;
+
+        int projected_tile_x = floorf(uvs[gaussian_idx * 2] / 16.0f);
+        int start_tile_x = fmaxf(0, projected_tile_x - radius_tiles);
+        int end_tile_x = fminf(n_tiles_x, projected_tile_x + radius_tiles);
+
+        int projected_tile_y = floorf(uvs[gaussian_idx * 2 + 1] / 16.0f);
+        int start_tile_y = fmaxf(0, projected_tile_y - radius_tiles);
+        int end_tile_y = fminf(n_tiles_y, projected_tile_y + radius_tiles);
+
+        // iterate through tiles
+        for (int tile_x = start_tile_x; tile_x < end_tile_x; tile_x++) {
+            for (int tile_y = start_tile_y; tile_y < end_tile_y; tile_y++) {
+                int tile_idx = tile_y * n_tiles_x + tile_x;
+                // if the tile is already full, skip
+                if (num_gaussians_per_tile[tile_idx] >= max_gaussians_per_tile) {
+                    continue;
+                }
+
+                float tile_left = (float)tile_x * 16.0f;
+                float tile_right = (float)(tile_x + 1)  * 16.0f;
+                float tile_top = (float)tile_y  * 16.0f;
+                float tile_bottom = (float)(tile_y + 1)  * 16.0f;
+
+                float min_right = fminf(tile_right, box_right);
+                float max_left = fmaxf(tile_left, box_left);
+
+                float min_bottom = fminf(tile_bottom, box_bottom);
+                float max_top = fmaxf(tile_top, box_top);
+
+                // from split axis theorem, need overlap on all axes
+                if (min_right > max_left && min_bottom > max_top) {
+                    // get the next available index in gaussian_indices_per_tile[tile_idx]
+                    int index = atomicAdd(num_gaussians_per_tile + tile_idx, 1);
+                    if (index < max_gaussians_per_tile) {
+                        // write gaussian index
+                        gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + index] = gaussian_idx;
+                    }
+                }
             }
+        }
+    } else {
+        float r_minor = mh_dist * sqrtf(lambda2);
 
-            float tile_left = (float)tile_x * 16.0f;
-            float tile_right = (float)(tile_x + 1)  * 16.0f;
-            float tile_top = (float)tile_y  * 16.0f;
-            float tile_bottom = (float)(tile_y + 1)  * 16.0f;
+        // compute theta
+        float theta;
+        if (b < 1e-10) {
+            if (a >= d) {
+                theta = 0.0f;
+            } else {
+                theta = M_PI / 2;
+            }
+        } else {
+            theta = atan2f(lambda1 - a, b);
+        }
+        const float cos_theta = cosf(theta);
+        const float sin_theta = sinf(theta);
 
-            float min_right = fminf(tile_right, box_right);
-            float max_left = fmaxf(tile_left, box_left);
+        // compute obb
+        // top_left aabb [-r_major, -r_minor]
+        float obb_tl_x = -1 * r_major * cos_theta + r_minor * sin_theta + uvs[gaussian_idx * 2];
+        float obb_tl_y = -1 * r_major * sin_theta - r_minor * cos_theta + uvs[gaussian_idx * 2 + 1];
 
-            float min_bottom = fminf(tile_bottom, box_bottom);
-            float max_top = fmaxf(tile_top, box_top);
+        // top_right aabb [r_major, -r_minor]
+        float obb_tr_x = r_major * cos_theta + r_minor * sin_theta + uvs[gaussian_idx * 2];
+        float obb_tr_y = r_major * sin_theta - r_minor * cos_theta + uvs[gaussian_idx * 2 + 1];
 
-            // from split axis theorem, need overlap on all axes
-            if (min_right > max_left && min_bottom > max_top) {
+        // bottom_left aabb [-r_major, r_minor]
+        float obb_bl_x = -1 * r_major * cos_theta - r_minor * sin_theta + uvs[gaussian_idx * 2];
+        float obb_bl_y = -1 * r_major * sin_theta + r_minor * cos_theta + uvs[gaussian_idx * 2 + 1];
+
+        // bottom_right aabb [r_major, r_minor]
+        float obb_br_x = r_major * cos_theta - r_minor * sin_theta + uvs[gaussian_idx * 2];
+        float obb_br_y = r_major * sin_theta + r_minor * cos_theta + uvs[gaussian_idx * 2 + 1];
+
+        // don't need to search the entire image, only need to look at all tiles within max radius of the projected center of the gaussian
+        int radius_tiles = ceilf(r_major / 16.0f) + 1;
+
+        int projected_tile_x = floorf(uvs[gaussian_idx * 2] / 16.0f);
+        int start_tile_x = fmaxf(0, projected_tile_x - radius_tiles);
+        int end_tile_x = fminf(n_tiles_x, projected_tile_x + radius_tiles);
+
+        int projected_tile_y = floorf(uvs[gaussian_idx * 2 + 1] / 16.0f);
+        int start_tile_y = fmaxf(0, projected_tile_y - radius_tiles);
+        int end_tile_y = fminf(n_tiles_y, projected_tile_y + radius_tiles);
+
+        // iterate through tiles
+        for (int tile_x = start_tile_x; tile_x < end_tile_x; tile_x++) {
+            for (int tile_y = start_tile_y; tile_y < end_tile_y; tile_y++) {
+                int tile_idx = tile_y * n_tiles_x + tile_x;
+                // if the tile is already full, skip
+                if (num_gaussians_per_tile[tile_idx] >= max_gaussians_per_tile) {
+                    continue;
+                }
+
+                float tile_left = (float)tile_x * 16.0f;
+                float tile_right = (float)(tile_x + 1)  * 16.0f;
+                float tile_top = (float)tile_y  * 16.0f;
+                float tile_bottom = (float)(tile_y + 1)  * 16.0f;
+
+                // from split axis theorem, need overlap on all axes
+                // axis0 - X axis
+                float obb_min_x = fminf(fminf(obb_tl_x, obb_tr_x), fminf(obb_bl_x, obb_br_x));
+                float obb_max_x = fmaxf(fmaxf(obb_tl_x, obb_tr_x), fmaxf(obb_bl_x, obb_br_x));
+                if (obb_min_x > tile_right || obb_max_x < tile_left) {
+                    continue;
+                }
+                // axis1 - Y axis
+                float obb_min_y = fminf(fminf(obb_tl_y, obb_tr_y), fminf(obb_bl_y, obb_br_y));
+                float obb_max_y = fmaxf(fmaxf(obb_tl_y, obb_tr_y), fmaxf(obb_bl_y, obb_br_y));
+                if (obb_min_y > tile_bottom || obb_max_y < tile_top) {
+                    continue;
+                }
+                // axis 2 - obb major axis
+                float obb_major_axis_x = obb_tr_x - obb_tl_x;
+                float obb_major_axis_y = obb_tr_y - obb_tl_y;
+                float tl_ax2 = obb_major_axis_x * tile_left + obb_major_axis_y * tile_top; // tl
+                float tr_ax2 = obb_major_axis_x * tile_right + obb_major_axis_y * tile_top; // tr
+                float bl_ax2 = obb_major_axis_x * tile_left + obb_major_axis_y * tile_bottom; // bl
+                float br_ax2 = obb_major_axis_x * tile_right + obb_major_axis_y * tile_bottom; // br
+
+                float min_tile = fminf(fminf(tl_ax2, tr_ax2), fminf(bl_ax2, br_ax2));
+                float max_tile = fmaxf(fmaxf(tl_ax2, tr_ax2), fmaxf(bl_ax2, br_ax2));
+
+                // top and bottom corners of obb project to same points on ax2
+                float obb_r_ax2 = obb_major_axis_x * obb_tr_x + obb_major_axis_y * obb_tr_y; // obb top right
+                float obb_l_ax2 = obb_major_axis_x * obb_tl_x + obb_major_axis_y * obb_tl_y; // obb top left
+                float min_obb = fminf(obb_r_ax2, obb_l_ax2);
+                float max_obb = fmaxf(obb_r_ax2, obb_l_ax2);
+
+                if (min_tile > max_obb || max_tile < min_obb) {
+                    continue;
+                }
+                // axis 3 - obb minor axis
+                float obb_minor_axis_x = obb_tr_x - obb_br_x;
+                float obb_minor_axis_y = obb_tr_y - obb_br_y;
+                tl_ax2 = obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_top; // tl
+                tr_ax2 = obb_minor_axis_x * tile_right + obb_minor_axis_y * tile_top; // tr
+                bl_ax2 = obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_bottom; // bl
+                br_ax2 = obb_minor_axis_x * tile_right + obb_minor_axis_y * tile_bottom; // br
+
+                min_tile = fminf(fminf(tl_ax2, tr_ax2), fminf(bl_ax2, br_ax2));
+                max_tile = fmaxf(fmaxf(tl_ax2, tr_ax2), fmaxf(bl_ax2, br_ax2));
+
+                // top and bottom corners of obb project to same points on ax2
+                float obb_t_ax2 = obb_minor_axis_x * obb_tr_x + obb_minor_axis_y * obb_tr_y; // obb top right
+                float obb_b_ax2 = obb_minor_axis_x * obb_br_x + obb_minor_axis_y * obb_br_y; // obb bottom right
+                min_obb = fminf(obb_t_ax2, obb_b_ax2);
+                max_obb = fmaxf(obb_t_ax2, obb_b_ax2);
+                if (min_tile > max_obb || max_tile < min_obb) {
+                    continue;
+                }
+                // passed all checks - there is overlap
                 // get the next available index in gaussian_indices_per_tile[tile_idx]
                 int index = atomicAdd(num_gaussians_per_tile + tile_idx, 1);
                 if (index < max_gaussians_per_tile) {

@@ -43,6 +43,9 @@ class TestColmapData(unittest.TestCase):
     def test_create_gaussians(self):
         """Test Gaussian Creation from colmap dataset"""
         options = GaussianSplattingOptions()
+        options.initial_opacity_value = 0.2
+        options.mean_neighbor_dist_to_initial_scale_factor = 0.2
+
         gaussians = self.colmap_data.create_gaussians(options)
         self.assertEqual(gaussians.xyz.shape[0], 138766)
         self.assertEqual(gaussians.xyz.shape[1], 3)

@@ -1,5 +1,6 @@
 import unittest
 import sys
+import torch
 
 sys.path.append("../")
 from structs import Tiles
@@ -11,7 +12,7 @@ class TestTiles(unittest.TestCase):
     def test_initialization(self):
         image_height = 1080
         image_width = 1920
-        device = "cpu"
+        device = torch.device("cpu")
 
         tiles = Tiles(image_height, image_width, device)
 

@@ -94,6 +94,10 @@ class Tiles:
         self.x_tiles_count = int(self.image_width_padded / self.tile_edge_size)
         self.tile_count = self.y_tiles_count * self.x_tiles_count
 
+        if self.device == torch.device("cpu"):
+            self.compute_tile_corners()
+
+    def compute_tile_corners(self):
         # compute top left, top right, bottom left, bottom right of each tile [x, y]
         self.tile_corners = torch.zeros(
             self.tile_count, 4, 2, dtype=torch.int32, device=self.device

@@ -253,6 +253,7 @@ class TestCulling(unittest.TestCase):
                 gaussian_start_end_indices[tile] != gaussian_start_end_indices[tile + 1]
             )
 
+        tiles.compute_tile_corners()
         draw_intersect_mask(
             intersect_mask,
             tiles,
