@@ -86,7 +86,7 @@ __global__ void compute_tiles_kernel (
 
         // compute theta
         float theta;
-        if (b < 1e-10) {
+        if (fabsf(b) < 1e-16) {
             if (a >= d) {
                 theta = 0.0f;
             } else {

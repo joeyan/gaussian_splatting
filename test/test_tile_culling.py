@@ -224,6 +224,7 @@ class TestCulling(unittest.TestCase):
             [
                 [632.8523, 248.8553],
                 [50.0, 50.0],
+                [453.39926, 138.5983],
             ],
             dtype=torch.float32,
             device=cuda_device,
@@ -232,6 +233,7 @@ class TestCulling(unittest.TestCase):
             [
                 [[1.3287e04, 9.7362e03], [9.7362e03, 7.3605e03]],
                 [[900.0, 500.0], [500.0, 400.0]],
+                [[776.215, -2464.463], [-2464.463, 8276.755]],
             ],
             dtype=torch.float32,
             device=cuda_device,
@@ -244,6 +246,7 @@ class TestCulling(unittest.TestCase):
         )
         obb_0 = compute_obb(uv[0], sigma_image[0], mh_dist=1.0)
         obb_1 = compute_obb(uv[1], sigma_image[1], mh_dist=1.0)
+        obb_2 = compute_obb(uv[2], sigma_image[2], mh_dist=1.0)
 
         intersect_mask = torch.zeros(
             tiles.tile_count, dtype=torch.bool, device=cuda_device
@@ -257,7 +260,7 @@ class TestCulling(unittest.TestCase):
         draw_intersect_mask(
             intersect_mask,
             tiles,
-            [obb_0, obb_1],
+            [obb_0, obb_1, obb_2],
             filename="test_compute_tiles_cuda.png",
         )
 

@@ -29,7 +29,7 @@ def compute_obb(
 
     # compute angle of major axis
     # theta is ccw from +x axis
-    if b < 1e-4:
+    if abs(b) < 1e-16:
         if a >= d:
             theta = 0
         else:
