@@ -1,7 +1,12 @@
 import torch
 from utils import quaternion_to_rotation_torch, transform_points_torch
 
-from splat_cuda import camera_projection_cuda
+from splat_cuda import (
+    camera_projection_cuda,
+    compute_sigma_world_cuda,
+    compute_projection_jacobian_cuda,
+    compute_sigma_image_cuda,
+)
 from structs import Gaussians, SimpleTimer
 
 
@@ -86,12 +91,12 @@ def compute_projection_jacobian(
     1) The section right after equation (5) in the 3D Gaussian Splatting paper
     2) Equation (25) in the EWA Volume Splatting paper:
     https://www.cs.umd.edu/~zwicker/publications/EWAVolumeSplatting-VIS01.pdf
+
+    the paper uses a plane at z=1 as the focal plane - so we need to scale by fx, fy
+    the third row is dropped because only the first two rows/cols are used
+    in the 2d covariance matrix
+
     """
-
-    # the paper uses a plane at z=1 as the focal plane - so we need to scale by fx, fy
-    # the third row is dropped because only the first two rows/cols are used
-    # in the 2d covariance matrix
-
     fx = camera.K[0, 0]
     fy = camera.K[1, 1]
 
@@ -169,5 +174,54 @@ def project_and_cull(
         sigma_image = compute_sigma_image(
             culled_gaussians, xyz_camera_frame, camera, world_T_image
         )
+
+    return uv, sigma_image, culled_gaussians
+
+
+def project_and_cull_cuda(
+    world_T_image,
+    camera,
+    gaussians,
+):
+    uv, xyz_camera_frame, culling_mask = project_points(
+        world_T_image, camera, gaussians
+    )
+
+    # cull gaussians outside of camera frustrum
+    uv = uv[~culling_mask, :]
+    xyz_camera_frame = xyz_camera_frame[~culling_mask, :]
+
+    culled_gaussians = Gaussians(
+        xyz=gaussians.xyz[~culling_mask, :],
+        quaternions=gaussians.quaternions[~culling_mask, :],
+        scales=gaussians.scales[~culling_mask, :],
+        opacities=gaussians.opacities[~culling_mask],
+        rgb=gaussians.rgb[~culling_mask, :],
+    )
+
+    n_culled_gaussians = culled_gaussians.xyz.shape[0]
+    device = culled_gaussians.xyz.device
+
+    with SimpleTimer("\tProject Covariance Matrix GPU"):
+        sigma_world = torch.zeros(
+            (n_culled_gaussians, 3, 3), dtype=torch.float32, device=device
+        )
+        compute_sigma_world_cuda(
+            culled_gaussians.quaternions,
+            culled_gaussians.scales,
+            sigma_world,
+        )
+        jacobian = torch.zeros(
+            n_culled_gaussians, 2, 3, dtype=torch.float32, device=device
+        )
+        fx = camera.K[0, 0].item()
+        fy = camera.K[1, 1].item()
+        compute_projection_jacobian_cuda(xyz_camera_frame, fx, fy, jacobian)
+
+        # compute sigma_image
+        sigma_image = torch.zeros(
+            n_culled_gaussians, 2, 2, dtype=torch.float32, device=device
+        )
+        compute_sigma_image_cuda(sigma_world, jacobian, world_T_image, sigma_image)
 
     return uv, sigma_image, culled_gaussians

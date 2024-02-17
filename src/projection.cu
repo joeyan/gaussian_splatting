@@ -261,9 +261,17 @@ __global__ void compute_sigma_image_kernel(
     float JWSigma[6];
     matrix_multiply<float>(JW, sigma_world + i * 9, JWSigma, 2, 3, 3);
 
+    float JW_T[6];
+    JW_T[0] = JW[0];
+    JW_T[1] = JW[3];
+    JW_T[2] = JW[1];
+    JW_T[3] = JW[4];
+    JW_T[4] = JW[2];
+    JW_T[5] = JW[5];
+
     // compute sigma_image = JWSigma * JW^T
-    // flip row/cols of JW to get JW^T
-    matrix_multiply<float>(JWSigma, JW, sigma_image + i * 4, 2, 3, 2);
+    // (TODO) transpose JW -> JW_T inplace for better perf?
+    matrix_multiply<float>(JWSigma, JW_T, sigma_image + i * 4, 2, 3, 2);
 }
 
 

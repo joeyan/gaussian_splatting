@@ -1,7 +1,6 @@
 import unittest
 import torch
 
-from structs import Gaussians, Camera
 from projection import (
     compute_sigma_world,
     project_points,
@@ -142,9 +141,6 @@ class ProjectionTest(unittest.TestCase):
         compute_sigma_image_cuda(
             sigma_world_cuda, jacobian_cuda, self.world_T_image, sigma_image_cuda
         )
-
-        print(sigma_image_py[0, :, :].cpu().detach().numpy())
-        print(sigma_image_cuda[0, :, :].cpu().detach().numpy())
 
         self.assertTrue(torch.allclose(sigma_image_py, sigma_image_cuda, atol=1e-6))
 

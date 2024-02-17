@@ -216,15 +216,13 @@ def match_gaussians_to_tiles_gpu(
         gaussian_start_end_indices = torch.zeros(
             tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
         )
-        current_index = 0
-        for tile_idx in range(tiles.tile_count):
-            gaussian_start_end_indices[tile_idx] = current_index
-            current_index += num_gaussians_per_tile[tile_idx].item()
-        gaussian_start_end_indices[-1] = current_index
+        gaussian_start_end_indices[1:] = torch.cumsum(
+            num_gaussians_per_tile.squeeze(), dim=0
+        )
 
     # create gaussian to tile vector
     gaussian_indices_by_tile = torch.zeros(
-        current_index + 1, dtype=torch.int32, device=uvs.device
+        gaussian_start_end_indices[-1] + 1, dtype=torch.int32, device=uvs.device
     )
 
     with SimpleTimer("\t\tGPU Tile Vectorization"):
