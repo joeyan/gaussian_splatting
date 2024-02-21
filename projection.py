@@ -35,6 +35,7 @@ def project_points(
     world_T_image,
     camera,
     gaussians,
+    near_thresh=0.3,
 ):
     n_gaussians = gaussians.xyz.shape[0]
 
@@ -46,7 +47,7 @@ def project_points(
     with SimpleTimer("\tTransform to Camera Frame"):
         xyz_camera_frame = transform_points_torch(gaussians.xyz, world_T_image)
 
-    culling_mask = culling_mask | (xyz_camera_frame[:, 2] < 1e-6)
+    culling_mask = culling_mask | (xyz_camera_frame[:, 2] < near_thresh)
 
     uv = torch.zeros(
         n_gaussians, 2, dtype=torch.float32, device=xyz_camera_frame.device
@@ -175,7 +176,7 @@ def project_and_cull(
             culled_gaussians, xyz_camera_frame, camera, world_T_image
         )
 
-    return uv, sigma_image, culled_gaussians
+    return uv, sigma_image, culled_gaussians, xyz_camera_frame
 
 
 def project_and_cull_cuda(
@@ -224,4 +225,4 @@ def project_and_cull_cuda(
         )
         compute_sigma_image_cuda(sigma_world, jacobian, world_T_image, sigma_image)
 
-    return uv, sigma_image, culled_gaussians
+    return uv, sigma_image, culled_gaussians, xyz_camera_frame

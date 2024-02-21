@@ -253,13 +253,14 @@ void compute_tiles_cuda (
     cudaDeviceSynchronize();
 }
 
-__global__ void compute_tile_to_gaussian_vector_kernel(
+__global__ void compute_splat_to_gaussian_id_vector_kernel(
     int* gaussian_indices_per_tile, 
     int* num_gaussians_per_tile,
-    int* tile_to_gaussian_vector_offsets,
+    int* splat_to_gaussian_id_vector_offsets,
     int n_tiles,
     int max_gaussians_per_tile,
-    int* tile_to_gaussian_vector
+    int* splat_to_gaussian_id_vector,
+    int* tile_idx_by_splat_idx
 ) {
     int tile_idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (tile_idx >= n_tiles) {
@@ -269,27 +270,31 @@ __global__ void compute_tile_to_gaussian_vector_kernel(
     if (gaussian_idx >= num_gaussians_per_tile[tile_idx]) {
         return;
     }
-
-    int offset = tile_to_gaussian_vector_offsets[tile_idx] + gaussian_idx;
-    tile_to_gaussian_vector[offset] = gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + gaussian_idx];
+    int splat_idx = splat_to_gaussian_id_vector_offsets[tile_idx] + gaussian_idx;
+    splat_to_gaussian_id_vector[splat_idx] = gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + gaussian_idx];
+    tile_idx_by_splat_idx[splat_idx] = tile_idx;
 }
 
 
-void compute_tile_to_gaussian_vector(
+void compute_splat_to_gaussian_id_vector_cuda(
     torch::Tensor gaussian_indices_per_tile,
     torch::Tensor num_gaussians_per_tile,
-    torch::Tensor tile_to_gaussian_vector_offsets,
-    torch::Tensor tile_to_gaussian_vector
+    torch::Tensor splat_to_gaussian_id_vector_offsets,
+    torch::Tensor splat_to_gaussian_id_vector,
+    torch::Tensor tile_idx_by_splat_idx
 ) {
     TORCH_CHECK(gaussian_indices_per_tile.is_cuda(), "gaussian_indices_per_tile must be a CUDA tensor");
     TORCH_CHECK(num_gaussians_per_tile.is_cuda(), "num_gaussians_per_tile must be a CUDA tensor");
-    TORCH_CHECK(tile_to_gaussian_vector.is_cuda(), "tile_to_gaussian_vector must be a CUDA tensor");
-    TORCH_CHECK(tile_to_gaussian_vector_offsets.is_cuda(), "tile_to_gaussian_vector_offsets must be a CUDA tensor");
+    TORCH_CHECK(splat_to_gaussian_id_vector.is_cuda(), "splat_to_gaussian_id_vector must be a CUDA tensor");
+    TORCH_CHECK(splat_to_gaussian_id_vector_offsets.is_cuda(), "splat_to_gaussian_id_vector_offsets must be a CUDA tensor");
+    TORCH_CHECK(tile_idx_by_splat_idx.is_cuda(), "tile_idx_by_splat_idx must be a CUDA tensor");
+
 
     TORCH_CHECK(gaussian_indices_per_tile.is_contiguous(), "gaussian_indices_per_tile must be contiguous");
     TORCH_CHECK(num_gaussians_per_tile.is_contiguous(), "num_gaussians_per_tile must be contiguous");
-    TORCH_CHECK(tile_to_gaussian_vector.is_contiguous(), "tile_to_gaussian_vector must be contiguous");
-    TORCH_CHECK(tile_to_gaussian_vector_offsets.is_contiguous(), "tile_to_gaussian_vector_offsets must be contiguous");
+    TORCH_CHECK(splat_to_gaussian_id_vector.is_contiguous(), "splat_to_gaussian_id_vector must be contiguous");
+    TORCH_CHECK(splat_to_gaussian_id_vector_offsets.is_contiguous(), "splat_to_gaussian_id_vector_offsets must be contiguous");
+    TORCH_CHECK(tile_idx_by_splat_idx.is_contiguous(), "tile_idx_by_splat_idx must be contiguous");
 
     // lay out grid and block in 2d array in shape of gaussian_indices_per_tile
     dim3 blocksize(32, 32, 1);
@@ -304,12 +309,14 @@ void compute_tile_to_gaussian_vector(
 
     dim3 gridsize(n_tile_blocks, n_gaussian_blocks, 1);
 
-    compute_tile_to_gaussian_vector_kernel<<<gridsize, blocksize>>>(
+    compute_splat_to_gaussian_id_vector_kernel<<<gridsize, blocksize>>>(
         gaussian_indices_per_tile.data_ptr<int>(),
         num_gaussians_per_tile.data_ptr<int>(),
-        tile_to_gaussian_vector_offsets.data_ptr<int>(),
+        splat_to_gaussian_id_vector_offsets.data_ptr<int>(),
         n_tiles,
         max_gaussians_per_tile,
-        tile_to_gaussian_vector.data_ptr<int>()
+        splat_to_gaussian_id_vector.data_ptr<int>(),
+        tile_idx_by_splat_idx.data_ptr<int>()
     );
+    cudaDeviceSynchronize();
 }

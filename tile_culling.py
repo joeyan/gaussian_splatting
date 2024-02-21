@@ -1,7 +1,7 @@
 import torch
 import math
 
-from splat_cuda import compute_tiles_cuda, compute_tile_to_gaussian_vector
+from splat_cuda import compute_tiles_cuda, compute_splat_to_gaussian_id_vector_cuda
 from structs import SimpleTimer
 
 
@@ -162,25 +162,33 @@ def match_gaussians_to_tiles(
                 gaussian_to_tile_idx[gaussian_idx].append(tile_index)
                 num_gaussians += 1
 
-    gaussian_indices_by_tile = torch.zeros(
+    gaussian_idx_by_splat_idx = torch.zeros(
         num_gaussians, dtype=torch.int32, device=uvs.device
     )
-    gaussian_start_end_indices = torch.zeros(
+    tile_idx_by_splat_idx = torch.zeros(
+        num_gaussians, dtype=torch.int32, device=uvs.device
+    )
+    splat_start_end_idx_by_tile_idx = torch.zeros(
         tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
     )
 
-    gaussian_start_end_indices[0] = 0
+    splat_start_end_idx_by_tile_idx[0] = 0
     current_index = 0
 
     for tile_idx in range(tiles.tile_count):
-        gaussian_start_end_indices[tile_idx] = current_index
+        splat_start_end_idx_by_tile_idx[tile_idx] = current_index
         for gaussian_idx in range(uvs.shape[0]):
             if tile_idx in gaussian_to_tile_idx[gaussian_idx]:
-                gaussian_indices_by_tile[current_index] = gaussian_idx
+                gaussian_idx_by_splat_idx[current_index] = gaussian_idx
+                tile_idx_by_splat_idx[current_index] = tile_idx
                 current_index += 1
-    gaussian_start_end_indices[tiles.tile_count] = current_index
+    splat_start_end_idx_by_tile_idx[tiles.tile_count] = current_index
 
-    return gaussian_indices_by_tile, gaussian_start_end_indices
+    return (
+        gaussian_idx_by_splat_idx,
+        splat_start_end_idx_by_tile_idx,
+        tile_idx_by_splat_idx,
+    )
 
 
 def match_gaussians_to_tiles_gpu(
@@ -213,23 +221,50 @@ def match_gaussians_to_tiles_gpu(
 
     with SimpleTimer("\t\tCreate outputs for GPU Tile Vectorization"):
         # create start/end indices
-        gaussian_start_end_indices = torch.zeros(
+        splat_start_end_idx_by_tile_idx = torch.zeros(
             tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
         )
-        gaussian_start_end_indices[1:] = torch.cumsum(
+        splat_start_end_idx_by_tile_idx[1:] = torch.cumsum(
             num_gaussians_per_tile.squeeze(), dim=0
         )
 
+    num_splats = sum(num_gaussians_per_tile)
     # create gaussian to tile vector
-    gaussian_indices_by_tile = torch.zeros(
-        gaussian_start_end_indices[-1] + 1, dtype=torch.int32, device=uvs.device
+    gaussian_idx_by_splat_idx = (
+        torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
+    )
+    tile_idx_by_splat_idx = (
+        torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
     )
 
     with SimpleTimer("\t\tGPU Tile Vectorization"):
-        compute_tile_to_gaussian_vector(
+        compute_splat_to_gaussian_id_vector_cuda(
             gaussian_indices_per_tile,
             num_gaussians_per_tile,
-            gaussian_start_end_indices,
-            gaussian_indices_by_tile,
+            splat_start_end_idx_by_tile_idx,
+            gaussian_idx_by_splat_idx,
+            tile_idx_by_splat_idx,
         )
-    return gaussian_indices_by_tile, gaussian_start_end_indices
+    return (
+        gaussian_idx_by_splat_idx,
+        splat_start_end_idx_by_tile_idx,
+        tile_idx_by_splat_idx,
+    )
+
+
+def sort_gaussians(
+    xyz_camera_frame,
+    gaussian_idx_by_splat_idx,
+    tile_idx_by_splat_idx,
+):
+    # sort gaussians within each tile for front to back rendering
+    max_depth = torch.max(xyz_camera_frame[:, 2])
+    depth_per_splat = (xyz_camera_frame[gaussian_idx_by_splat_idx])[:, 2]
+    # key should be tile_id and depth in camera frame (z) so the gaussians are still associated with the correct tile
+    sort_keys = depth_per_splat.to(torch.float32) + (
+        max_depth + 1.0
+    ) * tile_idx_by_splat_idx.to(torch.float32)
+    _, sorted_indices = torch.sort(sort_keys)
+    sorted_gaussian_indices = gaussian_idx_by_splat_idx[sorted_indices]
+
+    return sorted_gaussian_indices

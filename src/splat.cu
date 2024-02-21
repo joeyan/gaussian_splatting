@@ -7,8 +7,8 @@ __global__ void render_tiles_kernel(
         const float* opacity,
         const float* rgb,
         const float* sigma_image,
-        const int* gaussian_start_end_indices,
-        const int* gaussian_indices_by_tile,
+        const int* splat_start_end_idx_by_tile_idx,
+        const int* gaussian_idx_by_splat_idx,
         const int image_width,
         const int image_height,
         float* image
@@ -23,15 +23,15 @@ __global__ void render_tiles_kernel(
 
     const int tile_idx = blockIdx.x + blockIdx.y * gridDim.x;
 
-    const int start = gaussian_start_end_indices[tile_idx];
-    const int end = gaussian_start_end_indices[tile_idx + 1];
+    const int splat_idx_start = splat_start_end_idx_by_tile_idx[tile_idx];
+    const int splat_idx_end = splat_start_end_idx_by_tile_idx[tile_idx + 1];
 
     float alpha_accum = 0.0f;
-    for (int i = start; i < end; i++) {
+    for (int splat_idx = splat_idx_start; splat_idx < splat_idx_end; splat_idx++) {
         if (alpha_accum > 0.999f) {
             break;
         }
-        const int gaussian_idx = gaussian_indices_by_tile[i];
+        const int gaussian_idx = gaussian_idx_by_splat_idx[splat_idx];
 
         const float u_mean = uvs[gaussian_idx * 2 + 0];
         const float v_mean = uvs[gaussian_idx * 2 + 1];
@@ -73,15 +73,15 @@ void render_tiles_cuda(
         torch::Tensor opacity,
         torch::Tensor rgb,
         torch::Tensor sigma_image,
-        torch::Tensor gaussian_start_end_indices,
-        torch::Tensor gaussian_indices_by_tile,
+        torch::Tensor splat_start_end_idx_by_tile_idx,
+        torch::Tensor gaussian_idx_by_splat_idx,
         torch::Tensor rendered_image) {
     TORCH_CHECK(uvs.is_cuda(), "uvs must be CUDA tensor");
     TORCH_CHECK(opacity.is_cuda(), "opacity must be CUDA tensor");
     TORCH_CHECK(rgb.is_cuda(), "rgb must be CUDA tensor");
     TORCH_CHECK(sigma_image.is_cuda(), "sigma_image must be CUDA tensor");
-    TORCH_CHECK(gaussian_start_end_indices.is_cuda(), "gaussian_start_end_indices must be CUDA tensor");
-    TORCH_CHECK(gaussian_indices_by_tile.is_cuda(), "gaussian_indices_by_tile must be CUDA tensor");
+    TORCH_CHECK(splat_start_end_idx_by_tile_idx.is_cuda(), "splat_start_end_idx_by_tile_idx must be CUDA tensor");
+    TORCH_CHECK(gaussian_idx_by_splat_idx.is_cuda(), "gaussian_idx_by_splat_idx must be CUDA tensor");
     TORCH_CHECK(rendered_image.is_cuda(), "rendered_image must be CUDA tensor");
 
 
@@ -109,12 +109,11 @@ void render_tiles_cuda(
         opacity.data_ptr<float>(),
         rgb.data_ptr<float>(),
         sigma_image.data_ptr<float>(),
-        gaussian_start_end_indices.data_ptr<int>(),
-        gaussian_indices_by_tile.data_ptr<int>(),
+        splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        gaussian_idx_by_splat_idx.data_ptr<int>(),
         image_width,
         image_height,
         rendered_image.data_ptr<float>()
     );
     cudaDeviceSynchronize();
-
 }

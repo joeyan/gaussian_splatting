@@ -1,6 +1,10 @@
 import torch
 
-from tile_culling import match_gaussians_to_tiles, match_gaussians_to_tiles_gpu
+from tile_culling import (
+    match_gaussians_to_tiles,
+    match_gaussians_to_tiles_gpu,
+    sort_gaussians,
+)
 from structs import Tiles, SimpleTimer
 from splat_cuda import render_tiles_cuda
 
@@ -10,13 +14,21 @@ def render_tiles(
     gaussians,
     sigma_image,
     camera,
+    xyz_camera_frame,
 ):
 
     tiles = Tiles(camera.height, camera.width, uvs.device)
 
-    gaussian_indices_by_tile, gaussian_start_end_indices = match_gaussians_to_tiles(
-        uvs, tiles, sigma_image
+    (
+        gaussian_idx_by_splat_idx,
+        splat_start_end_idx_by_tile_idx,
+        tile_idx_by_splat_idx,
+    ) = match_gaussians_to_tiles(uvs, tiles, sigma_image)
+
+    sorted_gaussian_indices = sort_gaussians(
+        xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
     )
+
     image = torch.zeros(
         tiles.image_height,
         tiles.image_width,
@@ -28,8 +40,8 @@ def render_tiles(
     with SimpleTimer("\tCPU render"):
         # iterate through each tile
         for tile_idx in range(tiles.tile_count):
-            start_index = gaussian_start_end_indices[tile_idx]
-            end_index = gaussian_start_end_indices[tile_idx + 1]
+            start_index = splat_start_end_idx_by_tile_idx[tile_idx]
+            end_index = splat_start_end_idx_by_tile_idx[tile_idx + 1]
 
             # iterate through each pixel in the tile
             for row_offset in range(tiles.tile_edge_size):
@@ -41,7 +53,7 @@ def render_tiles(
 
                     # splat each gaussian for each pixel
                     for list_idx in range(start_index, end_index):
-                        idx = gaussian_indices_by_tile[list_idx]
+                        idx = sorted_gaussian_indices[list_idx]
                         if alpha_accum > 0.99:
                             continue
 
@@ -77,14 +89,23 @@ def render_tiles_gpu(
     gaussians,
     sigma_image,
     camera,
+    xyz_camera_frame,
 ):
     with SimpleTimer("\tCreate Tiles"):
         tiles = Tiles(camera.height, camera.width, uvs.device)
 
     with SimpleTimer("\tGPU tile matching"):
-        gaussian_indices_by_tile, gaussian_start_end_indices = (
-            match_gaussians_to_tiles_gpu(uvs, tiles, sigma_image)
+        (
+            gaussian_idx_by_splat_idx,
+            splat_start_end_idx_by_tile_idx,
+            tile_idx_by_splat_idx,
+        ) = match_gaussians_to_tiles_gpu(uvs, tiles, sigma_image)
+
+    with SimpleTimer("\tSorting Gaussians"):
+        sorted_gaussian_indices = sort_gaussians(
+            xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
         )
+
     with SimpleTimer("\tCreate Image"):
         image = torch.zeros(
             tiles.image_height,
@@ -99,8 +120,8 @@ def render_tiles_gpu(
             gaussians.opacities,
             gaussians.rgb,
             sigma_image,
-            gaussian_start_end_indices,
-            gaussian_indices_by_tile,
+            splat_start_end_idx_by_tile_idx,
+            sorted_gaussian_indices,
             image,
         )
 

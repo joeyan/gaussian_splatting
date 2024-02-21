@@ -241,9 +241,11 @@ class TestCulling(unittest.TestCase):
 
         tiles = Tiles(480, 640, cuda_device)
 
-        gaussian_indices_per_tile, gaussian_start_end_indices = (
-            match_gaussians_to_tiles_gpu(uv, tiles, sigma_image, mh_dist=1.0)
-        )
+        (
+            gaussian_indices_per_tile,
+            splat_start_end_idx_by_tile_idx,
+            tile_idx_by_splat_idx,
+        ) = match_gaussians_to_tiles_gpu(uv, tiles, sigma_image, mh_dist=1.0)
         obb_0 = compute_obb(uv[0], sigma_image[0], mh_dist=1.0)
         obb_1 = compute_obb(uv[1], sigma_image[1], mh_dist=1.0)
         obb_2 = compute_obb(uv[2], sigma_image[2], mh_dist=1.0)
@@ -253,7 +255,8 @@ class TestCulling(unittest.TestCase):
         )
         for tile in range(tiles.tile_count):
             intersect_mask[tile] = (
-                gaussian_start_end_indices[tile] != gaussian_start_end_indices[tile + 1]
+                splat_start_end_idx_by_tile_idx[tile]
+                != splat_start_end_idx_by_tile_idx[tile + 1]
             )
 
         tiles.compute_tile_corners()

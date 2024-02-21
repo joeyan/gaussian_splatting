@@ -5,8 +5,8 @@ void render_tiles_cuda(
         torch::Tensor opacity,
         torch::Tensor rgb,
         torch::Tensor sigma_image,
-        torch::Tensor gaussian_start_end_indices,
-        torch::Tensor gaussian_indices_by_tile,
+        torch::Tensor splat_start_end_idx_by_tile_idx,
+        torch::Tensor gaussian_idx_by_splat_idx,
         torch::Tensor rendered_image);
 
 void camera_projection_cuda(
@@ -45,11 +45,12 @@ void compute_tiles_cuda (
     torch::Tensor num_gaussians_per_tile
 );
 
-void compute_tile_to_gaussian_vector(
+void compute_splat_to_gaussian_id_vector_cuda(
     torch::Tensor gaussian_indices_per_tile,
     torch::Tensor num_gaussians_per_tile,
-    torch::Tensor tile_to_gaussian_vector_offsets,
-    torch::Tensor tile_to_gaussian_vector
+    torch::Tensor splat_to_gaussian_id_vector_offsets,
+    torch::Tensor splat_to_gaussian_id_vector,
+    torch::Tensor tile_idx_by_splat_idx
 );
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -59,5 +60,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("compute_projection_jacobian_cuda", &compute_projection_jacobian_cuda, "compute projection jacobian CUDA");
     m.def("compute_sigma_image_cuda", &compute_sigma_image_cuda, "compute sigma image CUDA");
     m.def("compute_tiles_cuda", &compute_tiles_cuda, "compute tiles CUDA");
-    m.def("compute_tile_to_gaussian_vector", &compute_tile_to_gaussian_vector, "compute tile to gaussian vector CUDA");
+    m.def("compute_splat_to_gaussian_id_vector_cuda", &compute_splat_to_gaussian_id_vector_cuda, "compute tile to gaussian vector CUDA");
 }
