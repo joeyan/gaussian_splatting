@@ -12,6 +12,7 @@ setup(
                 "src/bindings.cpp",
                 "src/splat.cu",
                 "src/projection.cu",
+                "src/projection_backwards.cu",
                 "src/tile_culling.cu",
             ],
         ),

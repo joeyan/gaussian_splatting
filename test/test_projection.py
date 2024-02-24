@@ -103,9 +103,7 @@ class ProjectionTest(unittest.TestCase):
         self.assertAlmostEqual(jacobian_py[0, 1, 2].item(), 229.5912, places=4)
 
         jacobian_cuda = torch.zeros(6, 2, 3, dtype=torch.float32, device=self.device)
-        fx = self.camera.K[0, 0].item()
-        fy = self.camera.K[1, 1].item()
-        compute_projection_jacobian_cuda(xyz_camera_frame, fx, fy, jacobian_cuda)
+        compute_projection_jacobian_cuda(xyz_camera_frame, self.camera.K, jacobian_cuda)
         self.assertTrue(torch.allclose(jacobian_py, jacobian_cuda, atol=1e-6))
 
     def test_compute_sigma_image(self):
@@ -132,9 +130,7 @@ class ProjectionTest(unittest.TestCase):
             sigma_world_cuda,
         )
         jacobian_cuda = torch.zeros(6, 2, 3, dtype=torch.float32, device=self.device)
-        fx = self.camera.K[0, 0].item()
-        fy = self.camera.K[1, 1].item()
-        compute_projection_jacobian_cuda(xyz_camera_frame, fx, fy, jacobian_cuda)
+        compute_projection_jacobian_cuda(xyz_camera_frame, self.camera.K, jacobian_cuda)
 
         # compute sigma_image
         sigma_image_cuda = torch.zeros(6, 2, 2, dtype=torch.float32, device=self.device)

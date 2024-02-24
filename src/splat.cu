@@ -3,12 +3,12 @@
 #include <cuda_runtime.h>
 
 __global__ void render_tiles_kernel(
-        const float* uvs,
-        const float* opacity,
-        const float* rgb,
-        const float* sigma_image,
-        const int* splat_start_end_idx_by_tile_idx,
-        const int* gaussian_idx_by_splat_idx,
+        const float* __restrict__ uvs,
+        const float* __restrict__ opacity,
+        const float* __restrict__ rgb,
+        const float* __restrict__ sigma_image,
+        const int* __restrict__ splat_start_end_idx_by_tile_idx,
+        const int* __restrict__ gaussian_idx_by_splat_idx,
         const int image_width,
         const int image_height,
         float* image

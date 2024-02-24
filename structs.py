@@ -15,7 +15,7 @@ class SimpleTimer:
 
     def __exit__(self, type, value, traceback):
         end = time.time()
-        print(f"{self.name}: {end - self.start} seconds")
+        print(f"{self.name}: {(end - self.start) * 1000} ms")
 
 
 class Image:

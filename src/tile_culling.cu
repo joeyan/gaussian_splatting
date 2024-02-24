@@ -4,13 +4,13 @@
 
 
 __global__ void compute_tiles_kernel (
-    float* uvs,
-    float* sigma_image,
-    int n_tiles_x,
-    int n_tiles_y,
-    float mh_dist,
-    int N,
-    int max_gaussians_per_tile,
+    const float* __restrict__ uvs,
+    const float* __restrict__ sigma_image,
+    const int n_tiles_x,
+    const int n_tiles_y,
+    const float mh_dist,
+    const int N,
+    const int max_gaussians_per_tile,
     int* gaussian_indices_per_tile,
     int* num_gaussians_per_tile
 ) {
@@ -254,11 +254,11 @@ void compute_tiles_cuda (
 }
 
 __global__ void compute_splat_to_gaussian_id_vector_kernel(
-    int* gaussian_indices_per_tile, 
-    int* num_gaussians_per_tile,
-    int* splat_to_gaussian_id_vector_offsets,
-    int n_tiles,
-    int max_gaussians_per_tile,
+    const int* __restrict__ gaussian_indices_per_tile, 
+    const int* __restrict__ num_gaussians_per_tile,
+    const int* __restrict__ splat_to_gaussian_id_vector_offsets,
+    const int n_tiles,
+    const int max_gaussians_per_tile,
     int* splat_to_gaussian_id_vector,
     int* tile_idx_by_splat_idx
 ) {

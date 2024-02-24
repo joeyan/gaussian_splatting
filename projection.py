@@ -215,9 +215,7 @@ def project_and_cull_cuda(
         jacobian = torch.zeros(
             n_culled_gaussians, 2, 3, dtype=torch.float32, device=device
         )
-        fx = camera.K[0, 0].item()
-        fy = camera.K[1, 1].item()
-        compute_projection_jacobian_cuda(xyz_camera_frame, fx, fy, jacobian)
+        compute_projection_jacobian_cuda(xyz_camera_frame, camera.K, jacobian)
 
         # compute sigma_image
         sigma_image = torch.zeros(
