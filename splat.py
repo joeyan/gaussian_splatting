@@ -114,6 +114,20 @@ def render_tiles_gpu(
             dtype=torch.float32,
             device=uvs.device,
         )
+        num_splats_per_pixel = torch.zeros(
+            tiles.image_height,
+            tiles.image_width,
+            1,
+            dtype=torch.int32,
+            device=uvs.device,
+        )
+        final_weight_per_pixel = torch.zeros(
+            tiles.image_height,
+            tiles.image_width,
+            1,
+            dtype=torch.float32,
+            device=uvs.device,
+        )
     with SimpleTimer("\tGPU render"):
         render_tiles_cuda(
             uvs,
@@ -122,6 +136,8 @@ def render_tiles_gpu(
             sigma_image,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_indices,
+            num_splats_per_pixel,
+            final_weight_per_pixel,
             image,
         )
 

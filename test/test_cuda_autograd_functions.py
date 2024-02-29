@@ -5,6 +5,7 @@ from cuda_autograd_functions import (
     ComputeGaussianProjectionJacobian,
     ComputeSigmaWorld,
     ComputeSigmaImage,
+    RenderImage,
 )
 
 

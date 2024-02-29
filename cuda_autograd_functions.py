@@ -8,6 +8,8 @@ from splat_cuda import (
     compute_projection_jacobian_backward_cuda,
     compute_sigma_image_cuda,
     compute_sigma_image_backward_cuda,
+    render_tiles_cuda,
+    render_tiles_backward_cuda,
 )
 
 
@@ -103,3 +105,86 @@ class ComputeSigmaImage(torch.autograd.Function):
             sigma_world, J, world_T_image, grad_sigma_image, grad_sigma_world, grad_J
         )
         return grad_sigma_world, grad_J, None
+
+
+class RenderImage(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        rgb,
+        opacity,
+        uvs,
+        sigma_image,
+        splat_start_end_idx_by_tile_idx,
+        gaussian_idx_by_splat_idx,
+        image_size,
+    ):
+        rendered_image = torch.zeros(
+            image_size[0], image_size[1], 3, dtype=rgb.dtype, device=rgb.device
+        )
+        num_splats_per_pixel = torch.zeros(
+            image_size[0], image_size[1], dtype=torch.int32, device=rgb.device
+        )
+        final_weight_per_pixel = torch.zeros(
+            image_size[0], image_size[1], dtype=rgb.dtype, device=rgb.device
+        )
+
+        render_tiles_cuda(
+            uvs,
+            opacity,
+            rgb,
+            sigma_image,
+            splat_start_end_idx_by_tile_idx,
+            gaussian_idx_by_splat_idx,
+            num_splats_per_pixel,
+            final_weight_per_pixel,
+            rendered_image,
+        )
+        ctx.save_for_backward(
+            uvs,
+            opacity,
+            rgb,
+            sigma_image,
+            splat_start_end_idx_by_tile_idx,
+            gaussian_idx_by_splat_idx,
+            image_size,
+            num_splats_per_pixel,
+            final_weight_per_pixel,
+        )
+        return rendered_image
+
+    @staticmethod
+    def backward(ctx, grad_rendered_image):
+        (
+            uvs,
+            opacity,
+            rgb,
+            sigma_image,
+            splat_start_end_idx_by_tile_idx,
+            gaussian_idx_by_splat_idx,
+            image_size,
+            num_splats_per_pixel,
+            final_weight_per_pixel,
+        ) = ctx.saved_tensors
+        grad_rgb = torch.zeros_like(rgb)
+        grad_opacity = torch.zeros_like(opacity)
+        grad_uv = torch.zeros_like(uvs)
+        grad_sigma_image = torch.zeros_like(sigma_image)
+        render_tiles_backward_cuda(
+            uvs,
+            opacity,
+            rgb,
+            sigma_image,
+            splat_start_end_idx_by_tile_idx,
+            gaussian_idx_by_splat_idx,
+            num_splats_per_pixel,
+            final_weight_per_pixel,
+            grad_rendered_image,
+            image_size[0],
+            image_size[1],
+            grad_rgb,
+            grad_opacity,
+            grad_uv,
+            grad_sigma_image,
+        )
+        return grad_rgb, grad_opacity, grad_uv, grad_sigma_image, None, None, None

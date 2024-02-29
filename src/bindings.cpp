@@ -7,7 +7,27 @@ void render_tiles_cuda(
         torch::Tensor sigma_image,
         torch::Tensor splat_start_end_idx_by_tile_idx,
         torch::Tensor gaussian_idx_by_splat_idx,
+        torch::Tensor num_splats_per_pixel,
+        torch::Tensor final_weight_per_pixel,
         torch::Tensor rendered_image
+);
+
+void render_tiles_backward_cuda(
+    torch::Tensor uvs,
+    torch::Tensor opacity,
+    torch::Tensor rgb,
+    torch::Tensor sigma_image,
+    torch::Tensor splat_start_end_idx_by_tile_idx,
+    torch::Tensor gaussian_idx_by_splat_idx,
+    torch::Tensor num_splats_per_pixel,
+    torch::Tensor final_weight_per_pixel,
+    torch::Tensor grad_image,
+    const int image_width,
+    const int image_height,
+    torch::Tensor grad_rgb,
+    torch::Tensor grad_opacity,
+    torch::Tensor grad_uvs,
+    torch::Tensor grad_sigma_image
 );
 
 void camera_projection_cuda(
@@ -86,6 +106,7 @@ void compute_splat_to_gaussian_id_vector_cuda(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("render_tiles_cuda", &render_tiles_cuda, "Render tiles CUDA");
+    m.def("render_tiles_backward_cuda", &render_tiles_backward_cuda, "Render tiles backward");
     m.def("camera_projection_cuda", &camera_projection_cuda, "project point into image CUDA");
     m.def("camera_projection_backward_cuda", &camera_projection_backward_cuda, "project point into image backward CUDA");
     m.def("compute_sigma_world_cuda", &compute_sigma_world_cuda, "compute sigma world CUDA");

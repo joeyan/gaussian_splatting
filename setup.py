@@ -11,8 +11,9 @@ setup(
             sources=[
                 "src/bindings.cpp",
                 "src/splat.cu",
+                "src/splat_backward.cu",
                 "src/projection.cu",
-                "src/projection_backwards.cu",
+                "src/projection_backward.cu",
                 "src/tile_culling.cu",
             ],
         ),
