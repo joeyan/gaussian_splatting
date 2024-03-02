@@ -264,7 +264,7 @@ def sort_gaussians(
     sort_keys = depth_per_splat.to(torch.float32) + (
         max_depth + 1.0
     ) * tile_idx_by_splat_idx.to(torch.float32)
-    _, sorted_indices = torch.sort(sort_keys)
+    _, sorted_indices = torch.sort(sort_keys, descending=False)
     sorted_gaussian_indices = gaussian_idx_by_splat_idx[sorted_indices]
 
     return sorted_gaussian_indices

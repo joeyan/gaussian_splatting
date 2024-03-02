@@ -64,21 +64,27 @@ __global__ void render_tiles_backward_kernel(
 
     const int tile_idx = blockIdx.x + blockIdx.y * gridDim.x;
     const int splat_idx_start = splat_start_end_idx_by_tile_idx[tile_idx];
-    int num_splats = num_splats_per_pixel[u_splat + v_splat * image_width];
+    const int splat_idx_end = splat_start_end_idx_by_tile_idx[tile_idx + 1];
+    int num_splats = num_splats_per_pixel[v_splat * image_width + u_splat];
     if (num_splats == 0) {
         return;
     }
 
-    T grad_image_r = grad_image[(u_splat + v_splat * image_width) * 3 + 0];
-    T grad_image_g = grad_image[(u_splat + v_splat * image_width) * 3 + 1];
-    T grad_image_b = grad_image[(u_splat + v_splat * image_width) * 3 + 2];
+    T grad_image_r = grad_image[(v_splat * image_width + u_splat) * 3 + 0];
+    T grad_image_g = grad_image[(v_splat * image_width + u_splat) * 3 + 1];
+    T grad_image_b = grad_image[(v_splat * image_width + u_splat) * 3 + 2];
 
     T color_accum[3] = {0.0, 0.0, 0.0};
     T weight = final_weight_per_pixel[u_splat + v_splat * image_width];
     for (int i = num_splats - 1; i >= 0; i--) {
         const int splat_idx = splat_idx_start + i;
+        if (splat_idx >= splat_idx_end) {
+            if (blockIdx.x == 52 && blockIdx.y == 81 && threadIdx.x == 0 && threadIdx.y == 0 && splat_idx >= splat_idx_end) {
+                printf("ERROR - invalid SplatIDX: blockIdx.x %d, blockIdx.y %d, threadidx.x, %d, threadIdx.y %d, splatIdx %d, splatIdx_end\n", blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, splat_idx, splat_idx_end);
+            }
+            continue;
+        }
         const int gaussian_idx = gaussian_idx_by_splat_idx[splat_idx];
-
         // compute alpha
         const T u_mean = uvs[gaussian_idx * 2 + 0];
         const T v_mean = uvs[gaussian_idx * 2 + 1];
@@ -106,7 +112,6 @@ __global__ void render_tiles_backward_kernel(
         atomicAdd(grad_rgb + gaussian_idx * 3 + 1, alpha * weight * grad_image_g);
         atomicAdd(grad_rgb + gaussian_idx * 3 + 2, alpha * weight * grad_image_b);
         
-        
         // prevent divide by zero
         if (alpha == 1.0) {
             alpha -= 1e-14;
@@ -118,7 +123,6 @@ __global__ void render_tiles_backward_kernel(
 
         // update opacity gradient
         atomicAdd(grad_opacity + gaussian_idx, norm_prob * grad_alpha);
-
 
         // compute gradient for probability
         T grad_prob = opacity[gaussian_idx] * grad_alpha;
@@ -147,7 +151,7 @@ __global__ void render_tiles_backward_kernel(
         // update weight for next splat
         if (i > 0) {
             const int splat_idx_next = splat_idx_start + i - 1;
-            const T alpha_next = compute_alpha(
+            T alpha_next = compute_alpha(
                 gaussian_idx_by_splat_idx[splat_idx_next],
                 u_splat,
                 v_splat,
@@ -155,6 +159,10 @@ __global__ void render_tiles_backward_kernel(
                 opacity,
                 sigma_image
             );
+            // prevent divide by zero
+            if (alpha_next == 1.0) {
+                alpha_next -= 1e-14;
+            }
             weight = weight / (1.0 - alpha_next);
         }
     }
@@ -171,16 +179,64 @@ void render_tiles_backward_cuda(
     torch::Tensor num_splats_per_pixel,
     torch::Tensor final_weight_per_pixel,
     torch::Tensor grad_image,
-    const int image_width,
-    const int image_height,
     torch::Tensor grad_rgb,
     torch::Tensor grad_opacity,
     torch::Tensor grad_uv,
     torch::Tensor grad_sigma_image
 ) {
+    TORCH_CHECK(uvs.device().is_cuda(), "uvs must be a CUDA tensor");
+    TORCH_CHECK(opacity.device().is_cuda(), "opacity must be a CUDA tensor");
+    TORCH_CHECK(rgb.device().is_cuda(), "rgb must be a CUDA tensor");
+    TORCH_CHECK(sigma_image.device().is_cuda(), "sigma_image must be a CUDA tensor");
+    TORCH_CHECK(splat_start_end_idx_by_tile_idx.device().is_cuda(), "splat_start_end_idx_by_tile_idx must be a CUDA tensor");
+    TORCH_CHECK(gaussian_idx_by_splat_idx.device().is_cuda(), "gaussian_idx_by_splat_idx must be a CUDA tensor");
+    TORCH_CHECK(num_splats_per_pixel.device().is_cuda(), "num_splats_per_pixel must be a CUDA tensor");
+    TORCH_CHECK(final_weight_per_pixel.device().is_cuda(), "final_weight_per_pixel must be a CUDA tensor");
+    TORCH_CHECK(grad_image.device().is_cuda(), "grad_image must be a CUDA tensor");
+    TORCH_CHECK(grad_rgb.device().is_cuda(), "grad_rgb must be a CUDA tensor");
+    TORCH_CHECK(grad_opacity.device().is_cuda(), "grad_opacity must be a CUDA tensor");
+    TORCH_CHECK(grad_uv.device().is_cuda(), "grad_uv must be a CUDA tensor");
+    TORCH_CHECK(grad_sigma_image.device().is_cuda(), "grad_sigma_image must be a CUDA tensor");
+
+    TORCH_CHECK(uvs.is_contiguous(), "uvs must be contiguous");
+    TORCH_CHECK(opacity.is_contiguous(), "opacity must be contiguous");
+    TORCH_CHECK(rgb.is_contiguous(), "rgb must be contiguous");
+    TORCH_CHECK(sigma_image.is_contiguous(), "sigma_image must be contiguous");
+    TORCH_CHECK(splat_start_end_idx_by_tile_idx.is_contiguous(), "splat_start_end_idx_by_tile_idx must be contiguous");
+    TORCH_CHECK(gaussian_idx_by_splat_idx.is_contiguous(), "gaussian_idx_by_splat_idx must be contiguous");
+    TORCH_CHECK(num_splats_per_pixel.is_contiguous(), "num_splats_per_pixel must be contiguous");
+    TORCH_CHECK(final_weight_per_pixel.is_contiguous(), "final_weight_per_pixel must be contiguous");
+    TORCH_CHECK(grad_image.is_contiguous(), "grad_image must be contiguous");
+    TORCH_CHECK(grad_rgb.is_contiguous(), "grad_rgb must be contiguous");
+    TORCH_CHECK(grad_opacity.is_contiguous(), "grad_opacity must be contiguous");
+    TORCH_CHECK(grad_uv.is_contiguous(), "grad_uv must be contiguous");
+    TORCH_CHECK(grad_sigma_image.is_contiguous(), "grad_sigma_image must be contiguous");
+
+    int N = uvs.size(0);
+    TORCH_CHECK(uvs.size(1) == 2, "uvs must have 2 channels");
+    TORCH_CHECK(opacity.size(0) == N, "opacity must have the same size as uvs");
+    TORCH_CHECK(rgb.size(0) == N, "rgb must have the same size as uvs");
+    TORCH_CHECK(rgb.size(1) == 3, "rgb must have 3 channels");
+    TORCH_CHECK(sigma_image.size(0) == N, "sigma_image must have the same size as uvs");
+    TORCH_CHECK(sigma_image.size(1) == 2, "sigma_image must have 2x2 channels");
+    TORCH_CHECK(sigma_image.size(2) == 2, "sigma_image must have 2x2 channels");
+    
+
+    int image_height = num_splats_per_pixel.size(0);
+    int image_width = num_splats_per_pixel.size(1);
+
     int num_tiles_x = (image_width + 16 - 1) / 16;
     int num_tiles_y = (image_height + 16 - 1) / 16;
-    
+
+    TORCH_CHECK(splat_start_end_idx_by_tile_idx.size(0) == num_tiles_x * num_tiles_y + 1, "splat_start_end_idx_by_tile_idx ");
+    TORCH_CHECK(num_splats_per_pixel.size(0) == image_height, "num_splats_per_pixel must have the same size as the image");
+    TORCH_CHECK(num_splats_per_pixel.size(1) == image_width, "num_splats_per_pixel must have the same size as the image");
+    TORCH_CHECK(final_weight_per_pixel.size(0) == image_height, "final_weight_per_pixel must have the same size as the image");
+    TORCH_CHECK(final_weight_per_pixel.size(1) == image_width, "final_weight_per_pixel must have the same size as the image");
+    TORCH_CHECK(grad_image.size(0) == image_height, "grad_image must have the same size as the image");
+    TORCH_CHECK(grad_image.size(1) == image_width, "grad_image must have the same size as the image");
+    TORCH_CHECK(grad_image.size(2) == 3, "grad_image must have 3 channels");
+
     dim3 block_size(16, 16, 1);
     dim3 grid_size(num_tiles_x, num_tiles_y, 1);
 

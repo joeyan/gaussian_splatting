@@ -22,8 +22,6 @@ void render_tiles_backward_cuda(
     torch::Tensor num_splats_per_pixel,
     torch::Tensor final_weight_per_pixel,
     torch::Tensor grad_image,
-    const int image_width,
-    const int image_height,
     torch::Tensor grad_rgb,
     torch::Tensor grad_opacity,
     torch::Tensor grad_uvs,

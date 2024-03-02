@@ -182,7 +182,7 @@ class ColmapData(GaussianSplattingDataset):
                 )
 
             self.cameras[camera_id] = Camera(
-                width=camera.width,
-                height=camera.height,
+                width=self.images[0].image.shape[1],
+                height=self.images[0].image.shape[0],
                 K=K,
             )

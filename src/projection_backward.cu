@@ -46,6 +46,10 @@ void camera_projection_backward_cuda (
     TORCH_CHECK(xyz_grad_in.is_contiguous(), "xyz_grad_in must be contiguous");
 
     const int N = xyz.size(0);
+    TORCH_CHECK(xyz.size(1) == 3, "xyz must be of shape Nx3");
+    TORCH_CHECK(K.size(0) == 3 && K.size(1) == 3, "K must be of shape 3x3");
+    TORCH_CHECK(uv_grad_out.size(0) == N && uv_grad_out.size(1) == 2, "uv_grad_out must be of shape Nx2");
+    TORCH_CHECK(xyz_grad_in.size(0) == N && xyz_grad_in.size(1) == 3, "xyz_grad_in must be of shape Nx3");
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
@@ -298,6 +302,11 @@ void compute_sigma_world_backward_cuda(
     TORCH_CHECK(scales_grad_in.is_contiguous(), "scales_grad_in must be contiguous");
 
     const int N = quaternions.size(0);
+    TORCH_CHECK(quaternions.size(1) == 4, "quaternions must be of shape Nx4");
+    TORCH_CHECK(scales.size(0) == N && scales.size(1) == 3, "scales must be of shape Nx3");
+    TORCH_CHECK(sigma_world_grad_out.size(0) == N && sigma_world_grad_out.size(1) == 3 && sigma_world_grad_out.size(2) == 3, "sigma_world_grad_out must be of shape Nx3x3");
+    TORCH_CHECK(quaternions_grad_in.size(0) == N && quaternions_grad_in.size(1) == 4, "quaternions_grad_in must be of shape Nx4");
+    TORCH_CHECK(scales_grad_in.size(0) == N && scales_grad_in.size(1) == 3, "scales_grad_in must be of shape Nx3");
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
@@ -432,6 +441,12 @@ void compute_sigma_image_backward_cuda(
     TORCH_CHECK(J_grad_in.is_contiguous(), "J_grad_in must be contiguous");
 
     const int N = sigma_world.size(0);
+    TORCH_CHECK(sigma_world.size(1) == 3 && sigma_world.size(2) == 3, "sigma_world must be of shape Nx3x3");
+    TORCH_CHECK(J.size(0) == N && J.size(1) == 2 && J.size(2) == 3, "J must be of shape Nx2x3");
+    TORCH_CHECK(world_T_image.size(0) == 4 && world_T_image.size(1) == 4, "world_T_image must be of shape 4x4");
+    TORCH_CHECK(sigma_image_grad_out.size(0) == N && sigma_image_grad_out.size(1) == 2 && sigma_image_grad_out.size(2) == 2, "sigma_image_grad_out must be of shape Nx2x2");
+    TORCH_CHECK(sigma_world_grad_in.size(0) == N && sigma_world_grad_in.size(1) == 3 && sigma_world_grad_in.size(2) == 3, "sigma_world_grad_in must be of shape Nx3x3");
+    TORCH_CHECK(J_grad_in.size(0) == N && J_grad_in.size(1) == 2 && J_grad_in.size(2) == 3, "J_grad_in must be of shape Nx2x3");
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;

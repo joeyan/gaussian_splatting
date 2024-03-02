@@ -31,6 +31,8 @@ __global__ void render_tiles_kernel(
 
     T alpha_accum = 0.0;
     T alpha_weight = 0.0;
+
+    int num_splats = 0;
     for (int splat_idx = splat_idx_start; splat_idx < splat_idx_end; splat_idx++) {
         if (alpha_accum > 0.999) {
             break;
@@ -65,8 +67,9 @@ __global__ void render_tiles_kernel(
         image[(v_splat * image_width + u_splat) * 3 + 2] += rgb[gaussian_idx * 3 + 2] * weight;
 
         alpha_accum += weight;
-        num_splats_per_pixel[v_splat * image_width + u_splat]++;
+        num_splats++;
     }
+    num_splats_per_pixel[v_splat * image_width + u_splat] = num_splats;
     final_weight_per_pixel[v_splat * image_width + u_splat] = alpha_weight;
 }
 

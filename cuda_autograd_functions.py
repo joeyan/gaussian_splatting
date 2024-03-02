@@ -123,12 +123,11 @@ class RenderImage(torch.autograd.Function):
             image_size[0], image_size[1], 3, dtype=rgb.dtype, device=rgb.device
         )
         num_splats_per_pixel = torch.zeros(
-            image_size[0], image_size[1], dtype=torch.int32, device=rgb.device
+            image_size[0], image_size[1], dtype=torch.int, device=rgb.device
         )
         final_weight_per_pixel = torch.zeros(
             image_size[0], image_size[1], dtype=rgb.dtype, device=rgb.device
         )
-
         render_tiles_cuda(
             uvs,
             opacity,
@@ -147,7 +146,6 @@ class RenderImage(torch.autograd.Function):
             sigma_image,
             splat_start_end_idx_by_tile_idx,
             gaussian_idx_by_splat_idx,
-            image_size,
             num_splats_per_pixel,
             final_weight_per_pixel,
         )
@@ -162,7 +160,6 @@ class RenderImage(torch.autograd.Function):
             sigma_image,
             splat_start_end_idx_by_tile_idx,
             gaussian_idx_by_splat_idx,
-            image_size,
             num_splats_per_pixel,
             final_weight_per_pixel,
         ) = ctx.saved_tensors
@@ -170,6 +167,9 @@ class RenderImage(torch.autograd.Function):
         grad_opacity = torch.zeros_like(opacity)
         grad_uv = torch.zeros_like(uvs)
         grad_sigma_image = torch.zeros_like(sigma_image)
+
+        # ensure input is contiguous
+        grad_rendered_image = grad_rendered_image.contiguous()
         render_tiles_backward_cuda(
             uvs,
             opacity,
@@ -180,8 +180,6 @@ class RenderImage(torch.autograd.Function):
             num_splats_per_pixel,
             final_weight_per_pixel,
             grad_rendered_image,
-            image_size[0],
-            image_size[1],
             grad_rgb,
             grad_opacity,
             grad_uv,

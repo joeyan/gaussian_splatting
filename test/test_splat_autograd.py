@@ -24,15 +24,15 @@ class TestSplatAutograd(unittest.TestCase):
         )
         self.sigma_image = torch.tensor(
             [
-                [[1.3287e04, 9.7362e03], [9.7362e03, 7.3605e03]],
-                [[900.0, 500.0], [500.0, 400.0]],
+                [[1.3287e03, 9.7362e02], [9.7362e02, 7.3605e02]],
+                [[90.0, 20.0], [20.0, 60.0]],
                 [[776.215, -2464.463], [-2464.463, 8276.755]],
             ],
             dtype=torch.float64,
             device=self.device,
             requires_grad=True,
         )
-        self.tiles = Tiles(50, 50, self.device)
+        self.tiles = Tiles(40, 60, self.device)
 
         (
             self.gaussian_indices_per_tile,
@@ -64,7 +64,7 @@ class TestSplatAutograd(unittest.TestCase):
         self.rgb[1, 1] = 0.0
 
     def test_render_image_grad(self):
-        image_size = torch.tensor([50, 50], dtype=torch.int32, device=self.device)
+        image_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
 
         image = RenderImage.apply(
             self.rgb,
