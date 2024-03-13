@@ -45,10 +45,9 @@ class GaussianSplattingDataset:
         self.verify_loaded_points()
 
         N = self.xyz.shape[0]
-        # initial_opacities = torch.ones(N, 1) * inverse_sigmoid(
-        #     options.initial_opacity_value
-        # )
-        initial_opacities = torch.ones(N, 1) * options.initial_opacity_value
+        initial_opacities = torch.ones(N, 1) * inverse_sigmoid(
+            options.initial_opacity_value
+        )
         # compute scale based on the density of the points around each point
         initial_scales = compute_initial_scale_from_sparse_points(
             self.xyz,
@@ -122,6 +121,7 @@ class ColmapData(GaussianSplattingDataset):
             # TODO - is inverse sigmoid required for this step?
             self.rgb[row] = torch.tensor(point.rgb / 255.0, dtype=torch.float32)
             row += 1
+        self.rgb = inverse_sigmoid(self.rgb)
 
         # load images
         image_info_path = os.path.join(

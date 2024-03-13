@@ -1,13 +1,22 @@
 import numpy as np
 import torch
 from scipy.spatial import KDTree
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 
 def inverse_sigmoid(x):
     """
     Inverse of sigmoid activation
     """
-    return np.log(x / (1 - x))
+    clipped = np.clip(x, 1e-4, 1 - 1e-4)
+    return np.log(clipped / (1.0 - (clipped)))
+
+
+def sample_pdf(xyz, sigma_world):
+    pdf = MultivariateNormal(xyz, sigma_world)
+    mean_1 = pdf.sample()
+    mean_2 = pdf.sample()
+    return mean_1, mean_2
 
 
 def compute_initial_scale_from_sparse_points(
@@ -59,5 +68,11 @@ def transform_points_torch(pts, transform):  # N x 3  # N x 4 x 4
     pts = torch.cat(
         [pts, torch.ones(pts.shape[0], 1, dtype=pts.dtype, device=pts.device)], dim=1
     )
-    pts = torch.matmul(transform, pts.unsqueeze(-1)).squeeze(-1)[:, :3]
-    return pts.contiguous()
+    transformed_pts = torch.matmul(transform, pts.unsqueeze(-1)).squeeze(-1)[:, :3]
+
+    if torch.isnan(transformed_pts).any():
+        print("NaN in transform_points_torch")
+        filtered_tensor = pts[torch.any(transformed_pts.isnan(), dim=1)]
+        print(filtered_tensor.detach().cpu().numpy())
+
+    return transformed_pts.contiguous()

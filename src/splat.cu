@@ -50,15 +50,22 @@ __global__ void render_tiles_kernel(
         const T b = sigma_image[gaussian_idx * 4 + 1];
         const T c = sigma_image[gaussian_idx * 4 + 2];
         const T d = sigma_image[gaussian_idx * 4 + 3];
+        T det = a * d - b * c;
 
-        // compute mahalanobis distance
-        const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / (a * d - b * c);
-        
-        // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
-        const T norm_prob = exp(-0.5 * mh_sq);
-
-        // alpha blending
-        const T alpha = opacity[gaussian_idx] * norm_prob;
+        T alpha = 0.0;
+        // skip any covariance matrices that are not positive definite
+        if (det > 0.0) {
+            if (det < 1e-14) {
+                det += 1e-14;
+            }
+            // compute mahalanobis distance
+            const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
+            if (mh_sq > 0.0) {
+                // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
+                const T norm_prob = exp(-0.5 * mh_sq);
+                alpha = opacity[gaussian_idx] * norm_prob;
+            }
+        }
         alpha_weight = 1.0 - alpha_accum;
         const T weight = alpha * (1.0 - alpha_accum);
 

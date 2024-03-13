@@ -1,14 +1,17 @@
 import torch
 import math
 
-from splat_cuda import compute_tiles_cuda, compute_splat_to_gaussian_id_vector_cuda
+from splat_cuda import (
+    compute_tiles_cuda,
+    compute_splat_to_gaussian_id_vector_cuda,
+)
 from structs import SimpleTimer
 
 
 def compute_obb(
     uv,
     sigma_image,
-    mh_dist=1.0,
+    mh_dist,
 ):
     """
     https://cookierobotics.com/007/
@@ -195,9 +198,9 @@ def match_gaussians_to_tiles_gpu(
     uvs,
     tiles,
     sigma_image,
-    mh_dist=3.0,
+    mh_dist,
 ):
-    max_gaussians = 4096
+    max_gaussians = max(uvs.shape[0] // 10, 1024)
     gaussian_indices_per_tile = (
         torch.ones(
             tiles.tile_count, max_gaussians, dtype=torch.int32, device=uvs.device
@@ -257,14 +260,31 @@ def sort_gaussians(
     gaussian_idx_by_splat_idx,
     tile_idx_by_splat_idx,
 ):
+    if not xyz_camera_frame.is_contiguous():
+        xyz_camera_frame = xyz_camera_frame.contiguous()
+    if not gaussian_idx_by_splat_idx.is_contiguous():
+        gaussian_idx_by_splat_idx = gaussian_idx_by_splat_idx.contiguous()
+    if not tile_idx_by_splat_idx.is_contiguous():
+        tile_idx_by_splat_idx = tile_idx_by_splat_idx.contiguous()
+
     # sort gaussians within each tile for front to back rendering
     max_depth = torch.max(xyz_camera_frame[:, 2])
+    if torch.any(torch.isnan(max_depth)):
+        print("max_depth is NaN")
+        exit()
     depth_per_splat = (xyz_camera_frame[gaussian_idx_by_splat_idx])[:, 2]
     # key should be tile_id and depth in camera frame (z) so the gaussians are still associated with the correct tile
     sort_keys = depth_per_splat.to(torch.float32) + (
         max_depth + 1.0
     ) * tile_idx_by_splat_idx.to(torch.float32)
+
+    if not sort_keys.is_contiguous():
+        sort_keys = sort_keys.contiguous()
+
     _, sorted_indices = torch.sort(sort_keys, descending=False)
     sorted_gaussian_indices = gaussian_idx_by_splat_idx[sorted_indices]
+
+    if not sorted_gaussian_indices.is_contiguous():
+        sorted_gaussian_indices = sorted_gaussian_indices.contiguous()
 
     return sorted_gaussian_indices

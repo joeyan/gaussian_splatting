@@ -99,7 +99,7 @@ def render_tiles_gpu(
             gaussian_idx_by_splat_idx,
             splat_start_end_idx_by_tile_idx,
             tile_idx_by_splat_idx,
-        ) = match_gaussians_to_tiles_gpu(uvs, tiles, sigma_image)
+        ) = match_gaussians_to_tiles_gpu(uvs, tiles, sigma_image, mh_dist=3.0)
 
     with SimpleTimer("\tSorting Gaussians"):
         sorted_gaussian_indices = sort_gaussians(

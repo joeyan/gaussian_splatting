@@ -116,7 +116,7 @@ class RenderImage(torch.autograd.Function):
         uvs,
         sigma_image,
         splat_start_end_idx_by_tile_idx,
-        gaussian_idx_by_splat_idx,
+        sorted_gaussian_idx_by_splat_idx,
         image_size,
     ):
         rendered_image = torch.zeros(
@@ -134,7 +134,7 @@ class RenderImage(torch.autograd.Function):
             rgb,
             sigma_image,
             splat_start_end_idx_by_tile_idx,
-            gaussian_idx_by_splat_idx,
+            sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
             final_weight_per_pixel,
             rendered_image,
@@ -145,7 +145,7 @@ class RenderImage(torch.autograd.Function):
             rgb,
             sigma_image,
             splat_start_end_idx_by_tile_idx,
-            gaussian_idx_by_splat_idx,
+            sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
             final_weight_per_pixel,
         )
@@ -159,7 +159,7 @@ class RenderImage(torch.autograd.Function):
             rgb,
             sigma_image,
             splat_start_end_idx_by_tile_idx,
-            gaussian_idx_by_splat_idx,
+            sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
             final_weight_per_pixel,
         ) = ctx.saved_tensors
@@ -176,7 +176,7 @@ class RenderImage(torch.autograd.Function):
             rgb,
             sigma_image,
             splat_start_end_idx_by_tile_idx,
-            gaussian_idx_by_splat_idx,
+            sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
             final_weight_per_pixel,
             grad_rendered_image,

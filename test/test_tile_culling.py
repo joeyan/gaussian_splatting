@@ -148,7 +148,7 @@ class TestCulling(unittest.TestCase):
             dtype=torch.float32,
             device=self.device,
         )
-        obb = compute_obb(uv, sigma_image)
+        obb = compute_obb(uv, sigma_image, mh_dist=1.0)
 
         tiles = Tiles(128, 128, self.device)
 
@@ -239,16 +239,16 @@ class TestCulling(unittest.TestCase):
             device=cuda_device,
         )
 
-        tiles = Tiles(480, 640, cuda_device)
+        obb_0 = compute_obb(uv[0], sigma_image[0], mh_dist=1.0)
+        obb_1 = compute_obb(uv[1], sigma_image[1], mh_dist=1.0)
+        obb_2 = compute_obb(uv[2], sigma_image[2], mh_dist=1.0)
 
+        tiles = Tiles(480, 640, cuda_device)
         (
             gaussian_indices_per_tile,
             splat_start_end_idx_by_tile_idx,
             tile_idx_by_splat_idx,
         ) = match_gaussians_to_tiles_gpu(uv, tiles, sigma_image, mh_dist=1.0)
-        obb_0 = compute_obb(uv[0], sigma_image[0], mh_dist=1.0)
-        obb_1 = compute_obb(uv[1], sigma_image[1], mh_dist=1.0)
-        obb_2 = compute_obb(uv[2], sigma_image[2], mh_dist=1.0)
 
         intersect_mask = torch.zeros(
             tiles.tile_count, dtype=torch.bool, device=cuda_device

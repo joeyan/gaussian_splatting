@@ -23,11 +23,19 @@ __device__ T compute_alpha(
     const T b = sigma_image[gaussian_idx * 4 + 1];
     const T c = sigma_image[gaussian_idx * 4 + 2];
     const T d = sigma_image[gaussian_idx * 4 + 3];
+
     T det = a * d - b * c;
-    
+    if (det < 0.0) {
+        return 0.0;
+    }
+    if (det < 1e-14) {
+        det += 1e-14;
+    }
     // compute mahalanobis distance
     const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
-
+    if (mh_sq < 0.0) {
+        return 0.0;
+    }
     // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
     const T norm_prob = exp(-0.5 * mh_sq);
 
@@ -76,14 +84,11 @@ __global__ void render_tiles_backward_kernel(
 
     T color_accum[3] = {0.0, 0.0, 0.0};
     T weight = final_weight_per_pixel[u_splat + v_splat * image_width];
+    if (weight < 1e-14) {
+        return;
+    }
     for (int i = num_splats - 1; i >= 0; i--) {
         const int splat_idx = splat_idx_start + i;
-        if (splat_idx >= splat_idx_end) {
-            if (blockIdx.x == 52 && blockIdx.y == 81 && threadIdx.x == 0 && threadIdx.y == 0 && splat_idx >= splat_idx_end) {
-                printf("ERROR - invalid SplatIDX: blockIdx.x %d, blockIdx.y %d, threadidx.x, %d, threadIdx.y %d, splatIdx %d, splatIdx_end\n", blockIdx.x, blockIdx.y, threadIdx.x, threadIdx.y, splat_idx, splat_idx_end);
-            }
-            continue;
-        }
         const int gaussian_idx = gaussian_idx_by_splat_idx[splat_idx];
         // compute alpha
         const T u_mean = uvs[gaussian_idx * 2 + 0];
@@ -99,21 +104,28 @@ __global__ void render_tiles_backward_kernel(
         const T d = sigma_image[gaussian_idx * 4 + 3];
         T det = a * d - b * c;
 
-        // compute mahalanobis distance
-        const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
-
-        // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
-        const T norm_prob = exp(-0.5 * mh_sq);
-
-        T alpha = opacity[gaussian_idx] * norm_prob;
+        T norm_prob = 0.0;
+        if (det > 0.0) {
+            if (det < 1e-14) {
+                det += 1e-14;
+            }
+            // compute mahalanobis distance
+            const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
+            if (mh_sq > 0.0) {
+                // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
+                norm_prob = exp(-0.5 * mh_sq);
+            }
+        }
         
+        T alpha = opacity[gaussian_idx] * norm_prob;
+
         // update rgb gradient. Since each gaussian is splat to multiple pixels, we need to use atomicAdd
         atomicAdd(grad_rgb + gaussian_idx * 3 + 0, alpha * weight * grad_image_r);
         atomicAdd(grad_rgb + gaussian_idx * 3 + 1, alpha * weight * grad_image_g);
         atomicAdd(grad_rgb + gaussian_idx * 3 + 2, alpha * weight * grad_image_b);
         
         // prevent divide by zero
-        if (alpha == 1.0) {
+        if (abs(alpha - 1.0) < 1e-14) {
             alpha -= 1e-14;
         }
         T grad_alpha_r = (rgb[gaussian_idx * 3 + 0] * weight - color_accum[0]/(1.0 - alpha)) * grad_image_r;
@@ -121,8 +133,10 @@ __global__ void render_tiles_backward_kernel(
         T grad_alpha_b = (rgb[gaussian_idx * 3 + 2] * weight - color_accum[2]/(1.0 - alpha)) * grad_image_b;
         T grad_alpha = grad_alpha_r + grad_alpha_g + grad_alpha_b;
 
+        T grad_opa = norm_prob * grad_alpha;
+
         // update opacity gradient
-        atomicAdd(grad_opacity + gaussian_idx, norm_prob * grad_alpha);
+        atomicAdd(grad_opacity + gaussian_idx, grad_opa);
 
         // compute gradient for probability
         T grad_prob = opacity[gaussian_idx] * grad_alpha;
@@ -144,7 +158,8 @@ __global__ void render_tiles_backward_kernel(
         atomicAdd(grad_sigma_image + gaussian_idx * 4 + 3, grad_d);
 
         // update color_accum for next splat
-        color_accum[0] += rgb[gaussian_idx * 3 + 0] * alpha * weight;
+        T update = rgb[gaussian_idx * 3 + 0] * alpha * weight;
+        color_accum[0] += update;
         color_accum[1] += rgb[gaussian_idx * 3 + 1] * alpha * weight;
         color_accum[2] += rgb[gaussian_idx * 3 + 2] * alpha * weight;
 
@@ -160,8 +175,8 @@ __global__ void render_tiles_backward_kernel(
                 sigma_image
             );
             // prevent divide by zero
-            if (alpha_next == 1.0) {
-                alpha_next -= 1e-14;
+            if (abs(alpha_next - 1.0) < 1e-6) {
+                alpha_next -= 1e-6;
             }
             weight = weight / (1.0 - alpha_next);
         }

@@ -15,6 +15,9 @@ __global__ void camera_projection_backwards_kernel(
     if (i >= N) {
         return;
     }
+    if (xyz[i*3+2] <= 0.0) {
+        return;
+    }
     // du/dx = fx / z
     T du_dx = K[0] / xyz[i*3+2];
     // dv/dy = fy / z

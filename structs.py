@@ -3,6 +3,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from constants import PRINT_DEBUG_TIMING
+
 TILE_EDGE_LENGTH_PX = 16
 
 
@@ -15,7 +17,8 @@ class SimpleTimer:
 
     def __exit__(self, type, value, traceback):
         end = time.time()
-        print(f"{self.name}: {(end - self.start) * 1000} ms")
+        if PRINT_DEBUG_TIMING:
+            print(f"{self.name}: {(end - self.start) * 1000} ms")
 
 
 class Image:
