@@ -2,7 +2,7 @@ import unittest
 import torch
 from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
-    ComputeGaussianProjectionJacobian,
+    ComputeProjectionJacobian,
     ComputeSigmaWorld,
     ComputeSigmaImage,
     RenderImage,
@@ -73,7 +73,7 @@ class TestAutogradFunctions(unittest.TestCase):
 
     def test_compute_gaussian_projection_jacobian(self):
         test = torch.autograd.gradcheck(
-            ComputeGaussianProjectionJacobian.apply,
+            ComputeProjectionJacobian.apply,
             (self.xyz, self.K),
             raise_exception=True,
         )

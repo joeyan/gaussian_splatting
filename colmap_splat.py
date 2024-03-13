@@ -13,7 +13,7 @@ from splat_py.utils import transform_points_torch
 from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeSigmaWorld,
-    ComputeGaussianProjectionJacobian,
+    ComputeProjectionJacobian,
     ComputeSigmaImage,
     RenderImage,
 )
@@ -57,6 +57,8 @@ for i in range(7000):
 
     with SimpleTimer("Render Image (CUDA)"):
         xyz_camera_frame = transform_points_torch(problem.gaussians.xyz, world_T_image)
+        uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
+
         # perform frustrum culling
         culling_mask = torch.zeros(
             xyz_camera_frame.shape[0],
@@ -65,8 +67,6 @@ for i in range(7000):
         )
         near_thresh = 0.3
         culling_mask = culling_mask | (xyz_camera_frame[:, 2] < near_thresh)
-        uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
-
         culling_mask = (
             culling_mask
             | (uv[:, 0] < -1 * CULL_MASK_PADDING)
@@ -94,7 +94,7 @@ for i in range(7000):
         sigma_world = ComputeSigmaWorld.apply(
             culled_gaussians.quaternions, culled_gaussians.scales
         )
-        J = ComputeGaussianProjectionJacobian.apply(xyz_camera_frame, camera.K)
+        J = ComputeProjectionJacobian.apply(xyz_camera_frame, camera.K)
         sigma_image = ComputeSigmaImage.apply(sigma_world, J, world_T_image)
 
         # perform tile culling

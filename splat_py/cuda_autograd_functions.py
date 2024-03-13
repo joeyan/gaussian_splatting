@@ -65,7 +65,7 @@ class ComputeSigmaWorld(torch.autograd.Function):
         return grad_quaternions, grad_scales
 
 
-class ComputeGaussianProjectionJacobian(torch.autograd.Function):
+class ComputeProjectionJacobian(torch.autograd.Function):
     @staticmethod
     def forward(ctx, xyz_camera, K):
         jacobian = torch.zeros(
