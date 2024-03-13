@@ -3,8 +3,8 @@ import numpy as np
 import torch
 import cv2
 
-from projection import project_and_cull, project_and_cull_cuda
-from splat import render_tiles, render_tiles_gpu
+from splat_py.projection import project_and_cull, project_and_cull_cuda
+from splat_py.splat import render_tiles, render_tiles_gpu
 from gaussian_test_data import get_test_data
 
 

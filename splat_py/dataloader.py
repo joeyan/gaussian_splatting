@@ -1,14 +1,14 @@
 import os
 import cv2
 import torch
-from read_colmap import (
+from splat_py.read_colmap import (
     read_images_binary,
     read_points3D_binary,
     read_cameras_binary,
     qvec2rotmat,
 )
-from utils import inverse_sigmoid, compute_initial_scale_from_sparse_points
-from structs import Gaussians, Image, Camera
+from splat_py.utils import inverse_sigmoid, compute_initial_scale_from_sparse_points
+from splat_py.structs import Gaussians, Image, Camera
 
 
 class GaussianSplattingDataset:

@@ -13,7 +13,7 @@ from splat_cuda import (
     render_tiles_backward_cuda,
 )
 
-from structs import SimpleTimer
+from splat_py.structs import SimpleTimer
 
 
 class CameraPointProjection(torch.autograd.Function):

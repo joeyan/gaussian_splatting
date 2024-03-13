@@ -5,7 +5,7 @@ from splat_cuda import (
     compute_tiles_cuda,
     compute_splat_to_gaussian_id_vector_cuda,
 )
-from structs import SimpleTimer
+from splat_py.structs import SimpleTimer
 
 
 def compute_obb(

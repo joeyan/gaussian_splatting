@@ -1,11 +1,11 @@
 import torch
 
-from tile_culling import (
+from splat_py.tile_culling import (
     match_gaussians_to_tiles,
     match_gaussians_to_tiles_gpu,
     sort_gaussians,
 )
-from structs import Tiles, SimpleTimer
+from splat_py.structs import Tiles, SimpleTimer
 from splat_cuda import render_tiles_cuda
 
 

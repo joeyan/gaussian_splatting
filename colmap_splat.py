@@ -4,13 +4,13 @@ import numpy as np
 
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
-from constants import *
-from trainer import GSTrainer
-from dataloader import ColmapData
-from options import GaussianSplattingOptions
-from utils import transform_points_torch
+from splat_py.constants import *
+from splat_py.trainer import GSTrainer
+from splat_py.dataloader import ColmapData
+from splat_py.options import GaussianSplattingOptions
+from splat_py.utils import transform_points_torch
 
-from cuda_autograd_functions import (
+from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeSigmaWorld,
     ComputeGaussianProjectionJacobian,
@@ -18,8 +18,8 @@ from cuda_autograd_functions import (
     RenderImage,
 )
 
-from structs import Gaussians, SimpleTimer, Tiles
-from tile_culling import (
+from splat_py.structs import Gaussians, SimpleTimer, Tiles
+from splat_py.tile_culling import (
     match_gaussians_to_tiles_gpu,
     sort_gaussians,
 )

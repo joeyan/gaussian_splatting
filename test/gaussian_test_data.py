@@ -1,6 +1,6 @@
 import torch
 
-from structs import Gaussians, Camera
+from splat_py.structs import Gaussians, Camera
 
 
 def get_test_gaussians(device):

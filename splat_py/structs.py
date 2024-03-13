@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from constants import PRINT_DEBUG_TIMING
+from splat_py.constants import PRINT_DEBUG_TIMING
 
 TILE_EDGE_LENGTH_PX = 16
 

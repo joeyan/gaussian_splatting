@@ -3,13 +3,12 @@ import sys
 import torch
 import cv2
 
-sys.path.append("../")
-from tile_culling import (
+from splat_py.tile_culling import (
     compute_obb,
     compute_bbox_tile_intersection,
     match_gaussians_to_tiles_gpu,
 )
-from structs import Tiles
+from splat_py.structs import Tiles
 
 
 def plot_bbox(bbox, image, color=(0, 255, 0), thickness=1):

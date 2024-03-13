@@ -2,9 +2,8 @@ import unittest
 import sys
 import torch
 
-sys.path.append("../")
-from dataloader import ColmapData
-from options import GaussianSplattingOptions
+from splat_py.dataloader import ColmapData
+from splat_py.options import GaussianSplattingOptions
 
 
 # To download test data:

@@ -1,10 +1,9 @@
 import math
 import torch
 
-from constants import *
-from utils import inverse_sigmoid
+from splat_py.constants import *
+from splat_py.utils import inverse_sigmoid, sample_pdf
 from splat_cuda import compute_sigma_world_cuda
-from utils import sample_pdf
 
 
 class GSTrainer:

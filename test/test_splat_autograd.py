@@ -2,9 +2,10 @@ import unittest
 import cv2
 import numpy as np
 import torch
-from cuda_autograd_functions import RenderImage
-from tile_culling import match_gaussians_to_tiles_gpu
-from structs import Tiles
+
+from splat_py.cuda_autograd_functions import RenderImage
+from splat_py.tile_culling import match_gaussians_to_tiles_gpu
+from splat_py.structs import Tiles
 
 
 class TestSplatAutograd(unittest.TestCase):

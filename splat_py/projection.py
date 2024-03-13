@@ -1,5 +1,4 @@
 import torch
-from utils import quaternion_to_rotation_torch, transform_points_torch
 
 from splat_cuda import (
     camera_projection_cuda,
@@ -7,7 +6,8 @@ from splat_cuda import (
     compute_projection_jacobian_cuda,
     compute_sigma_image_cuda,
 )
-from structs import Gaussians, SimpleTimer
+from splat_py.structs import Gaussians, SimpleTimer
+from splat_py.utils import quaternion_to_rotation_torch, transform_points_torch
 
 
 def compute_sigma_world(

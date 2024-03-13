@@ -1,7 +1,7 @@
 import unittest
 import torch
 
-from projection import (
+from splat_py.projection import (
     compute_sigma_world,
     project_points,
     compute_projection_jacobian,

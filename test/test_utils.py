@@ -3,8 +3,7 @@ import unittest
 import sys
 import torch
 
-sys.path.append("../")
-from utils import quaternion_to_rotation_torch, transform_points_torch
+from splat_py.utils import quaternion_to_rotation_torch, transform_points_torch
 
 
 class TestUtils(unittest.TestCase):

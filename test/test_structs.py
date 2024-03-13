@@ -3,7 +3,7 @@ import sys
 import torch
 
 sys.path.append("../")
-from structs import Tiles
+from splat_py.structs import Tiles
 
 
 class TestTiles(unittest.TestCase):

@@ -1,6 +1,6 @@
 import unittest
 import torch
-from cuda_autograd_functions import (
+from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeGaussianProjectionJacobian,
     ComputeSigmaWorld,
