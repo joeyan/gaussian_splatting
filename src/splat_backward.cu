@@ -4,13 +4,13 @@
 
 
 template<typename T>
-__device__ T compute_alpha(
+__device__ T compute_norm_prob(
     const int gaussian_idx,
     const int u_splat,
     const int v_splat,
     const T* __restrict__ uvs,
-    const T* __restrict__ opacity,
-    const T* __restrict__ sigma_image
+    const T* __restrict__ sigma_image,
+    bool use_fast_exp
 ) {
     const T u_mean = uvs[gaussian_idx * 2 + 0];
     const T v_mean = uvs[gaussian_idx * 2 + 1];
@@ -37,11 +37,13 @@ __device__ T compute_alpha(
         return 0.0;
     }
     // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
-    const T norm_prob = exp(-0.5 * mh_sq);
-
-    // unlikely to produce a visible result with 8 bit images
-    T alpha = opacity[gaussian_idx] * norm_prob;
-    return alpha;
+    T norm_prob = 0.0;
+    if (use_fast_exp) {
+        norm_prob = __expf(-0.5 * mh_sq);
+    } else {
+        norm_prob = exp(-0.5 * mh_sq);
+    }
+    return norm_prob;
 }
 
 
@@ -58,6 +60,7 @@ __global__ void render_tiles_backward_kernel(
         const T* __restrict__ grad_image,
         const int image_width,
         const int image_height,
+        bool use_fast_exp,
         T* __restrict__ grad_rgb, // N_gaussians x 3
         T* __restrict__ grad_opacity, // N_gaussians x 1
         T* __restrict__ grad_uv, // N_gaussians x 2
@@ -84,13 +87,14 @@ __global__ void render_tiles_backward_kernel(
 
     T color_accum[3] = {0.0, 0.0, 0.0};
     T weight = final_weight_per_pixel[u_splat + v_splat * image_width];
+
     if (weight < 1e-14) {
         return;
     }
     for (int i = num_splats - 1; i >= 0; i--) {
         const int splat_idx = splat_idx_start + i;
         const int gaussian_idx = gaussian_idx_by_splat_idx[splat_idx];
-        // compute alpha
+
         const T u_mean = uvs[gaussian_idx * 2 + 0];
         const T v_mean = uvs[gaussian_idx * 2 + 1];
 
@@ -113,11 +117,20 @@ __global__ void render_tiles_backward_kernel(
             const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
             if (mh_sq > 0.0) {
                 // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
-                norm_prob = exp(-0.5 * mh_sq);
+                if (use_fast_exp) {
+                    norm_prob = __expf(-0.5 * mh_sq);
+                } else {
+                    norm_prob = exp(-0.5 * mh_sq);
+                }
             }
         }
         
         T alpha = opacity[gaussian_idx] * norm_prob;
+
+        // update weight
+        if (i < num_splats - 1) {
+            weight = weight / (1.0 - alpha);
+        }
 
         // update rgb gradient. Since each gaussian is splat to multiple pixels, we need to use atomicAdd
         atomicAdd(grad_rgb + gaussian_idx * 3 + 0, alpha * weight * grad_image_r);
@@ -162,24 +175,6 @@ __global__ void render_tiles_backward_kernel(
         color_accum[0] += update;
         color_accum[1] += rgb[gaussian_idx * 3 + 1] * alpha * weight;
         color_accum[2] += rgb[gaussian_idx * 3 + 2] * alpha * weight;
-
-        // update weight for next splat
-        if (i > 0) {
-            const int splat_idx_next = splat_idx_start + i - 1;
-            T alpha_next = compute_alpha(
-                gaussian_idx_by_splat_idx[splat_idx_next],
-                u_splat,
-                v_splat,
-                uvs,
-                opacity,
-                sigma_image
-            );
-            // prevent divide by zero
-            if (abs(alpha_next - 1.0) < 1e-6) {
-                alpha_next -= 1e-6;
-            }
-            weight = weight / (1.0 - alpha_next);
-        }
     }
 }
 
@@ -268,6 +263,7 @@ void render_tiles_backward_cuda(
             grad_image.data_ptr<float>(),
             image_width,
             image_height,
+            true,
             grad_rgb.data_ptr<float>(),
             grad_opacity.data_ptr<float>(),
             grad_uv.data_ptr<float>(),
@@ -286,6 +282,7 @@ void render_tiles_backward_cuda(
             grad_image.data_ptr<double>(),
             image_width,
             image_height,
+            false,
             grad_rgb.data_ptr<double>(),
             grad_opacity.data_ptr<double>(),
             grad_uv.data_ptr<double>(),

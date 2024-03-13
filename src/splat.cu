@@ -13,6 +13,7 @@ __global__ void render_tiles_kernel(
         const int* __restrict__ gaussian_idx_by_splat_idx,
         const int image_width,
         const int image_height,
+        bool use_fast_exp,
         int* num_splats_per_pixel,
         T* final_weight_per_pixel,
         T* image
@@ -62,7 +63,12 @@ __global__ void render_tiles_kernel(
             const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
             if (mh_sq > 0.0) {
                 // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
-                const T norm_prob = exp(-0.5 * mh_sq);
+                T norm_prob = 0.0;
+                if (use_fast_exp) {
+                    norm_prob = __expf(-0.5 * mh_sq);
+                } else {
+                    norm_prob = exp(-0.5 * mh_sq);
+                }
                 alpha = opacity[gaussian_idx] * norm_prob;
             }
         }
@@ -129,6 +135,7 @@ void render_tiles_cuda(
             gaussian_idx_by_splat_idx.data_ptr<int>(),
             image_width,
             image_height,
+            true,
             num_splats_per_pixel.data_ptr<int>(),
             final_weight_per_pixel.data_ptr<float>(),
             rendered_image.data_ptr<float>()
@@ -143,6 +150,7 @@ void render_tiles_cuda(
             gaussian_idx_by_splat_idx.data_ptr<int>(),
             image_width,
             image_height,
+            false,
             num_splats_per_pixel.data_ptr<int>(),
             final_weight_per_pixel.data_ptr<double>(),
             rendered_image.data_ptr<double>()
