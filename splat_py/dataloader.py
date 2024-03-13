@@ -1,6 +1,7 @@
 import os
 import cv2
 import torch
+from splat_py.constants import *
 from splat_py.read_colmap import (
     read_images_binary,
     read_points3D_binary,
@@ -38,21 +39,19 @@ class GaussianSplattingDataset:
         assert self.rgb.shape[0] == N
         assert self.rgb.shape[1] == 3
 
-    def create_gaussians(self, options):
+    def create_gaussians(self):
         """
         Create gaussians object from the dataset
         """
         self.verify_loaded_points()
 
         N = self.xyz.shape[0]
-        initial_opacities = torch.ones(N, 1) * inverse_sigmoid(
-            options.initial_opacity_value
-        )
+        initial_opacities = torch.ones(N, 1) * inverse_sigmoid(INITIAL_OPACITY)
         # compute scale based on the density of the points around each point
         initial_scales = compute_initial_scale_from_sparse_points(
             self.xyz,
-            num_neighbors=options.initial_scale_num_neighbors,
-            neighbor_dist_to_scale_factor=options.mean_neighbor_dist_to_initial_scale_factor,
+            num_neighbors=INITIAL_SCALE_NUM_NEIGHBORS,
+            neighbor_dist_to_scale_factor=INITIAL_SCALE_FACTOR,
         )
         initial_quaternions = torch.zeros(N, 4)
         initial_quaternions[:, 0] = 1.0

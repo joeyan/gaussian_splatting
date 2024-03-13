@@ -3,7 +3,6 @@ import sys
 import torch
 
 from splat_py.dataloader import ColmapData
-from splat_py.options import GaussianSplattingOptions
 
 
 # To download test data:
@@ -41,11 +40,8 @@ class TestColmapData(unittest.TestCase):
 
     def test_create_gaussians(self):
         """Test Gaussian Creation from colmap dataset"""
-        options = GaussianSplattingOptions()
-        options.initial_opacity_value = 0.2
-        options.mean_neighbor_dist_to_initial_scale_factor = 0.2
 
-        gaussians = self.colmap_data.create_gaussians(options)
+        gaussians = self.colmap_data.create_gaussians()
         self.assertEqual(gaussians.xyz.shape[0], 138766)
         self.assertEqual(gaussians.xyz.shape[1], 3)
         self.assertEqual(gaussians.rgb.shape[0], 138766)
@@ -67,9 +63,9 @@ class TestColmapData(unittest.TestCase):
 
         self.assertAlmostEqual(gaussians.opacities[0, 0].item(), -1.3862943649)
 
-        self.assertAlmostEqual(gaussians.scales[0, 0].item(), -5.10913324356)
-        self.assertAlmostEqual(gaussians.scales[0, 1].item(), -5.10913324356)
-        self.assertAlmostEqual(gaussians.scales[0, 2].item(), -5.10913324356)
+        self.assertAlmostEqual(gaussians.scales[0, 0].item(), -3.722839117050171)
+        self.assertAlmostEqual(gaussians.scales[0, 1].item(), -3.722839117050171)
+        self.assertAlmostEqual(gaussians.scales[0, 2].item(), -3.722839117050171)
 
         self.assertAlmostEqual(gaussians.quaternions[0, 0].item(), 1.0)
         self.assertAlmostEqual(gaussians.quaternions[0, 1].item(), 0.0)

@@ -173,20 +173,19 @@ class RenderImage(torch.autograd.Function):
 
         # ensure input is contiguous
         grad_rendered_image = grad_rendered_image.contiguous()
-        with SimpleTimer("\t\t\trender_tiles_backward_cuda"):
-            render_tiles_backward_cuda(
-                uvs,
-                opacity,
-                rgb,
-                sigma_image,
-                splat_start_end_idx_by_tile_idx,
-                sorted_gaussian_idx_by_splat_idx,
-                num_splats_per_pixel,
-                final_weight_per_pixel,
-                grad_rendered_image,
-                grad_rgb,
-                grad_opacity,
-                grad_uv,
-                grad_sigma_image,
-            )
+        render_tiles_backward_cuda(
+            uvs,
+            opacity,
+            rgb,
+            sigma_image,
+            splat_start_end_idx_by_tile_idx,
+            sorted_gaussian_idx_by_splat_idx,
+            num_splats_per_pixel,
+            final_weight_per_pixel,
+            grad_rendered_image,
+            grad_rgb,
+            grad_opacity,
+            grad_uv,
+            grad_sigma_image,
+        )
         return grad_rgb, grad_opacity, grad_uv, grad_sigma_image, None, None, None

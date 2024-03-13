@@ -12,6 +12,11 @@ def inverse_sigmoid(x):
     return np.log(clipped / (1.0 - (clipped)))
 
 
+def inverse_sigmoid_torch(x):
+    clipped = torch.clip(x, 1e-4, 1 - 1e-4)
+    return torch.log(clipped / (1.0 - (clipped)))
+
+
 def sample_pdf(xyz, sigma_world):
     pdf = MultivariateNormal(xyz, sigma_world)
     mean_1 = pdf.sample()
