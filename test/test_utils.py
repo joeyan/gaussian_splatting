@@ -1,6 +1,5 @@
 import math
 import unittest
-import sys
 import torch
 
 from splat_py.utils import quaternion_to_rotation_torch, transform_points_torch

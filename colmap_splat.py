@@ -1,20 +1,21 @@
-import torch
-import cv2
+import os
 import numpy as np
-
+import cv2
+import torch
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from splat_py.constants import *
-from splat_py.trainer import GSTrainer
 from splat_py.dataloader import ColmapData
-from splat_py.structs import SimpleTimer
 from splat_py.splat import splat
+from splat_py.structs import SimpleTimer
+from splat_py.trainer import GSTrainer
+
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
 
 torch.manual_seed(0)
 with SimpleTimer("Load Colmap Data"):
-    colmap_data = ColmapData(
-        "/home/joe/Downloads/garden", torch.device("cuda"), downsample_factor=4
-    )
+    colmap_data = ColmapData(DATASET_PATH, torch.device("cuda"), downsample_factor=4)
     gaussians = colmap_data.create_gaussians()
 
     images = colmap_data.get_images()
@@ -81,7 +82,8 @@ for i in range(NUM_ITERS):
             )
         )
 
-    # make sure to perform test split eval before adaptive control in case they are done at the same iter
+    # make sure to perform test split eval before adaptive control
+    # if adaptive control occurs in the same iteration, test psnr will be low
     if i % TEST_EVAL_INTERVAL == 0:
         with torch.no_grad():
             test_psnrs = []
@@ -108,6 +110,6 @@ for i in range(NUM_ITERS):
         with SimpleTimer("Save Images"):
             image = image.clip(0, 1).detach().cpu().numpy()
             cv2.imwrite(
-                "colmap_splat/iter{}_image_{}.png".format(i, image_idx),
+                "{}/iter{}_image_{}.png".format(OUTPUT_DIR, i, image_idx),
                 (image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
             )

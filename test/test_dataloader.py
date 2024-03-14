@@ -1,20 +1,15 @@
 import unittest
-import sys
 import torch
 
+from splat_py.constants import DATASET_PATH
 from splat_py.dataloader import ColmapData
-
-
-# To download test data:
-# wget http://storage.googleapis.com/gresearch/refraw360/360_v2.zip
-COLMAP_TEST_PATH = "/home/joe/Downloads/garden"
 
 
 class TestColmapData(unittest.TestCase):
     """Test Colmap dataloader"""
 
     def setUp(self):
-        self.colmap_directory_path = COLMAP_TEST_PATH
+        self.colmap_directory_path = DATASET_PATH
         self.device = torch.device("cpu")
         self.colmap_data = ColmapData(
             self.colmap_directory_path, self.device, downsample_factor=8
