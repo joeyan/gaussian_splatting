@@ -2,6 +2,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include "checks.cuh"
 
 template<typename T>
 __global__ void render_tiles_kernel(
@@ -96,15 +97,15 @@ void render_tiles_cuda(
         torch::Tensor num_splats_per_pixel,
         torch::Tensor final_weight_per_pixel,
         torch::Tensor rendered_image) {
-    TORCH_CHECK(uvs.is_cuda(), "uvs must be CUDA tensor");
-    TORCH_CHECK(opacity.is_cuda(), "opacity must be CUDA tensor");
-    TORCH_CHECK(rgb.is_cuda(), "rgb must be CUDA tensor");
-    TORCH_CHECK(sigma_image.is_cuda(), "sigma_image must be CUDA tensor");
-    TORCH_CHECK(splat_start_end_idx_by_tile_idx.is_cuda(), "splat_start_end_idx_by_tile_idx must be CUDA tensor");
-    TORCH_CHECK(gaussian_idx_by_splat_idx.is_cuda(), "gaussian_idx_by_splat_idx must be CUDA tensor");
-    TORCH_CHECK(num_splats_per_pixel.is_cuda(), "num_splats_per_pixel must be CUDA tensor");
-    TORCH_CHECK(final_weight_per_pixel.is_cuda(), "final_weight_per_pixel must be CUDA tensor");
-    TORCH_CHECK(rendered_image.is_cuda(), "rendered_image must be CUDA tensor");
+    CHECK_VALID_INPUT(uvs);
+    CHECK_VALID_INPUT(opacity);
+    CHECK_VALID_INPUT(rgb);
+    CHECK_VALID_INPUT(sigma_image);
+    CHECK_VALID_INPUT(splat_start_end_idx_by_tile_idx);
+    CHECK_VALID_INPUT(gaussian_idx_by_splat_idx);
+    CHECK_VALID_INPUT(num_splats_per_pixel);
+    CHECK_VALID_INPUT(final_weight_per_pixel);
+    CHECK_VALID_INPUT(rendered_image);
 
     int N = uvs.size(0);
     TORCH_CHECK(uvs.size(1) == 2, "uvs must be Nx2 (u, v)");
@@ -126,6 +127,14 @@ void render_tiles_cuda(
     dim3 grid_size(num_tiles_x, num_tiles_y, 1);
 
     if (uvs.dtype() == torch::kFloat32) {
+        CHECK_FLOAT_TENSOR(opacity);
+        CHECK_FLOAT_TENSOR(rgb);
+        CHECK_FLOAT_TENSOR(sigma_image);
+        CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
+        CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        CHECK_INT_TENSOR(num_splats_per_pixel);
+        CHECK_FLOAT_TENSOR(final_weight_per_pixel);
+        CHECK_FLOAT_TENSOR(rendered_image);
         render_tiles_kernel<float><<<grid_size, block_size>>>(
             uvs.data_ptr<float>(),
             opacity.data_ptr<float>(),
@@ -141,6 +150,14 @@ void render_tiles_cuda(
             rendered_image.data_ptr<float>()
         );
     } else if (uvs.dtype() == torch::kFloat64) {
+        CHECK_DOUBLE_TENSOR(opacity);
+        CHECK_DOUBLE_TENSOR(rgb);
+        CHECK_DOUBLE_TENSOR(sigma_image);
+        CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
+        CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        CHECK_INT_TENSOR(num_splats_per_pixel);
+        CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
+        CHECK_DOUBLE_TENSOR(rendered_image);
         render_tiles_kernel<double><<<grid_size, block_size>>>(
             uvs.data_ptr<double>(),
             opacity.data_ptr<double>(),
@@ -156,7 +173,7 @@ void render_tiles_cuda(
             rendered_image.data_ptr<double>()
         );
     } else {
-        TORCH_CHECK(false, "Unsupported dtype");
+        AT_ERROR("Inputs must be float32 or float64");
     }
     cudaDeviceSynchronize();
 }

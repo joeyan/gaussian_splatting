@@ -2,6 +2,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include "checks.cuh"
 
 __global__ void compute_tiles_kernel (
     const float* __restrict__ uvs,
@@ -214,15 +215,15 @@ void compute_tiles_cuda (
     torch::Tensor gaussian_indices_per_tile,
     torch::Tensor num_gaussians_per_tile
 ) {
-    TORCH_CHECK(uvs.is_cuda(), "uvs must be a CUDA tensor");
-    TORCH_CHECK(sigma_image.is_cuda(), "sigma_image must be a CUDA tensor");
-    TORCH_CHECK(gaussian_indices_per_tile.is_cuda(), "gaussian_indices_per_tile must be a CUDA tensor");
-    TORCH_CHECK(num_gaussians_per_tile.is_cuda(), "num_gaussians_per_tile must be a CUDA tensor");
+    CHECK_VALID_INPUT(uvs);
+    CHECK_VALID_INPUT(sigma_image);
+    CHECK_VALID_INPUT(gaussian_indices_per_tile);
+    CHECK_VALID_INPUT(num_gaussians_per_tile);
 
-    TORCH_CHECK(uvs.is_contiguous(), "uvs must be contiguous");
-    TORCH_CHECK(sigma_image.is_contiguous(), "sigma_image must be contiguous");
-    TORCH_CHECK(gaussian_indices_per_tile.is_contiguous(), "gaussian_indices_per_tile must be contiguous");
-    TORCH_CHECK(num_gaussians_per_tile.is_contiguous(), "num_gaussians_per_tile must be contiguous");
+    CHECK_FLOAT_TENSOR(uvs);
+    CHECK_FLOAT_TENSOR(sigma_image);
+    CHECK_INT_TENSOR(gaussian_indices_per_tile);
+    CHECK_INT_TENSOR(num_gaussians_per_tile);
 
     const int N = uvs.size(0);
     TORCH_CHECK(uvs.size(1) == 2, "uvs must have shape Nx2");
@@ -283,18 +284,17 @@ void compute_splat_to_gaussian_id_vector_cuda(
     torch::Tensor splat_to_gaussian_id_vector,
     torch::Tensor tile_idx_by_splat_idx
 ) {
-    TORCH_CHECK(gaussian_indices_per_tile.is_cuda(), "gaussian_indices_per_tile must be a CUDA tensor");
-    TORCH_CHECK(num_gaussians_per_tile.is_cuda(), "num_gaussians_per_tile must be a CUDA tensor");
-    TORCH_CHECK(splat_to_gaussian_id_vector.is_cuda(), "splat_to_gaussian_id_vector must be a CUDA tensor");
-    TORCH_CHECK(splat_to_gaussian_id_vector_offsets.is_cuda(), "splat_to_gaussian_id_vector_offsets must be a CUDA tensor");
-    TORCH_CHECK(tile_idx_by_splat_idx.is_cuda(), "tile_idx_by_splat_idx must be a CUDA tensor");
-
-
-    TORCH_CHECK(gaussian_indices_per_tile.is_contiguous(), "gaussian_indices_per_tile must be contiguous");
-    TORCH_CHECK(num_gaussians_per_tile.is_contiguous(), "num_gaussians_per_tile must be contiguous");
-    TORCH_CHECK(splat_to_gaussian_id_vector.is_contiguous(), "splat_to_gaussian_id_vector must be contiguous");
-    TORCH_CHECK(splat_to_gaussian_id_vector_offsets.is_contiguous(), "splat_to_gaussian_id_vector_offsets must be contiguous");
-    TORCH_CHECK(tile_idx_by_splat_idx.is_contiguous(), "tile_idx_by_splat_idx must be contiguous");
+    CHECK_VALID_INPUT(gaussian_indices_per_tile);
+    CHECK_VALID_INPUT(num_gaussians_per_tile);
+    CHECK_VALID_INPUT(splat_to_gaussian_id_vector_offsets);
+    CHECK_VALID_INPUT(splat_to_gaussian_id_vector);
+    CHECK_VALID_INPUT(tile_idx_by_splat_idx);
+    
+    CHECK_INT_TENSOR(gaussian_indices_per_tile);
+    CHECK_INT_TENSOR(num_gaussians_per_tile);
+    CHECK_INT_TENSOR(splat_to_gaussian_id_vector_offsets);
+    CHECK_INT_TENSOR(splat_to_gaussian_id_vector);
+    CHECK_INT_TENSOR(tile_idx_by_splat_idx);
 
     // lay out grid and block in 2d array in shape of gaussian_indices_per_tile
     dim3 blocksize(32, 32, 1);
