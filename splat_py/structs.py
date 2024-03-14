@@ -1,6 +1,5 @@
 import time
 import numpy as np
-import torch
 from torch import nn
 
 from splat_py.constants import PRINT_DEBUG_TIMING

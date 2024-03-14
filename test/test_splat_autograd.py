@@ -1,11 +1,9 @@
 import unittest
-import cv2
-import numpy as np
 import torch
 
 from splat_py.cuda_autograd_functions import RenderImage
-from splat_py.tile_culling import match_gaussians_to_tiles_gpu
 from splat_py.structs import Tiles
+from splat_py.tile_culling import match_gaussians_to_tiles_gpu
 
 
 class TestSplatAutograd(unittest.TestCase):
@@ -66,21 +64,6 @@ class TestSplatAutograd(unittest.TestCase):
 
     def test_render_image_grad(self):
         image_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
-
-        image = RenderImage.apply(
-            self.rgb,
-            self.opacities,
-            self.uv,
-            self.sigma_image,
-            self.splat_start_end_idx_by_tile_idx,
-            self.gaussian_indices_per_tile,
-            image_size,
-        )
-
-        image = image.clip(0, 1).detach().cpu().numpy()
-        image = (image * 255).astype(np.uint8)[..., ::-1]
-        cv2.imwrite("grad_render.png", image)
-
         test = torch.autograd.gradcheck(
             RenderImage.apply,
             (
@@ -94,7 +77,6 @@ class TestSplatAutograd(unittest.TestCase):
             ),
             raise_exception=True,
         )
-        print(test)
 
 
 if __name__ == "__main__":
