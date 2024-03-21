@@ -12,6 +12,26 @@ class GSTrainer:
         self.update_optimizer(iter_num=0)
         self.reset_grad_accum()
 
+    def update_optimizer(self, iter_num):
+        print("Updating optimizer")
+        # add new params to optimizer
+        new_lr = BASE_LR * (NUM_ITERS - iter_num * 0.9) / NUM_ITERS
+        self.optimizer = torch.optim.Adam(
+            [
+                {"params": self.gaussians.xyz, "lr": new_lr * XYZ_LR_MULTIPLIER},
+                {
+                    "params": self.gaussians.quaternions,
+                    "lr": new_lr * QUAT_LR_MULTIPLIER,
+                },
+                {"params": self.gaussians.scales, "lr": new_lr * SCALE_LR_MULTIPLIER},
+                {
+                    "params": self.gaussians.opacities,
+                    "lr": new_lr * OPACITY_LR_MULTIPLIER,
+                },
+                {"params": self.gaussians.rgb, "lr": new_lr * RGB_LR_MULTIPLIER},
+            ],
+        )
+
     def check_nans(self):
         if torch.any(~torch.isfinite(self.gaussians.xyz)):
             print("NaN or inf in xyz")
@@ -83,21 +103,6 @@ class GSTrainer:
         old_optimizer_param = self.optimizer.param_groups[param_index]["params"][0]
         optimizer_param_state = self.optimizer.state[old_optimizer_param]
 
-        # exp_avg and exp_avg_sq are the same shape as the parameter
-        # optimizer_param_state["exp_avg"] = torch.cat(
-        #     [
-        #         optimizer_param_state["exp_avg"],
-        #         optimizer_param_state["exp_avg"][clone_mask, :].clone(),
-        #     ],
-        #     dim=0,
-        # )
-        # optimizer_param_state["exp_avg_sq"] = torch.cat(
-        #     [
-        #         optimizer_param_state["exp_avg_sq"],
-        #         optimizer_param_state["exp_avg_sq"][clone_mask, :].clone(),
-        #     ],
-        #     dim=0,
-        # )
         optimizer_param_state["exp_avg"] = torch.cat(
             [
                 optimizer_param_state["exp_avg"],
@@ -135,75 +140,83 @@ class GSTrainer:
         self.clone_params_in_optimizer(self.gaussians.opacities, clone_mask, 3)
         self.clone_params_in_optimizer(self.gaussians.rgb, clone_mask, 4)
 
+    def delete_gaussians(self, keep_mask):
+        self.gaussians.xyz = torch.nn.Parameter(
+            self.gaussians.xyz.detach()[keep_mask, :]
+        )
+        self.gaussians.quaternions = torch.nn.Parameter(
+            self.gaussians.quaternions.detach()[keep_mask, :]
+        )
+        self.gaussians.scales = torch.nn.Parameter(
+            self.gaussians.scales.detach()[keep_mask, :]
+        )
+        self.gaussians.opacities = torch.nn.Parameter(
+            self.gaussians.opacities.detach()[keep_mask]
+        )
+        self.gaussians.rgb = torch.nn.Parameter(
+            self.gaussians.rgb.detach()[keep_mask, :]
+        )
+        self.uv_grad_accum = self.uv_grad_accum[keep_mask, :]
+        self.xyz_grad_accum = self.xyz_grad_accum[keep_mask, :]
+        self.grad_accum_count = self.grad_accum_count[keep_mask]
+        print("Deleted: ", torch.sum(~keep_mask).detach().cpu().numpy())
+
+        # remove deleted gaussians from optimizer
+        self.delete_gaussians_from_optimizer(keep_mask)
+
     def adaptive_density_control_update_adam(self, iter_num):
         if not (USE_DELETE or USE_CLONE or USE_SPLIT):
             return
         print("adaptive_density control update")
         self.check_nans()
 
-        finite_mask = torch.isfinite(self.uv_grad_accum).all(dim=1)
+        zero_view_mask = self.grad_accum_count == 0
+        zero_grad_mask = torch.norm(self.uv_grad_accum, dim=1) == 0.0
+        print("zero view mask: ", torch.sum(zero_view_mask).detach().cpu().numpy())
+        print("zero grad mask: ", torch.sum(zero_grad_mask).detach().cpu().numpy())
 
         # low opacity
         keep_mask = self.gaussians.opacities > inverse_sigmoid(DELETE_OPACITY_THRESHOLD)
         keep_mask = keep_mask.squeeze(1)
-        keep_mask &= finite_mask
+        keep_mask &= ~zero_view_mask
+        keep_mask &= ~zero_grad_mask
 
+        # delete
         delete_count = torch.sum(~keep_mask).detach().cpu().numpy()
-        print("Delete Count: ", delete_count)
-
         if (delete_count > 0) and USE_DELETE:
-            self.gaussians.xyz = torch.nn.Parameter(
-                self.gaussians.xyz.detach()[keep_mask, :]
-            )
-            self.gaussians.quaternions = torch.nn.Parameter(
-                self.gaussians.quaternions.detach()[keep_mask, :]
-            )
-            self.gaussians.scales = torch.nn.Parameter(
-                self.gaussians.scales.detach()[keep_mask, :]
-            )
-            self.gaussians.opacities = torch.nn.Parameter(
-                self.gaussians.opacities.detach()[keep_mask]
-            )
-            self.gaussians.rgb = torch.nn.Parameter(
-                self.gaussians.rgb.detach()[keep_mask, :]
-            )
-            self.uv_grad_accum = self.uv_grad_accum[keep_mask, :]
-            self.xyz_grad_accum = self.xyz_grad_accum[keep_mask, :]
-            self.grad_accum_count = self.grad_accum_count[keep_mask]
-            print("\tDeleted: ", delete_count)
-
-            # remove deleted gaussians from optimizer
-            self.delete_gaussians_from_optimizer(keep_mask)
+            self.delete_gaussians(keep_mask)
 
         uv_grad_avg = self.uv_grad_accum / self.grad_accum_count.unsqueeze(1).float()
         xyz_grad_avg = self.xyz_grad_accum / self.grad_accum_count.unsqueeze(1).float()
-        densify_mask = uv_grad_avg.norm(1) > DENSIFY_GRAD_THRESHOLD
-
-        finite_mask = torch.isfinite(uv_grad_avg).all(dim=1)
-        densify_mask = densify_mask & finite_mask
-
-        if torch.any(~torch.isfinite(uv_grad_avg)):
-            print("Num uv_grad_avg NaN", torch.sum(torch.isnan(uv_grad_avg)).item())
-            print("Num uv_grad_avg inf", torch.sum(~torch.isfinite(uv_grad_avg)).item())
+        
+        uv_grad_avg_norm = torch.norm(uv_grad_avg, dim=1)
+        uv_split_val = torch.quantile(uv_grad_avg_norm, 0.95).item()
+        densify_mask = uv_grad_avg_norm > uv_split_val
+        print("Density mask: ", torch.sum(densify_mask).detach().cpu().numpy(), "split_val", uv_split_val)
 
         if densify_mask.any() and USE_CLONE or USE_SPLIT:
-            print("clone and split")
             xyz_list = []
             quaternions_list = []
             scales_list = []
             opacities_list = []
             rgb_list = []
 
+            scale_norm = self.gaussians.scales.exp().norm(dim=-1)
             clone_mask = densify_mask & (
-                self.gaussians.scales.exp().norm(dim=-1) > CLONE_SCALE_THRESHOLD
+                scale_norm <= CLONE_SCALE_THRESHOLD
             )
-            split_mask = densify_mask & (
-                self.gaussians.scales.exp().norm(dim=-1) <= CLONE_SCALE_THRESHOLD
+            split_mask = densify_mask & (scale_norm > CLONE_SCALE_THRESHOLD) & (scale_norm <= MAX_SCALE_NORM)
+            oversize_mask = densify_mask & (
+                self.gaussians.scales.exp().norm(dim=-1) > MAX_SCALE_NORM
             )
-            # too large
-            oversize_mask = self.gaussians.scales.exp().norm(dim=-1) > MAX_SCALE_NORM
-            print("Oversize: ", torch.sum(oversize_mask).detach().cpu().numpy())
-            split_mask = split_mask | oversize_mask
+            print(
+                "Clone Mask: ",
+                torch.sum(clone_mask).detach().cpu().numpy(),
+                "Split Mask: ",
+                torch.sum(split_mask).detach().cpu().numpy(),
+                "Oversize Mask: ",
+                torch.sum(oversize_mask).detach().cpu().numpy(),
+            )
 
             if clone_mask.any() and USE_CLONE:
                 # create cloned gaussians
@@ -228,9 +241,7 @@ class GSTrainer:
                 split_quaternions = (
                     self.gaussians.quaternions[split_mask, :].clone().detach()
                 )
-                split_scales = self.gaussians.scales[
-                    split_mask, :
-                ].clone().detach() - math.exp(1.6)
+                split_scales = self.gaussians.scales[split_mask, :].clone().detach()
                 split_opacities = self.gaussians.opacities[split_mask].clone().detach()
                 split_rgb = self.gaussians.rgb[split_mask, :].clone().detach()
 
@@ -247,6 +258,8 @@ class GSTrainer:
                 split_xyz_original = self.gaussians.xyz[split_mask, :].clone().detach()
                 xyz_1, xyz_2 = sample_pdf(split_xyz_original, sigma_world)
 
+                split_scales = split_scales - math.exp(1.6)
+
                 # update original gaussian.xyz
                 self.gaussians.xyz.detach()[split_mask] = xyz_1.detach()
                 split_xyz = xyz_2.detach()
@@ -257,6 +270,48 @@ class GSTrainer:
                 opacities_list.append(split_opacities)
                 rgb_list.append(split_rgb)
                 print("\tSplit: ", torch.sum(split_mask).detach().cpu().numpy())
+
+            if oversize_mask.any() and USE_SPLIT:
+                # create split gaussians
+                oversize_quaternions = (
+                    self.gaussians.quaternions[oversize_mask, :].clone().detach()
+                )
+                oversize_scales = (
+                    self.gaussians.scales[oversize_mask, :].clone().detach()
+                )
+                oversize_opacities = (
+                    self.gaussians.opacities[oversize_mask].clone().detach()
+                )
+                oversize_rgb = self.gaussians.rgb[oversize_mask, :].clone().detach()
+
+                # compute sigma_world
+                sigma_world = torch.zeros(
+                    oversize_quaternions.shape[0],
+                    3,
+                    3,
+                    device=oversize_quaternions.device,
+                    dtype=oversize_quaternions.dtype,
+                )
+                compute_sigma_world_cuda(
+                    oversize_quaternions, oversize_scales, sigma_world
+                )
+                oversize_scales = oversize_scales - math.exp(5.0)
+
+                oversize_xyz_original = (
+                    self.gaussians.xyz[oversize_mask, :].clone().detach()
+                )
+                xyz_1, xyz_2 = sample_pdf(oversize_xyz_original, sigma_world)
+
+                # update original gaussian.xyz
+                self.gaussians.xyz.detach()[oversize_mask] = xyz_1.detach()
+                oversize_xyz = xyz_2.detach()
+
+                xyz_list.append(oversize_xyz)
+                quaternions_list.append(oversize_quaternions)
+                scales_list.append(oversize_scales)
+                opacities_list.append(oversize_opacities)
+                rgb_list.append(oversize_rgb)
+                print("\tOversize: ", torch.sum(oversize_mask).detach().cpu().numpy())
 
             xyz_list.append(self.gaussians.xyz.clone().detach())
             quaternions_list.append(self.gaussians.quaternions.clone().detach())
@@ -279,166 +334,3 @@ class GSTrainer:
 
         self.reset_grad_accum()
         self.check_nans()
-
-    def update_optimizer(self, iter_num):
-        print("Updating optimizer")
-        # add new params to optimizer
-        new_lr = BASE_LR * (NUM_ITERS - iter_num * 0.9) / NUM_ITERS
-        self.optimizer = torch.optim.Adam(
-            [
-                {"params": self.gaussians.xyz, "lr": new_lr * XYZ_LR_MULTIPLIER},
-                {
-                    "params": self.gaussians.quaternions,
-                    "lr": new_lr * QUAT_LR_MULTIPLIER,
-                },
-                {"params": self.gaussians.scales, "lr": new_lr * SCALE_LR_MULTIPLIER},
-                {
-                    "params": self.gaussians.opacities,
-                    "lr": new_lr * OPACITY_LR_MULTIPLIER,
-                },
-                {"params": self.gaussians.rgb, "lr": new_lr * RGB_LR_MULTIPLIER},
-            ],
-        )
-
-    def adaptive_density_control(self, iter_num):
-        if not (USE_DELETE or USE_CLONE or USE_SPLIT):
-            return
-
-        self.check_nans()
-
-        finite_mask = torch.isfinite(self.uv_grad_accum).all(dim=1)
-
-        # delete gaussians
-        keep_mask = self.gaussians.opacities > inverse_sigmoid(DELETE_OPACITY_THRESHOLD)
-        keep_mask = keep_mask.squeeze(1)
-        keep_mask &= finite_mask
-
-        delete_count = torch.sum(~keep_mask).detach().cpu().numpy()
-        if (delete_count > 0) and USE_DELETE:
-            self.gaussians.xyz = torch.nn.Parameter(
-                self.gaussians.xyz.detach()[keep_mask, :]
-            )
-            self.gaussians.quaternions = torch.nn.Parameter(
-                self.gaussians.quaternions.detach()[keep_mask, :]
-            )
-            self.gaussians.scales = torch.nn.Parameter(
-                self.gaussians.scales.detach()[keep_mask, :]
-            )
-            self.gaussians.opacities = torch.nn.Parameter(
-                self.gaussians.opacities.detach()[keep_mask]
-            )
-            self.gaussians.rgb = torch.nn.Parameter(
-                self.gaussians.rgb.detach()[keep_mask, :]
-            )
-            self.uv_grad_accum = self.uv_grad_accum[keep_mask, :]
-            self.xyz_grad_accum = self.xyz_grad_accum[keep_mask, :]
-            self.grad_accum_count = self.grad_accum_count[keep_mask]
-            print("\tDeleted: ", delete_count)
-
-        uv_grad_avg = self.uv_grad_accum / self.grad_accum_count.unsqueeze(1).float()
-        xyz_grad_avg = self.xyz_grad_accum / self.grad_accum_count.unsqueeze(1).float()
-        densify_mask = uv_grad_avg.norm(1) > DENSIFY_GRAD_THRESHOLD
-
-        finite_mask = torch.isfinite(uv_grad_avg).all(dim=1)
-        densify_mask = densify_mask & finite_mask
-
-        if torch.isnan(uv_grad_avg).any() or torch.any(~torch.isfinite(uv_grad_avg)):
-            print(
-                "Num uv_grad_avg inf", torch.sum(~torch.isfinite(uv_grad_avg)).detach()
-            )
-            print("Num uv_grad_avg NaN", torch.sum(torch.isnan(uv_grad_avg)).detach())
-
-        if densify_mask.any() and USE_CLONE or USE_SPLIT:
-            print("clone and split")
-            xyz_list = []
-            quaternions_list = []
-            scales_list = []
-            opacities_list = []
-            rgb_list = []
-
-            clone_mask = densify_mask & (
-                self.gaussians.scales.exp().norm(dim=-1) > CLONE_SCALE_THRESHOLD
-            )
-            split_mask = densify_mask & (
-                self.gaussians.scales.exp().norm(dim=-1) <= CLONE_SCALE_THRESHOLD
-            )
-            # too large
-            oversize_mask = self.gaussians.scales.exp().norm(dim=-1) > MAX_SCALE_NORM
-            print("Oversize: ", torch.sum(oversize_mask).detach().cpu().numpy())
-            split_mask = split_mask | oversize_mask
-
-            if clone_mask.any() and USE_CLONE:
-                # create cloned gaussians
-                cloned_xyz = self.gaussians.xyz[clone_mask, :].clone().detach()
-                cloned_xyz -= xyz_grad_avg[clone_mask, :].detach() * 0.01
-                cloned_quaternions = (
-                    self.gaussians.quaternions[clone_mask, :].clone().detach()
-                )
-                cloned_scales = self.gaussians.scales[clone_mask, :].clone().detach()
-                cloned_opacities = self.gaussians.opacities[clone_mask].clone().detach()
-                cloned_rgb = self.gaussians.rgb[clone_mask, :].clone().detach()
-
-                xyz_list.append(cloned_xyz)
-                quaternions_list.append(cloned_quaternions)
-                scales_list.append(cloned_scales)
-                opacities_list.append(cloned_opacities)
-                rgb_list.append(cloned_rgb)
-                print("\tCloned: ", torch.sum(clone_mask).detach().cpu().numpy())
-
-            if split_mask.any() and USE_SPLIT:
-                # create split gaussians
-                split_quaternions = (
-                    self.gaussians.quaternions[split_mask, :].clone().detach()
-                )
-                split_scales = self.gaussians.scales[
-                    split_mask, :
-                ].clone().detach() - math.exp(1.6)
-                split_opacities = self.gaussians.opacities[split_mask].clone().detach()
-                split_rgb = self.gaussians.rgb[split_mask, :].clone().detach()
-
-                # compute sigma_world
-                sigma_world = torch.zeros(
-                    split_quaternions.shape[0],
-                    3,
-                    3,
-                    device=split_quaternions.device,
-                    dtype=split_quaternions.dtype,
-                )
-                compute_sigma_world_cuda(split_quaternions, split_scales, sigma_world)
-
-                split_xyz_original = self.gaussians.xyz[split_mask, :].clone().detach()
-                xyz_1, xyz_2 = sample_pdf(split_xyz_original, sigma_world)
-
-                # update original gaussian.xyz
-                self.gaussians.xyz.detach()[split_mask] = xyz_1.detach()
-                split_xyz = xyz_2.detach()
-
-                xyz_list.append(split_xyz)
-                quaternions_list.append(split_quaternions)
-                scales_list.append(split_scales)
-                opacities_list.append(split_opacities)
-                rgb_list.append(split_rgb)
-                print("\tSplit: ", torch.sum(split_mask).detach().cpu().numpy())
-
-            xyz_list.append(self.gaussians.xyz.clone().detach())
-            quaternions_list.append(self.gaussians.quaternions.clone().detach())
-            scales_list.append(self.gaussians.scales.clone().detach())
-            opacities_list.append(self.gaussians.opacities.clone().detach())
-            rgb_list.append(self.gaussians.rgb.clone().detach())
-
-            # update gaussians
-            self.gaussians.xyz = torch.nn.Parameter(torch.cat(xyz_list, dim=0))
-            self.gaussians.quaternions = torch.nn.Parameter(
-                torch.cat(quaternions_list, dim=0)
-            )
-            self.gaussians.scales = torch.nn.Parameter(torch.cat(scales_list, dim=0))
-            self.gaussians.opacities = torch.nn.Parameter(
-                torch.cat(opacities_list, dim=0)
-            )
-            self.gaussians.rgb = torch.nn.Parameter(torch.cat(rgb_list, dim=0))
-
-        self.check_nans()
-
-        # update optimizer
-        self.update_optimizer(iter_num)
-        self.reset_grad_accum()

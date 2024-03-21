@@ -34,6 +34,13 @@ with SimpleTimer("Load Colmap Data"):
     cameras = colmap_data.get_cameras()
     camera = cameras[1]
 
+    if SAVE_ADAPTIVE_CONTROL_DEBUG:
+        torch.save(camera.K, "{}/camera_K.pth".format(OUTPUT_DIR))
+        for i in range(len(images)):
+            torch.save(
+                images[i].world_T_image, "{}/world_T_image_{}.pth".format(OUTPUT_DIR, i)
+            )
+
     gaussians.xyz = torch.nn.Parameter(gaussians.xyz)
     gaussians.quaternions = torch.nn.Parameter(gaussians.quaternions)
     gaussians.scales = torch.nn.Parameter(gaussians.scales)
@@ -183,10 +190,27 @@ for i in range(NUM_ITERS):
         and i % ADAPTIVE_CONTROL_INVERVAL == 0
         and i < ADAPTIVE_CONTROL_END
     ):
-        problem.adaptive_density_control(i)
-        # problem.adaptive_density_control_update_adam(i)
+        if SAVE_ADAPTIVE_CONTROL_DEBUG and i > 1500:
+            torch.save(
+                {
+                    "uv_grad_accum": problem.uv_grad_accum,
+                    "xyz_grad_accum": problem.xyz_grad_accum,
+                    "grad_accum_count": problem.grad_accum_count,
+                },
+                "{}/iter{}_adaptive_control_debug_data.pth".format(OUTPUT_DIR, i),
+            )
+            torch.save(
+                problem.gaussians,
+                "{}/iter{}_adaptive_control_gaussians.pth".format(OUTPUT_DIR, i),
+            )
+            exit()
+        problem.adaptive_density_control_update_adam(i)
 
-    if i > 0 and i % RESET_OPACITY_INTERVAL == 0:
+    if (
+        i > RESET_OPACTIY_START
+        and i < RESET_OPACITY_END
+        and i % RESET_OPACITY_INTERVAL == 0
+    ):
         problem.reset_opacities(i)
 
     if i % SAVE_DEBUG_IMAGE_INTERVAL == 0:
@@ -196,10 +220,3 @@ for i in range(NUM_ITERS):
                 "{}/iter{}_image_{}.png".format(OUTPUT_DIR, i, image_idx),
                 (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
             )
-
-    if i % SAVE_DEBUG_IMAGE_INTERVAL == 0 and SAVE_LOSS_IMAGE:
-        loss_image = ((image - gt_image) * SATURATED_PIXEL_VALUE).detach().cpu().numpy()
-        cv2.imwrite(
-            "{}/iter{}_loss_{}.png".format(OUTPUT_DIR, i, image_idx),
-            loss_image.astype(np.uint8),
-        )

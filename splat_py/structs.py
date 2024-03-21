@@ -1,5 +1,6 @@
 import time
 import numpy as np
+import torch
 from torch import nn
 
 from splat_py.constants import PRINT_DEBUG_TIMING
@@ -71,6 +72,13 @@ class Gaussians(nn.Module):
         self.opacities = opacities
         self.scales = scales
         self.quaternions = quaternions
+
+    def filter_in_place(self, keep_mask):
+        self.xyz = torch.nn.Parameter(self.xyz[keep_mask, :])
+        self.rgb = torch.nn.Parameter(self.rgb[keep_mask, :])
+        self.opacities = torch.nn.Parameter(self.opacities[keep_mask])
+        self.scales = torch.nn.Parameter(self.scales[keep_mask, :])
+        self.quaternions = torch.nn.Parameter(self.quaternions[keep_mask, :])
 
 
 class Tiles:
