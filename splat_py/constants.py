@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class ActivationType(Enum):
     SIGMOID = 1
     EXPONENTIAL = 2

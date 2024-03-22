@@ -72,13 +72,49 @@ class Gaussians(nn.Module):
         self.opacities = opacities
         self.scales = scales
         self.quaternions = quaternions
+        self.verify_sizes()
+
+    def __len__(self):
+        return self.xyz.shape[0]
+
+    def verify_sizes(self):
+        num_gaussians = self.xyz.shape[0]
+        assert self.rgb.shape[0] == num_gaussians
+        assert self.opacities.shape[0] == num_gaussians
+        assert self.scales.shape[0] == num_gaussians
+        assert self.quaternions.shape[0] == num_gaussians
+
+        assert self.xyz.shape[1] == 3
+        assert self.rgb.shape[1] == 3
+        assert self.opacities.shape[1] == 1
+        assert self.scales.shape[1] == 3
+        assert self.quaternions.shape[1] == 4
 
     def filter_in_place(self, keep_mask):
-        self.xyz = torch.nn.Parameter(self.xyz[keep_mask, :])
-        self.rgb = torch.nn.Parameter(self.rgb[keep_mask, :])
-        self.opacities = torch.nn.Parameter(self.opacities[keep_mask])
-        self.scales = torch.nn.Parameter(self.scales[keep_mask, :])
-        self.quaternions = torch.nn.Parameter(self.quaternions[keep_mask, :])
+        self.xyz = torch.nn.Parameter(self.xyz.detach()[keep_mask, :])
+        self.rgb = torch.nn.Parameter(self.rgb.detach()[keep_mask, :])
+        self.opacities = torch.nn.Parameter(self.opacities.detach()[keep_mask])
+        self.scales = torch.nn.Parameter(self.scales.detach()[keep_mask, :])
+        self.quaternions = torch.nn.Parameter(self.quaternions.detach()[keep_mask, :])
+        self.verify_sizes()
+
+    def append(self, xyz, rgb, opacities, scales, quaternions):
+        self.xyz = torch.nn.Parameter(
+            torch.cat((self.xyz.detach(), xyz.detach()), dim=0)
+        )
+        self.rgb = torch.nn.Parameter(
+            torch.cat((self.rgb.detach(), rgb.detach()), dim=0)
+        )
+        self.opacities = torch.nn.Parameter(
+            torch.cat((self.opacities.detach(), opacities.detach()), dim=0)
+        )
+        self.scales = torch.nn.Parameter(
+            torch.cat((self.scales.detach(), scales.detach()), dim=0)
+        )
+        self.quaternions = torch.nn.Parameter(
+            torch.cat((self.quaternions.detach(), quaternions.detach()), dim=0)
+        )
+        self.verify_sizes()
 
 
 class Tiles:

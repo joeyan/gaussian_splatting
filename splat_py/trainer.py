@@ -174,21 +174,7 @@ class GSTrainer:
         self.add_params_to_optimizer(self.gaussians.rgb, clone_mask, 4)
 
     def delete_gaussians(self, keep_mask):
-        self.gaussians.xyz = torch.nn.Parameter(
-            self.gaussians.xyz.detach()[keep_mask, :]
-        )
-        self.gaussians.quaternions = torch.nn.Parameter(
-            self.gaussians.quaternions.detach()[keep_mask, :]
-        )
-        self.gaussians.scales = torch.nn.Parameter(
-            self.gaussians.scales.detach()[keep_mask, :]
-        )
-        self.gaussians.opacities = torch.nn.Parameter(
-            self.gaussians.opacities.detach()[keep_mask]
-        )
-        self.gaussians.rgb = torch.nn.Parameter(
-            self.gaussians.rgb.detach()[keep_mask, :]
-        )
+        self.gaussians.filter_in_place(keep_mask)
         self.uv_grad_accum = self.uv_grad_accum[keep_mask, :]
         self.xyz_grad_accum = self.xyz_grad_accum[keep_mask, :]
         self.grad_accum_count = self.grad_accum_count[keep_mask]
@@ -217,20 +203,8 @@ class GSTrainer:
         )
 
         # clone gaussians
-        self.gaussians.xyz = torch.nn.Parameter(
-            torch.cat([self.gaussians.xyz, cloned_xyz], dim=0)
-        )
-        self.gaussians.quaternions = torch.nn.Parameter(
-            torch.cat([self.gaussians.quaternions, cloned_quaternions], dim=0)
-        )
-        self.gaussians.scales = torch.nn.Parameter(
-            torch.cat([self.gaussians.scales, cloned_scales], dim=0)
-        )
-        self.gaussians.opacities = torch.nn.Parameter(
-            torch.cat([self.gaussians.opacities, cloned_opacities], dim=0)
-        )
-        self.gaussians.rgb = torch.nn.Parameter(
-            torch.cat([self.gaussians.rgb, cloned_rgb], dim=0)
+        self.gaussians.append(
+            cloned_xyz, cloned_rgb, cloned_opacities, cloned_scales, cloned_quaternions
         )
         self.add_gaussians_to_optimizer(torch.sum(clone_mask).detach().cpu().numpy())
 
@@ -282,20 +256,8 @@ class GSTrainer:
         self.delete_gaussians(~split_mask)
 
         # add split gaussians
-        self.gaussians.xyz = torch.nn.Parameter(
-            torch.cat([self.gaussians.xyz, split_xyz], dim=0)
-        )
-        self.gaussians.quaternions = torch.nn.Parameter(
-            torch.cat([self.gaussians.quaternions, split_quaternions], dim=0)
-        )
-        self.gaussians.scales = torch.nn.Parameter(
-            torch.cat([self.gaussians.scales, split_scales], dim=0)
-        )
-        self.gaussians.opacities = torch.nn.Parameter(
-            torch.cat([self.gaussians.opacities, split_opacities], dim=0)
-        )
-        self.gaussians.rgb = torch.nn.Parameter(
-            torch.cat([self.gaussians.rgb, split_rgb], dim=0)
+        self.gaussians.append(
+            split_xyz, split_rgb, split_opacities, split_scales, split_quaternions
         )
         self.add_gaussians_to_optimizer(
             torch.sum(split_mask).detach().cpu().numpy() * samples
