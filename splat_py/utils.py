@@ -3,6 +3,8 @@ import torch
 from scipy.spatial import KDTree
 from torch.distributions.multivariate_normal import MultivariateNormal
 
+from splat_py.constants import MAX_INITIAL_SCALE
+
 
 def inverse_sigmoid(x):
     """
@@ -39,9 +41,10 @@ def compute_initial_scale_from_sparse_points(
         neighbor_dist_vect, _ = tree.query(
             points_np[pt_idx, :], k=num_neighbors, workers=-1
         )
+        initial_scale = min(np.mean(neighbor_dist_vect), MAX_INITIAL_SCALE)
         # use log since scale has exp activation
         scale[pt_idx, :] = torch.ones(3, dtype=torch.float32) * np.log(
-            np.mean(neighbor_dist_vect) * neighbor_dist_to_scale_factor
+            initial_scale * neighbor_dist_to_scale_factor
         )
     return scale
 
