@@ -190,7 +190,7 @@ for i in range(NUM_ITERS):
         and i % ADAPTIVE_CONTROL_INVERVAL == 0
         and i < ADAPTIVE_CONTROL_END
     ):
-        if SAVE_ADAPTIVE_CONTROL_DEBUG and i > 1500:
+        if SAVE_ADAPTIVE_CONTROL_DEBUG and i > 2000:
             torch.save(
                 {
                     "uv_grad_accum": problem.uv_grad_accum,
@@ -204,7 +204,7 @@ for i in range(NUM_ITERS):
                 "{}/iter{}_adaptive_control_gaussians.pth".format(OUTPUT_DIR, i),
             )
             exit()
-        problem.adaptive_density_control_update_adam(i)
+        problem.adaptive_density_control_update_adam()
 
     if (
         i > RESET_OPACTIY_START
