@@ -4,7 +4,6 @@ import torch
 from splat_py.constants import *
 from splat_py.dataloader import ColmapData
 from splat_py.structs import SimpleTimer
-
 from splat_py.trainer import GSTrainer
 
 if not os.path.exists(OUTPUT_DIR):

@@ -1,6 +1,5 @@
-import numpy as np
 import cv2
-
+import numpy as np
 import torch
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
@@ -13,11 +12,11 @@ from splat_py.cuda_autograd_functions import (
     RenderImage,
 )
 from splat_py.structs import Gaussians, Tiles, SimpleTimer
+from splat_py.splat import splat
 from splat_py.tile_culling import (
     match_gaussians_to_tiles_gpu,
     sort_gaussians,
 )
-from splat_py.splat import splat
 from splat_py.utils import (
     inverse_sigmoid,
     quaternion_to_rotation_torch,
