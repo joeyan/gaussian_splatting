@@ -162,7 +162,7 @@ class GSTrainer:
         # remove deleted gaussians from optimizer
         self.delete_gaussians_from_optimizer(keep_mask)
 
-    def adaptive_density_control_update_adam(self):
+    def adaptive_density_control(self):
         if not (USE_DELETE or USE_CLONE or USE_SPLIT):
             return
         print("adaptive_density control update")
@@ -180,11 +180,6 @@ class GSTrainer:
         print("zero grad mask: ", torch.sum(zero_grad_mask).detach().cpu().numpy())
         keep_mask &= ~zero_view_mask
         keep_mask &= ~zero_grad_mask
-
-        # # too large
-        # too_big_mask = self.gaussians.scales.exp().max(dim=1).values > MAX_SCALE_NORM
-        # print("too big mask: ", torch.sum(too_big_mask).detach().cpu().numpy())
-        # keep_mask &= ~too_big_mask
 
         delete_count = torch.sum(~keep_mask).detach().cpu().numpy()
         print("Deleting: ", delete_count)
@@ -205,9 +200,6 @@ class GSTrainer:
             "split_val",
             uv_split_val,
         )
-
-        # densify_mask = uv_grad_avg_norm > DENSIFY_GRAD_THRESHOLD
-        # print("Densify mask: ", torch.sum(densify_mask).detach().cpu().numpy(), "split_val", DENSIFY_GRAD_THRESHOLD)
 
         scale_max = self.gaussians.scales.exp().max(dim=-1).values
         clone_mask = densify_mask & (scale_max <= CLONE_SCALE_THRESHOLD)
