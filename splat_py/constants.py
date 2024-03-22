@@ -1,12 +1,3 @@
-from enum import Enum
-
-
-class ActivationType(Enum):
-    SIGMOID = 1
-    EXPONENTIAL = 2
-    NONE = 3
-
-
 # (TODO move these to an options struct for reproducability)
 
 # INITIALIZATION OPTIONS
