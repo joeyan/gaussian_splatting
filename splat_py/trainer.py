@@ -162,6 +162,111 @@ class GSTrainer:
         # remove deleted gaussians from optimizer
         self.delete_gaussians_from_optimizer(keep_mask)
 
+    def clone_gaussians(self, clone_mask, xyz_grad_avg):
+        # create cloned gaussians
+        cloned_xyz = self.gaussians.xyz[clone_mask, :].clone().detach()
+        cloned_xyz -= xyz_grad_avg[clone_mask, :] * 0.01
+        cloned_quaternions = self.gaussians.quaternions[clone_mask, :].clone().detach()
+        cloned_scales = self.gaussians.scales[clone_mask, :].clone().detach()
+        cloned_opacities = self.gaussians.opacities[clone_mask].clone().detach()
+        cloned_rgb = self.gaussians.rgb[clone_mask, :].clone().detach()
+
+        # keep grads up to date
+        self.uv_grad_accum = torch.cat(
+            [self.uv_grad_accum, self.uv_grad_accum[clone_mask, :]], dim=0
+        )
+        self.xyz_grad_accum = torch.cat(
+            [self.xyz_grad_accum, self.xyz_grad_accum[clone_mask, :]], dim=0
+        )
+        self.grad_accum_count = torch.cat(
+            [self.grad_accum_count, self.grad_accum_count[clone_mask]], dim=0
+        )
+
+        # clone gaussians
+        self.gaussians.xyz = torch.nn.Parameter(
+            torch.cat([self.gaussians.xyz, cloned_xyz], dim=0)
+        )
+        self.gaussians.quaternions = torch.nn.Parameter(
+            torch.cat([self.gaussians.quaternions, cloned_quaternions], dim=0)
+        )
+        self.gaussians.scales = torch.nn.Parameter(
+            torch.cat([self.gaussians.scales, cloned_scales], dim=0)
+        )
+        self.gaussians.opacities = torch.nn.Parameter(
+            torch.cat([self.gaussians.opacities, cloned_opacities], dim=0)
+        )
+        self.gaussians.rgb = torch.nn.Parameter(
+            torch.cat([self.gaussians.rgb, cloned_rgb], dim=0)
+        )
+        self.add_gaussians_to_optimizer(torch.sum(clone_mask).detach().cpu().numpy())
+
+    def split_gaussians(self, split_mask):
+        samples = NUM_SPLIT_SAMPLES
+        # create split gaussians
+        split_quaternions = (
+            self.gaussians.quaternions[split_mask, :]
+            .clone()
+            .detach()
+            .repeat(samples, 1)
+        )
+        split_scales = (
+            self.gaussians.scales[split_mask, :].clone().detach().repeat(samples, 1)
+        )
+        split_opacities = (
+            self.gaussians.opacities[split_mask].clone().detach().repeat(samples, 1)
+        )
+        split_rgb = (
+            self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1)
+        )
+        split_xyz = (
+            self.gaussians.xyz[split_mask, :].clone().detach().repeat(samples, 1)
+        )
+
+        # centered random samples
+        random_samples = torch.rand(
+            split_mask.sum() * samples, 3, device=self.gaussians.xyz.device
+        )
+        # scale by scale factors
+        scale_factors = torch.exp(split_scales)
+        random_samples = random_samples * scale_factors
+        # rotate by quaternions
+        split_quaternions = split_quaternions / torch.norm(
+            split_quaternions, dim=1, keepdim=True
+        )
+        split_rotations = quaternion_to_rotation_torch(split_quaternions)
+
+        random_samples = torch.bmm(
+            split_rotations, random_samples.unsqueeze(-1)
+        ).squeeze(-1)
+        # translate by original mean locations
+        split_xyz += random_samples
+
+        # update scales
+        split_scales = torch.log(torch.exp(split_scales) / SPLIT_SCALE_FACTOR)
+
+        # delete original split gaussians
+        self.delete_gaussians(~split_mask)
+
+        # add split gaussians
+        self.gaussians.xyz = torch.nn.Parameter(
+            torch.cat([self.gaussians.xyz, split_xyz], dim=0)
+        )
+        self.gaussians.quaternions = torch.nn.Parameter(
+            torch.cat([self.gaussians.quaternions, split_quaternions], dim=0)
+        )
+        self.gaussians.scales = torch.nn.Parameter(
+            torch.cat([self.gaussians.scales, split_scales], dim=0)
+        )
+        self.gaussians.opacities = torch.nn.Parameter(
+            torch.cat([self.gaussians.opacities, split_opacities], dim=0)
+        )
+        self.gaussians.rgb = torch.nn.Parameter(
+            torch.cat([self.gaussians.rgb, split_rgb], dim=0)
+        )
+        self.add_gaussians_to_optimizer(
+            torch.sum(split_mask).detach().cpu().numpy() * samples
+        )
+
     def adaptive_density_control(self):
         if not (USE_DELETE or USE_CLONE or USE_SPLIT):
             return
@@ -205,51 +310,12 @@ class GSTrainer:
         clone_mask = densify_mask & (scale_max <= CLONE_SCALE_THRESHOLD)
         print("Clone Mask: ", torch.sum(clone_mask).detach().cpu().numpy())
 
+        # Step 2.1 clone gaussians
         if clone_mask.any() and USE_CLONE:
-            # create cloned gaussians
-            cloned_xyz = self.gaussians.xyz[clone_mask, :].clone().detach()
-            cloned_xyz -= xyz_grad_avg[clone_mask, :] * 0.01
-            cloned_quaternions = (
-                self.gaussians.quaternions[clone_mask, :].clone().detach()
-            )
-            cloned_scales = self.gaussians.scales[clone_mask, :].clone().detach()
-            cloned_opacities = self.gaussians.opacities[clone_mask].clone().detach()
-            cloned_rgb = self.gaussians.rgb[clone_mask, :].clone().detach()
-
+            self.clone_gaussians(clone_mask, xyz_grad_avg)
             # keep masks up to date
             densify_mask = torch.cat([densify_mask, densify_mask[clone_mask]], dim=0)
             scale_max = torch.cat([scale_max, scale_max[clone_mask]], dim=0)
-
-            # keep grads up to date
-            self.uv_grad_accum = torch.cat(
-                [self.uv_grad_accum, self.uv_grad_accum[clone_mask, :]], dim=0
-            )
-            self.xyz_grad_accum = torch.cat(
-                [self.xyz_grad_accum, self.xyz_grad_accum[clone_mask, :]], dim=0
-            )
-            self.grad_accum_count = torch.cat(
-                [self.grad_accum_count, self.grad_accum_count[clone_mask]], dim=0
-            )
-
-            # clone gaussians
-            self.gaussians.xyz = torch.nn.Parameter(
-                torch.cat([self.gaussians.xyz, cloned_xyz], dim=0)
-            )
-            self.gaussians.quaternions = torch.nn.Parameter(
-                torch.cat([self.gaussians.quaternions, cloned_quaternions], dim=0)
-            )
-            self.gaussians.scales = torch.nn.Parameter(
-                torch.cat([self.gaussians.scales, cloned_scales], dim=0)
-            )
-            self.gaussians.opacities = torch.nn.Parameter(
-                torch.cat([self.gaussians.opacities, cloned_opacities], dim=0)
-            )
-            self.gaussians.rgb = torch.nn.Parameter(
-                torch.cat([self.gaussians.rgb, cloned_rgb], dim=0)
-            )
-            self.add_gaussians_to_optimizer(
-                torch.sum(clone_mask).detach().cpu().numpy()
-            )
 
         split_mask = densify_mask & (scale_max > CLONE_SCALE_THRESHOLD)
 
@@ -258,73 +324,9 @@ class GSTrainer:
         split_mask = split_mask | too_big_mask
 
         print("Split Mask: ", torch.sum(split_mask).detach().cpu().numpy())
-
+        # Step 2.2 split gaussians
         if split_mask.any() and USE_SPLIT:
-            samples = NUM_SPLIT_SAMPLES
-            # create split gaussians
-            split_quaternions = (
-                self.gaussians.quaternions[split_mask, :]
-                .clone()
-                .detach()
-                .repeat(samples, 1)
-            )
-            split_scales = (
-                self.gaussians.scales[split_mask, :].clone().detach().repeat(samples, 1)
-            )
-            split_opacities = (
-                self.gaussians.opacities[split_mask].clone().detach().repeat(samples, 1)
-            )
-            split_rgb = (
-                self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1)
-            )
-            split_xyz = (
-                self.gaussians.xyz[split_mask, :].clone().detach().repeat(samples, 1)
-            )
-
-            # centered random samples
-            random_samples = torch.rand(
-                split_mask.sum() * samples, 3, device=self.gaussians.xyz.device
-            )
-            # scale by scale factors
-            scale_factors = torch.exp(split_scales)
-            random_samples = random_samples * scale_factors
-            # rotate by quaternions
-            split_quaternions = split_quaternions / torch.norm(
-                split_quaternions, dim=1, keepdim=True
-            )
-            split_rotations = quaternion_to_rotation_torch(split_quaternions)
-
-            random_samples = torch.bmm(
-                split_rotations, random_samples.unsqueeze(-1)
-            ).squeeze(-1)
-            # translate by original mean locations
-            split_xyz += random_samples
-
-            # update scales
-            split_scales = torch.log(torch.exp(split_scales) / SPLIT_SCALE_FACTOR)
-
-            # delete original split gaussians
-            self.delete_gaussians(~split_mask)
-
-            # add split gaussians
-            self.gaussians.xyz = torch.nn.Parameter(
-                torch.cat([self.gaussians.xyz, split_xyz], dim=0)
-            )
-            self.gaussians.quaternions = torch.nn.Parameter(
-                torch.cat([self.gaussians.quaternions, split_quaternions], dim=0)
-            )
-            self.gaussians.scales = torch.nn.Parameter(
-                torch.cat([self.gaussians.scales, split_scales], dim=0)
-            )
-            self.gaussians.opacities = torch.nn.Parameter(
-                torch.cat([self.gaussians.opacities, split_opacities], dim=0)
-            )
-            self.gaussians.rgb = torch.nn.Parameter(
-                torch.cat([self.gaussians.rgb, split_rgb], dim=0)
-            )
-            self.add_gaussians_to_optimizer(
-                torch.sum(split_mask).detach().cpu().numpy() * samples
-            )
+            self.split_gaussians(split_mask)
 
         self.reset_grad_accum()
         self.check_nans()

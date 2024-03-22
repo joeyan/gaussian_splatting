@@ -23,12 +23,14 @@ from splat_py.trainer import GSTrainer
 from splat_py.splat import splat
 
 
-def compute_test_psnr(problem, test_split, images, camera):
+def compute_test_psnr(problem, test_split, images, cameras):
     with torch.no_grad():
         test_psnrs = []
         for test_img_idx in test_split:
             test_world_T_image = images[test_img_idx].world_T_image
-            test_image, _ = splat(problem.gaussians, test_world_T_image, camera)
+            test_camera = cameras[images[test_img_idx].camera_id]
+
+            test_image, _ = splat(problem.gaussians, test_world_T_image, test_camera)
             gt_image = (
                 images[test_img_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
             )
@@ -39,7 +41,7 @@ def compute_test_psnr(problem, test_split, images, camera):
     return torch.tensor(test_psnrs)
 
 
-def train(gaussians, images, camera):
+def train(gaussians, images, cameras):
     problem = GSTrainer(gaussians)
     ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(torch.device("cuda"))
 
@@ -51,6 +53,7 @@ def train(gaussians, images, camera):
     for i in range(NUM_ITERS):
         image_idx = np.random.choice(train_split)
         world_T_image = images[image_idx].world_T_image
+        camera = cameras[images[image_idx].camera_id]
 
         problem.optimizer.zero_grad()
         with SimpleTimer("Render Image (CUDA)"):
@@ -169,7 +172,7 @@ def train(gaussians, images, camera):
         # make sure to perform test split eval before adaptive control
         # if adaptive control occurs in the same iteration, test psnr will be low
         if i % TEST_EVAL_INTERVAL == 0:
-            test_psnrs = compute_test_psnr(problem, test_split, images, camera)
+            test_psnrs = compute_test_psnr(problem, test_split, images, cameras)
             print("\tTEST SPLIT PSNR: ", test_psnrs.mean().item())
 
         if (
@@ -205,7 +208,6 @@ with SimpleTimer("Load Colmap Data"):
 
     images = colmap_data.get_images()
     cameras = colmap_data.get_cameras()
-    camera = cameras[1]
 
     gaussians.xyz = torch.nn.Parameter(gaussians.xyz)
     gaussians.quaternions = torch.nn.Parameter(gaussians.quaternions)
@@ -213,4 +215,4 @@ with SimpleTimer("Load Colmap Data"):
     gaussians.opacities = torch.nn.Parameter(gaussians.opacities)
     gaussians.rgb = torch.nn.Parameter(gaussians.rgb)
 
-train(gaussians, images, camera)
+train(gaussians, images, cameras)
