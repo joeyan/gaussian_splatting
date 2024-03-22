@@ -1,7 +1,6 @@
 import time
 import numpy as np
 import torch
-from torch import nn
 
 from splat_py.constants import PRINT_DEBUG_TIMING
 
@@ -53,7 +52,7 @@ class Camera:
         self.K = K
 
 
-class Gaussians(nn.Module):
+class Gaussians(torch.nn.Module):
     """
     Contains all mutable gaussian parameters
     """
