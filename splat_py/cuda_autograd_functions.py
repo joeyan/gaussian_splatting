@@ -186,4 +186,12 @@ class RenderImage(torch.autograd.Function):
             grad_uv,
             grad_sigma_image,
         )
+        if torch.sum(~torch.isfinite(grad_rgb)) > 0:
+            print("num grad_rbg nan", torch.sum(~torch.isfinite(grad_rgb)))
+        if torch.sum(~torch.isfinite(grad_opacity)) > 0:
+            print("num grad_opacity nan", torch.sum(~torch.isfinite(grad_opacity)))
+        if torch.sum(~torch.isfinite(grad_uv)) > 0:
+            print("num grad_uv nan", torch.sum(~torch.isfinite(grad_uv)))
+        if torch.sum(~torch.isfinite(grad_sigma_image)) > 0:
+            print("num grad_sigma_image nan", torch.sum(~torch.isfinite(grad_sigma_image)))
         return grad_rgb, grad_opacity, grad_uv, grad_sigma_image, None, None, None

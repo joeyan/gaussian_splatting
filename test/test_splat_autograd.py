@@ -77,7 +77,6 @@ class TestSplatAutograd(unittest.TestCase):
             ),
             raise_exception=True,
         )
-
-
+        print(test)
 if __name__ == "__main__":
     unittest.main()
