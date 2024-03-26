@@ -9,7 +9,7 @@
 
 namespace cg = cooperative_groups;
 
-template<typename T, int CHUNK_SIZE>
+template<typename T, unsigned int CHUNK_SIZE>
 __global__ void render_tiles_backward_kernel(
         const T* __restrict__ uvs,
         const T* __restrict__ opacity,

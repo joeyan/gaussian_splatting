@@ -4,7 +4,7 @@
 
 #include "checks.cuh"
 
-template<typename T, int CHUNK_SIZE>
+template<typename T, unsigned int CHUNK_SIZE>
 __global__ void render_tiles_kernel(
         const T* __restrict__ uvs,
         const T* __restrict__ opacity,
