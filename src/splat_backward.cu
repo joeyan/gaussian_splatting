@@ -9,7 +9,7 @@
 
 namespace cg = cooperative_groups;
 
-template<typename T, int CHUNKSIZE>
+template<typename T, int CHUNK_SIZE>
 __global__ void render_tiles_backward_kernel(
         const T* __restrict__ uvs,
         const T* __restrict__ opacity,
@@ -58,23 +58,21 @@ __global__ void render_tiles_backward_kernel(
         grad_image_b = grad_image[(v_splat * image_width + u_splat) * 3 + 2];
         weight = final_weight_per_pixel[u_splat + v_splat * image_width];
     }
-
-
     // shared memory copies of inputs
-    __shared__ T _uvs[CHUNKSIZE * 2];
-    __shared__ T _opacity[CHUNKSIZE];
-    __shared__ T _rgb[CHUNKSIZE * 3];
-    __shared__ T _sigma_image[CHUNKSIZE * 4];
+    __shared__ T _uvs[CHUNK_SIZE * 2];
+    __shared__ T _opacity[CHUNK_SIZE];
+    __shared__ T _rgb[CHUNK_SIZE * 3];
+    __shared__ T _sigma_image[CHUNK_SIZE * 4];
 
-    const int num_chunks = (num_splats_this_tile + CHUNKSIZE - 1) / CHUNKSIZE;
+    const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
     const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
     const int block_size = blockDim.x * blockDim.y;
     // copy chunks last to first
     for (int chunk_idx = num_chunks - 1; chunk_idx >= 0; chunk_idx--) {
         // copy gaussians in-order
         __syncthreads(); // make sure previous iteration is complete before modifying inputs
-        for (int i = thread_id; i < CHUNKSIZE; i += block_size) {
-            const int tile_splat_idx = chunk_idx * CHUNKSIZE + i;
+        for (int i = thread_id; i < CHUNK_SIZE; i += block_size) {
+            const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
             if (tile_splat_idx >= num_splats_this_tile) {
                 break;
             }
@@ -96,13 +94,10 @@ __global__ void render_tiles_backward_kernel(
         __syncthreads(); // wait for copying to complete before attempting to use data
 
         // compute gradients for this chunk
-        int chunk_start = chunk_idx * CHUNKSIZE;
-        int chunk_end = min((chunk_idx + 1) * CHUNKSIZE, num_splats_this_tile);
+        int chunk_start = chunk_idx * CHUNK_SIZE;
+        int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
         for (int i = chunk_end - chunk_start - 1; i >= 0; i--) {
-            const int tile_splat_idx = chunk_idx * CHUNKSIZE + i;
-            const int global_splat_idx = splat_idx_start + tile_splat_idx;
-            const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
-
+            const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
             T grad_red = 0;
             T grad_green = 0;
             T grad_blue = 0;
@@ -204,6 +199,8 @@ __global__ void render_tiles_backward_kernel(
 
             // write gradients to global memory
             if (warp_cg.thread_rank() == 0) {
+                const int global_splat_idx = splat_idx_start + tile_splat_idx;
+                const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
                 atomicAdd(grad_rgb + gaussian_idx * 3 + 0, grad_red);
                 atomicAdd(grad_rgb + gaussian_idx * 3 + 1, grad_green);
                 atomicAdd(grad_rgb + gaussian_idx * 3 + 2, grad_blue);
@@ -290,7 +287,7 @@ void render_tiles_backward_cuda(
         CHECK_FLOAT_TENSOR(grad_uv);
         CHECK_FLOAT_TENSOR(grad_sigma_image);
         // chunksize of 640 for single precision
-        render_tiles_backward_kernel<float, 640><<<grid_size, block_size>>>(
+        render_tiles_backward_kernel<float, 960><<<grid_size, block_size>>>(
             uvs.data_ptr<float>(),
             opacity.data_ptr<float>(),
             rgb.data_ptr<float>(),
