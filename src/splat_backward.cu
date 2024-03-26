@@ -4,7 +4,12 @@
 
 #include "checks.cuh"
 
-template<typename T>
+#include <cooperative_groups.h>
+#include <cooperative_groups/reduce.h>
+
+namespace cg = cooperative_groups;
+
+template<typename T, unsigned int CHUNK_SIZE>
 __global__ void render_tiles_backward_kernel(
         const T* __restrict__ uvs,
         const T* __restrict__ opacity,
@@ -23,117 +28,192 @@ __global__ void render_tiles_backward_kernel(
         T* __restrict__ grad_uv, // N_gaussians x 2
         T* __restrict__ grad_sigma_image // N_gaussians x 4
 ) {
+    auto block = cg::this_thread_block();
+    cg::thread_block_tile<32> warp_cg = cg::tiled_partition<32>(block);
+
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
     const int v_splat = blockIdx.y * blockDim.y + threadIdx.y;
-    if (u_splat >= image_width || v_splat >= image_height) {
-        return;
-    }
 
+    // tile and splat info
     const int tile_idx = blockIdx.x + blockIdx.y * gridDim.x;
     const int splat_idx_start = splat_start_end_idx_by_tile_idx[tile_idx];
     const int splat_idx_end = splat_start_end_idx_by_tile_idx[tile_idx + 1];
-    int num_splats = num_splats_per_pixel[v_splat * image_width + u_splat];
-    if (num_splats == 0) {
-        return;
-    }
+    int num_splats_this_tile = splat_idx_end - splat_idx_start;
 
-    T grad_image_r = grad_image[(v_splat * image_width + u_splat) * 3 + 0];
-    T grad_image_g = grad_image[(v_splat * image_width + u_splat) * 3 + 1];
-    T grad_image_b = grad_image[(v_splat * image_width + u_splat) * 3 + 2];
-
+    int num_splats_this_pixel;
+    T grad_image_r;
+    T grad_image_g;
+    T grad_image_b;
+    T weight;
     T color_accum[3] = {0.0, 0.0, 0.0};
-    T weight = final_weight_per_pixel[u_splat + v_splat * image_width];
 
-    if (weight < 1e-14) {
-        return;
+    // keep threads around even if pixel is not valid for copying data
+    bool valid_pixel = u_splat < image_width && v_splat < image_height;
+
+    if (valid_pixel) {
+        num_splats_this_pixel = num_splats_per_pixel[v_splat * image_width + u_splat];
+        grad_image_r = grad_image[(v_splat * image_width + u_splat) * 3 + 0];
+        grad_image_g = grad_image[(v_splat * image_width + u_splat) * 3 + 1];
+        grad_image_b = grad_image[(v_splat * image_width + u_splat) * 3 + 2];
+        weight = final_weight_per_pixel[u_splat + v_splat * image_width];
     }
-    for (int i = num_splats - 1; i >= 0; i--) {
-        const int splat_idx = splat_idx_start + i;
-        const int gaussian_idx = gaussian_idx_by_splat_idx[splat_idx];
+    // shared memory copies of inputs
+    __shared__ T _uvs[CHUNK_SIZE * 2];
+    __shared__ T _opacity[CHUNK_SIZE];
+    __shared__ T _rgb[CHUNK_SIZE * 3];
+    __shared__ T _sigma_image[CHUNK_SIZE * 4];
 
-        const T u_mean = uvs[gaussian_idx * 2 + 0];
-        const T v_mean = uvs[gaussian_idx * 2 + 1];
-
-        const T u_diff = T(u_splat) - u_mean;
-        const T v_diff = T(v_splat) - v_mean;
-
-        // 2d covariance matrix
-        const T a = sigma_image[gaussian_idx * 4 + 0];
-        const T b = sigma_image[gaussian_idx * 4 + 1];
-        const T c = sigma_image[gaussian_idx * 4 + 2];
-        const T d = sigma_image[gaussian_idx * 4 + 3];
-        T det = a * d - b * c;
-
-        T norm_prob = 0.0;
-        T reciprocal_det = 1.0 / det;
-        if (det > 0.0) {
-            if (det < 1e-14) {
-                det += 1e-14;
-                reciprocal_det = 1.0 / det;
+    const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
+    const int block_size = blockDim.x * blockDim.y;
+    // copy chunks last to first
+    for (int chunk_idx = num_chunks - 1; chunk_idx >= 0; chunk_idx--) {
+        // copy gaussians in-order
+        __syncthreads(); // make sure previous iteration is complete before modifying inputs
+        for (int i = thread_id; i < CHUNK_SIZE; i += block_size) {
+            const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
+            if (tile_splat_idx >= num_splats_this_tile) {
+                break;
             }
-            // compute mahalanobis distance
-            const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) * reciprocal_det;
-            if (mh_sq > 0.0) {
-                if (use_fast_exp) {
-                    norm_prob = __expf(-0.5 * mh_sq);
-                } else {
-                    norm_prob = exp(-0.5 * mh_sq);
+            const int global_splat_idx = splat_idx_start + tile_splat_idx;
+
+            // copy gaussians in the order they are splatted
+            const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
+            _uvs[i * 2 + 0] = uvs[gaussian_idx * 2 + 0];
+            _uvs[i * 2 + 1] = uvs[gaussian_idx * 2 + 1];
+            _opacity[i] = opacity[gaussian_idx];
+            _rgb[i * 3 + 0] = rgb[gaussian_idx * 3 + 0];
+            _rgb[i * 3 + 1] = rgb[gaussian_idx * 3 + 1];
+            _rgb[i * 3 + 2] = rgb[gaussian_idx * 3 + 2];
+            _sigma_image[i * 4 + 0] = sigma_image[gaussian_idx * 4 + 0];
+            _sigma_image[i * 4 + 1] = sigma_image[gaussian_idx * 4 + 1];
+            _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
+            _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
+        }
+        __syncthreads(); // wait for copying to complete before attempting to use data
+
+        // compute gradients for this chunk
+        int chunk_start = chunk_idx * CHUNK_SIZE;
+        int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
+        for (int i = chunk_end - chunk_start - 1; i >= 0; i--) {
+            const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
+            T grad_red = 0;
+            T grad_green = 0;
+            T grad_blue = 0;
+            T grad_opa = 0;
+            T grad_u = 0;
+            T grad_v = 0;
+            T grad_a = 0;
+            T grad_b = 0;
+            T grad_c = 0;
+            T grad_d = 0;
+
+            // don't compute grad if pixel is out of bounds or this splat is after saturation during forward pass
+            if (valid_pixel && tile_splat_idx < num_splats_this_pixel) {
+                const T u_mean = _uvs[i * 2 + 0];
+                const T v_mean = _uvs[i * 2 + 1];
+
+                const T u_diff = T(u_splat) - u_mean;
+                const T v_diff = T(v_splat) - v_mean;
+                
+                // 2d covariance matrix
+                const T a = _sigma_image[i * 4 + 0];
+                const T b = _sigma_image[i * 4 + 1];
+                const T c = _sigma_image[i * 4 + 2];
+                const T d = _sigma_image[i * 4 + 3];
+                T det = a * d - b * c;
+
+                T norm_prob = 0.0;
+                T reciprocal_det = 1.0 / det;
+                if (det > 0.0) {
+                    if (det < 1e-14) {
+                        det += 1e-14;
+                        reciprocal_det = 1.0 / det;
+                    }
+                    // compute mahalanobis distance
+                    const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) * reciprocal_det;
+                    if (mh_sq > 0.0) {
+                        if (use_fast_exp) {
+                            norm_prob = __expf(-0.5 * mh_sq);
+                        } else {
+                            norm_prob = exp(-0.5 * mh_sq);
+                        }
+                    }
                 }
+                
+                T alpha = _opacity[i] * norm_prob;
+                if (abs(alpha - 1.0) < 1e-14) {
+                    alpha -= 1e-14;
+                }
+                const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
+        
+                // update weight if this is not the first iteration
+                if (i < num_splats_this_pixel - 1) {
+                    weight = weight * reciprocal_one_minus_alpha;
+                }
+                grad_red = alpha * weight * grad_image_r;
+                grad_green = alpha * weight * grad_image_g;
+                grad_blue = alpha * weight * grad_image_b;
+
+                T grad_alpha_r = (_rgb[i * 3 + 0] * weight - color_accum[0] * reciprocal_one_minus_alpha) * grad_image_r;
+                T grad_alpha_g = (_rgb[i * 3 + 1] * weight - color_accum[1] * reciprocal_one_minus_alpha) * grad_image_g;
+                T grad_alpha_b = (_rgb[i * 3 + 2] * weight - color_accum[2] * reciprocal_one_minus_alpha) * grad_image_b;
+                T grad_alpha = grad_alpha_r + grad_alpha_g + grad_alpha_b;
+        
+                grad_opa = norm_prob * grad_alpha;
+        
+                // compute gradient for probability
+                T grad_prob = _opacity[i] * grad_alpha;
+                T grad_mh_sq = -0.5 * norm_prob * grad_prob;
+        
+                // compute gradient for projected mean
+                grad_u = -(-b * v_diff - c * v_diff + 2 * d * u_diff) * reciprocal_det * grad_mh_sq;
+                grad_v = -(2 * a * v_diff - b * u_diff - c * u_diff) * reciprocal_det * grad_mh_sq;
+        
+                const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff - c * u_diff * v_diff + d * u_diff * u_diff) * reciprocal_det * reciprocal_det;
+                grad_a = (-d * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_b = (c * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_c = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
+        
+                // update color_accum for next splat
+                color_accum[0] += _rgb[i * 3 + 0] * alpha * weight;
+                color_accum[1] += _rgb[i * 3 + 1] * alpha * weight;
+                color_accum[2] += _rgb[i * 3 + 2] * alpha * weight;
             }
-        }
-        
-        T alpha = opacity[gaussian_idx] * norm_prob;
-        if (abs(alpha - 1.0) < 1e-14) {
-            alpha -= 1e-14;
-        }
-        const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
 
-        // update weight
-        if (i < num_splats - 1) {
-            weight = weight * reciprocal_one_minus_alpha;
-        }
+            // reduce gradients across warp_cg
+            // large speedup here by reducing the number of atomicAdd calls
+            warp_cg.sync();
+            grad_opa = cg::reduce(warp_cg, grad_opa, cg::plus<T>());
+            grad_u = cg::reduce(warp_cg, grad_u, cg::plus<T>());
+            grad_v = cg::reduce(warp_cg, grad_v, cg::plus<T>());
+            grad_red = cg::reduce(warp_cg, grad_red, cg::plus<T>());
+            grad_green = cg::reduce(warp_cg, grad_green, cg::plus<T>());
+            grad_blue = cg::reduce(warp_cg, grad_blue, cg::plus<T>());
+            grad_a = cg::reduce(warp_cg, grad_a, cg::plus<T>());
+            grad_b = cg::reduce(warp_cg, grad_b, cg::plus<T>());
+            grad_c = cg::reduce(warp_cg, grad_c, cg::plus<T>());
+            grad_d = cg::reduce(warp_cg, grad_d, cg::plus<T>());
 
-        // update rgb gradient. Since each gaussian is splat to multiple pixels, we need to use atomicAdd
-        atomicAdd(grad_rgb + gaussian_idx * 3 + 0, alpha * weight * grad_image_r);
-        atomicAdd(grad_rgb + gaussian_idx * 3 + 1, alpha * weight * grad_image_g);
-        atomicAdd(grad_rgb + gaussian_idx * 3 + 2, alpha * weight * grad_image_b);
-        
-
-        T grad_alpha_r = (rgb[gaussian_idx * 3 + 0] * weight - color_accum[0] * reciprocal_one_minus_alpha) * grad_image_r;
-        T grad_alpha_g = (rgb[gaussian_idx * 3 + 1] * weight - color_accum[1] * reciprocal_one_minus_alpha) * grad_image_g;
-        T grad_alpha_b = (rgb[gaussian_idx * 3 + 2] * weight - color_accum[2] * reciprocal_one_minus_alpha) * grad_image_b;
-        T grad_alpha = grad_alpha_r + grad_alpha_g + grad_alpha_b;
-
-        T grad_opa = norm_prob * grad_alpha;
-        // update opacity gradient
-        atomicAdd(grad_opacity + gaussian_idx, grad_opa);
-
-        // compute gradient for probability
-        T grad_prob = opacity[gaussian_idx] * grad_alpha;
-        T grad_mh_sq = -0.5 * norm_prob * grad_prob;
-
-        // compute gradient for projected mean
-        T grad_u = -(-b * v_diff - c * v_diff + 2 * d * u_diff) * reciprocal_det * grad_mh_sq;
-        T grad_v = -(2 * a * v_diff - b * u_diff - c * u_diff) * reciprocal_det * grad_mh_sq;
-        atomicAdd(grad_uv + gaussian_idx * 2 + 0, grad_u);
-        atomicAdd(grad_uv + gaussian_idx * 2 + 1, grad_v);
-
-        const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff - c * u_diff * v_diff + d * u_diff * u_diff) * reciprocal_det * reciprocal_det;
-        const T grad_a = (-d * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
-        const T grad_b = (c * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
-        const T grad_c = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
-        const T grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
-        atomicAdd(grad_sigma_image + gaussian_idx * 4 + 0, grad_a);
-        atomicAdd(grad_sigma_image + gaussian_idx * 4 + 1, grad_b);
-        atomicAdd(grad_sigma_image + gaussian_idx * 4 + 2, grad_c);
-        atomicAdd(grad_sigma_image + gaussian_idx * 4 + 3, grad_d);
-
-        // update color_accum for next splat
-        color_accum[0] += rgb[gaussian_idx * 3 + 0] * alpha * weight;
-        color_accum[1] += rgb[gaussian_idx * 3 + 1] * alpha * weight;
-        color_accum[2] += rgb[gaussian_idx * 3 + 2] * alpha * weight;
-    }
+            // write gradients to global memory
+            if (warp_cg.thread_rank() == 0) {
+                const int global_splat_idx = splat_idx_start + tile_splat_idx;
+                const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
+                atomicAdd(grad_rgb + gaussian_idx * 3 + 0, grad_red);
+                atomicAdd(grad_rgb + gaussian_idx * 3 + 1, grad_green);
+                atomicAdd(grad_rgb + gaussian_idx * 3 + 2, grad_blue);
+                atomicAdd(grad_opacity + gaussian_idx, grad_opa);
+                atomicAdd(grad_uv + gaussian_idx * 2 + 0, grad_u);
+                atomicAdd(grad_uv + gaussian_idx * 2 + 1, grad_v);
+                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 0, grad_a);
+                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 1, grad_b);
+                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 2, grad_c);
+                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 3, grad_d);
+            }
+        } // compute chunk grad
+    } // loop over chunks
 }
 
 
@@ -206,7 +286,8 @@ void render_tiles_backward_cuda(
         CHECK_FLOAT_TENSOR(grad_opacity);
         CHECK_FLOAT_TENSOR(grad_uv);
         CHECK_FLOAT_TENSOR(grad_sigma_image);
-        render_tiles_backward_kernel<float><<<grid_size, block_size>>>(
+        // chunksize of 640 for single precision
+        render_tiles_backward_kernel<float, 960><<<grid_size, block_size>>>(
             uvs.data_ptr<float>(),
             opacity.data_ptr<float>(),
             rgb.data_ptr<float>(),
@@ -237,7 +318,8 @@ void render_tiles_backward_cuda(
         CHECK_DOUBLE_TENSOR(grad_opacity);
         CHECK_DOUBLE_TENSOR(grad_uv);
         CHECK_DOUBLE_TENSOR(grad_sigma_image);
-        render_tiles_backward_kernel<double><<<grid_size, block_size>>>(
+        // chunksize of 320 for double precision
+        render_tiles_backward_kernel<double, 320><<<grid_size, block_size>>>(
             uvs.data_ptr<double>(),
             opacity.data_ptr<double>(),
             rgb.data_ptr<double>(),

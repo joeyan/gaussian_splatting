@@ -4,7 +4,7 @@
 
 #include "checks.cuh"
 
-template<typename T>
+template<typename T, unsigned int CHUNK_SIZE>
 __global__ void render_tiles_kernel(
         const T* __restrict__ uvs,
         const T* __restrict__ opacity,
@@ -22,69 +22,126 @@ __global__ void render_tiles_kernel(
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
     const int v_splat = blockIdx.y * blockDim.y + threadIdx.y;
-    if (u_splat >= image_width || v_splat >= image_height) {
-        return;
-    }
-
     const int tile_idx = blockIdx.x + blockIdx.y * gridDim.x;
+
+    // keep threads around even if pixel is not valid for copying data
+    bool valid_pixel = u_splat < image_width && v_splat < image_height;
 
     const int splat_idx_start = splat_start_end_idx_by_tile_idx[tile_idx];
     const int splat_idx_end = splat_start_end_idx_by_tile_idx[tile_idx + 1];
+    int num_splats_this_tile = splat_idx_end - splat_idx_start;
+
+    const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
+    const int block_size = blockDim.x * blockDim.y;
 
     T alpha_accum = 0.0;
     T alpha_weight = 0.0;
-
     int num_splats = 0;
-    for (int splat_idx = splat_idx_start; splat_idx < splat_idx_end; splat_idx++) {
-        if (alpha_accum > 0.999) {
-            break;
-        }
-        const int gaussian_idx = gaussian_idx_by_splat_idx[splat_idx];
 
-        const T u_mean = uvs[gaussian_idx * 2 + 0];
-        const T v_mean = uvs[gaussian_idx * 2 + 1];
+    // shared memory copies of inputs
+    __shared__ T _uvs[CHUNK_SIZE * 2];
+    __shared__ T _opacity[CHUNK_SIZE];
+    __shared__ T _rgb[CHUNK_SIZE * 3];
+    // b and c are equal
+    __shared__ T _sigma_image[CHUNK_SIZE * 3];
 
-        const T u_diff = T(u_splat) - u_mean;
-        const T v_diff = T(v_splat) - v_mean;
-
-        // 2d covariance matrix
-        const T a = sigma_image[gaussian_idx * 4 + 0];
-        const T b = sigma_image[gaussian_idx * 4 + 1];
-        const T c = sigma_image[gaussian_idx * 4 + 2];
-        const T d = sigma_image[gaussian_idx * 4 + 3];
-        T det = a * d - b * c;
-
-        T alpha = 0.0;
-        // skip any covariance matrices that are not positive definite
-        if (det > 0.0) {
-            if (det < 1e-14) {
-                det += 1e-14;
-            }
-            // compute mahalanobis distance
-            const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
-            if (mh_sq > 0.0) {
-                // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
-                T norm_prob = 0.0;
-                if (use_fast_exp) {
-                    norm_prob = __expf(-0.5 * mh_sq);
-                } else {
-                    norm_prob = exp(-0.5 * mh_sq);
-                }
-                alpha = opacity[gaussian_idx] * norm_prob;
-            }
-        }
-        alpha_weight = 1.0 - alpha_accum;
-        const T weight = alpha * (1.0 - alpha_accum);
-
-        image[(v_splat * image_width + u_splat) * 3 + 0] += rgb[gaussian_idx * 3 + 0] * weight;
-        image[(v_splat * image_width + u_splat) * 3 + 1] += rgb[gaussian_idx * 3 + 1] * weight;
-        image[(v_splat * image_width + u_splat) * 3 + 2] += rgb[gaussian_idx * 3 + 2] * weight;
-
-        alpha_accum += weight;
-        num_splats++;
+    const int shared_image_size = 16 * 16 * 3;
+    __shared__ T _image[shared_image_size];
+    
+    #pragma unroll
+    for (int i = thread_id; i < shared_image_size; i += block_size) {
+        _image[i] = 0.0;
     }
-    num_splats_per_pixel[v_splat * image_width + u_splat] = num_splats;
-    final_weight_per_pixel[v_splat * image_width + u_splat] = alpha_weight;
+
+    const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    // copy chunks 
+    for (int chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
+        __syncthreads(); // make sure previous iteration is complete before modifying inputs
+        for (int i = thread_id; i < CHUNK_SIZE; i += block_size) {
+            const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
+            if (tile_splat_idx >= num_splats_this_tile) {
+                break;
+            }
+            const int global_splat_idx = splat_idx_start + tile_splat_idx;
+
+            // copy gaussians in the order they are splatted
+            const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
+            _uvs[i * 2 + 0] = uvs[gaussian_idx * 2 + 0];
+            _uvs[i * 2 + 1] = uvs[gaussian_idx * 2 + 1];
+            _opacity[i] = opacity[gaussian_idx];
+            _rgb[i * 3 + 0] = rgb[gaussian_idx * 3 + 0];
+            _rgb[i * 3 + 1] = rgb[gaussian_idx * 3 + 1];
+            _rgb[i * 3 + 2] = rgb[gaussian_idx * 3 + 2];
+            _sigma_image[i * 4 + 0] = sigma_image[gaussian_idx * 4 + 0];
+            _sigma_image[i * 4 + 1] = sigma_image[gaussian_idx * 4 + 1];
+            _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
+            _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
+        }
+        __syncthreads(); // wait for copying to complete before attempting to use data
+        if (valid_pixel){
+            int chunk_start = chunk_idx * CHUNK_SIZE;
+            int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
+            int num_splats_this_chunk = chunk_end - chunk_start;
+            for (int i = 0; i < num_splats_this_chunk; i++) {
+                const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
+                if (alpha_accum > 0.999) {
+                    break;
+                }
+                const T u_mean = _uvs[i * 2 + 0];
+                const T v_mean = _uvs[i * 2 + 1];
+    
+                const T u_diff = T(u_splat) - u_mean;
+                const T v_diff = T(v_splat) - v_mean;
+                
+                // 2d covariance matrix
+                const T a = _sigma_image[i * 4 + 0];
+                const T b = _sigma_image[i * 4 + 1];
+                const T c = _sigma_image[i * 4 + 2];
+                const T d = _sigma_image[i * 4 + 3];
+                T det = a * d - b * c;
+    
+                T alpha = 0.0;
+                // skip any covariance matrices that are not positive definite
+                if (det > 0.0) {
+                    if (det < 1e-14) {
+                        det += 1e-14;
+                    }
+                    // compute mahalanobis distance
+                    const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
+                    if (mh_sq > 0.0) {
+                        // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
+                        T norm_prob = 0.0;
+                        if (use_fast_exp) {
+                            norm_prob = __expf(-0.5 * mh_sq);
+                        } else {
+                            norm_prob = exp(-0.5 * mh_sq);
+                        }
+                        alpha = _opacity[i] * norm_prob;
+                    }
+                }
+                alpha_weight = 1.0 - alpha_accum;
+                const T weight = alpha * (1.0 - alpha_accum);
+    
+                _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 0] += _rgb[i * 3 + 0] * weight;
+                _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 1] += _rgb[i * 3 + 1] * weight;
+                _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 2] += _rgb[i * 3 + 2] * weight;
+
+                alpha_accum += weight;
+                num_splats++;
+            } // end splat loop
+        } // valid pixel check
+    } // end chunk loop
+
+    // copy back to global memory
+    __syncthreads(); // wait for splatting to complete
+    if (valid_pixel) {
+        num_splats_per_pixel[v_splat * image_width + u_splat] = num_splats;
+        final_weight_per_pixel[v_splat * image_width + u_splat] = alpha_weight;
+
+        image[(v_splat * image_width + u_splat) * 3 + 0] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 0];
+        image[(v_splat * image_width + u_splat) * 3 + 1] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 1];
+        image[(v_splat * image_width + u_splat) * 3 + 2] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 2];
+    }
 }
 
 void render_tiles_cuda(
@@ -135,7 +192,7 @@ void render_tiles_cuda(
         CHECK_INT_TENSOR(num_splats_per_pixel);
         CHECK_FLOAT_TENSOR(final_weight_per_pixel);
         CHECK_FLOAT_TENSOR(rendered_image);
-        render_tiles_kernel<float><<<grid_size, block_size>>>(
+        render_tiles_kernel<float, 960><<<grid_size, block_size>>>(
             uvs.data_ptr<float>(),
             opacity.data_ptr<float>(),
             rgb.data_ptr<float>(),
@@ -158,7 +215,7 @@ void render_tiles_cuda(
         CHECK_INT_TENSOR(num_splats_per_pixel);
         CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
         CHECK_DOUBLE_TENSOR(rendered_image);
-        render_tiles_kernel<double><<<grid_size, block_size>>>(
+        render_tiles_kernel<double, 320><<<grid_size, block_size>>>(
             uvs.data_ptr<double>(),
             opacity.data_ptr<double>(),
             rgb.data_ptr<double>(),
