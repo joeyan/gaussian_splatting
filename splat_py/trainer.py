@@ -346,7 +346,7 @@ class GSTrainer:
         return torch.tensor(test_psnrs)
 
     def splat_and_compute_loss(self, image_idx, world_T_image, camera):
-        with SimpleTimer("Splat {} Gaussians".format(self.gaussians.xyz.shape[0])):
+        with SimpleTimer("Splat Gaussians"):
             xyz_camera_frame = transform_points_torch(self.gaussians.xyz, world_T_image)
             uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
             uv.retain_grad()

@@ -1,5 +1,4 @@
 import os
-import numpy as np
 import torch
 
 from splat_py.constants import *
@@ -11,7 +10,6 @@ if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
 torch.manual_seed(0)
-np.random.seed(10)
 with SimpleTimer("Load Colmap Data"):
     colmap_data = ColmapData(DATASET_PATH, torch.device("cuda"), downsample_factor=4)
     gaussians = colmap_data.create_gaussians()
