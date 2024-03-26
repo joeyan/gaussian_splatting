@@ -141,10 +141,6 @@ class RenderImage(torch.autograd.Function):
             final_weight_per_pixel,
             rendered_image,
         )
-        if torch.sum(~torch.isfinite(rendered_image)) > 0:
-            print("num rendered_image nan", torch.sum(~torch.isfinite(rendered_image)))
-            exit()
-
         ctx.save_for_backward(
             uvs,
             opacity,
@@ -174,20 +170,6 @@ class RenderImage(torch.autograd.Function):
         grad_uv = torch.zeros_like(uvs)
         grad_sigma_image = torch.zeros_like(sigma_image)
 
-        nan_in_grad = False
-        if torch.sum(~torch.isfinite(uvs)) > 0:
-            print("num uvs nan", torch.sum(~torch.isfinite(uvs)))
-            nan_in_grad = True
-        if torch.sum(~torch.isfinite(opacity)) > 0:
-            print("num opacity nan", torch.sum(~torch.isfinite(opacity)))
-            nan_in_grad = True
-        if torch.sum(~torch.isfinite(rgb)) > 0:
-            print("num rgb nan", torch.sum(~torch.isfinite(rgb)))
-            nan_in_grad = True
-        if torch.sum(~torch.isfinite(sigma_image)) > 0:
-            print("num sigma_image nan", torch.sum(~torch.isfinite(sigma_image)))
-            nan_in_grad = True
-
         # ensure input is contiguous
         grad_rendered_image = grad_rendered_image.contiguous()
         with SimpleTimer("render_tiles_backward_cuda"):
@@ -206,20 +188,4 @@ class RenderImage(torch.autograd.Function):
                 grad_uv,
                 grad_sigma_image,
             )
-        if torch.sum(~torch.isfinite(grad_rgb)) > 0:
-            print("num grad_rbg nan", torch.sum(~torch.isfinite(grad_rgb)))
-            nan_in_grad = True
-        if torch.sum(~torch.isfinite(grad_opacity)) > 0:
-            print("num grad_opacity nan", torch.sum(~torch.isfinite(grad_opacity)))
-            nan_in_grad = True
-        if torch.sum(~torch.isfinite(grad_uv)) > 0:
-            print("num grad_uv nan", torch.sum(~torch.isfinite(grad_uv)))
-            nan_in_grad = True
-        if torch.sum(~torch.isfinite(grad_sigma_image)) > 0:
-            print(
-                "num grad_sigma_image nan", torch.sum(~torch.isfinite(grad_sigma_image))
-            )
-            nan_in_grad = True
-        if nan_in_grad:
-            exit()
         return grad_rgb, grad_opacity, grad_uv, grad_sigma_image, None, None, None
