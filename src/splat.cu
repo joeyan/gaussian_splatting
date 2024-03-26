@@ -42,8 +42,7 @@ __global__ void render_tiles_kernel(
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
     __shared__ T _rgb[CHUNK_SIZE * 3];
-    // b and c are equal
-    __shared__ T _sigma_image[CHUNK_SIZE * 3];
+    __shared__ T _sigma_image[CHUNK_SIZE * 4];
 
     const int shared_image_size = 16 * 16 * 3;
     __shared__ T _image[shared_image_size];
