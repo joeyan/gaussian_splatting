@@ -143,9 +143,23 @@ __global__ void render_tiles_kernel(
                     computed_rgb
                 );
 
-                _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 0] += computed_rgb[0] * weight;
-                _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 1] += computed_rgb[1] * weight;
-                _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 2] += computed_rgb[2] * weight;
+                T sigmoid_rgb[3];
+                if (use_fast_exp) {
+                    #pragma unroll
+                    for (int j = 0; j < 3; j++) {
+                        sigmoid_rgb[j] = 1.0 / (1.0 + __expf(-computed_rgb[j]));
+                    }
+                } else {
+                    #pragma unroll
+                    for (int j = 0; j < 3; j++) {
+                        sigmoid_rgb[j] = 1.0 / (1.0 + exp(-computed_rgb[j]));
+                    }
+                }
+
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] += sigmoid_rgb[channel] * weight;
+                }
 
                 alpha_accum += weight;
                 num_splats++;

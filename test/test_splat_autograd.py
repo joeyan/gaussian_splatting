@@ -6,6 +6,7 @@ from splat_py.structs import Tiles, Camera
 from splat_py.tile_culling import match_gaussians_to_tiles_gpu
 from splat_py.utils import compute_rays_in_world_frame
 
+
 class TestSplatAutograd(unittest.TestCase):
     def setUp(self):
         self.assertTrue(torch.cuda.is_available())
@@ -102,7 +103,8 @@ class TestSplatAutograd(unittest.TestCase):
                 dtype=torch.float64,
                 device=self.device,
                 requires_grad=True,
-            ) * 0.5
+            )
+            * 0.5
         )
         test = torch.autograd.gradcheck(
             RenderImage.apply,

@@ -24,6 +24,7 @@ from splat_py.utils import (
     compute_rays_in_world_frame,
 )
 
+
 class GSTrainer:
     def __init__(self, gaussians, images, cameras):
         self.gaussians = gaussians
@@ -114,13 +115,25 @@ class GSTrainer:
             current_sh_band = self.gaussians.rgb.shape[2]
 
         if current_sh_band == 1:
-            new_rgb = torch.zeros(num_gaussians, 3, 4, dtype=self.gaussians.rgb.dtype, device=self.gaussians.rgb.device)
+            new_rgb = torch.zeros(
+                num_gaussians,
+                3,
+                4,
+                dtype=self.gaussians.rgb.dtype,
+                device=self.gaussians.rgb.device,
+            )
             new_rgb[:, :, 0] = self.gaussians.rgb
             self.gaussians.rgb = torch.nn.Parameter(new_rgb)
             self.update_optimizer()
-        
+
         if current_sh_band == 4:
-            new_rgb = torch.zeros(num_gaussians, 3, 9, dtype=self.gaussians.rgb.dtype, device=self.gaussians.rgb.device)
+            new_rgb = torch.zeros(
+                num_gaussians,
+                3,
+                9,
+                dtype=self.gaussians.rgb.dtype,
+                device=self.gaussians.rgb.device,
+            )
             new_rgb[:, :, :4] = self.gaussians.rgb
             self.gaussians.rgb = torch.nn.Parameter(new_rgb)
             self.update_optimizer()
@@ -400,12 +413,13 @@ class GSTrainer:
                 if save_test_images:
                     debug_image = test_image.clip(0, 1).detach().cpu().numpy()
                     cv2.imwrite(
-                        "{}/iter{}_test_image_{}.png".format(OUTPUT_DIR, iter, test_img_idx),
+                        "{}/iter{}_test_image_{}.png".format(
+                            OUTPUT_DIR, iter, test_img_idx
+                        ),
                         (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[
                             ..., ::-1
                         ],
                     )
-
 
         return torch.tensor(test_psnrs)
 

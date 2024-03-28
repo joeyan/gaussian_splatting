@@ -91,8 +91,16 @@ def compute_rays(camera):
     Compute rays in camera space
     """
     # grid of uv coordinates
-    u = torch.linspace(0, camera.width - 1, camera.width, dtype=camera.K.dtype, device=camera.K.device)
-    v = torch.linspace(0, camera.height - 1, camera.height, dtype=camera.K.dtype, device=camera.K.device)
+    u = torch.linspace(
+        0, camera.width - 1, camera.width, dtype=camera.K.dtype, device=camera.K.device
+    )
+    v = torch.linspace(
+        0,
+        camera.height - 1,
+        camera.height,
+        dtype=camera.K.dtype,
+        device=camera.K.device,
+    )
 
     # use (v, u) order to preserve row-major order
     v, u = torch.meshgrid(v, u, indexing="ij")

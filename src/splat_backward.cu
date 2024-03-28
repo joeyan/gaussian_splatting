@@ -180,17 +180,36 @@ __global__ void render_tiles_backward_kernel(
                     computed_rgb
                 );
                 
+                T sigmoid_rgb[3];
+                if (use_fast_exp) {
+                    #pragma unroll
+                    for (int j = 0; j < 3; j++) {
+                        sigmoid_rgb[j] = 1.0 / (1.0 + __expf(-computed_rgb[j]));
+                    }
+                } else {
+                    #pragma unroll
+                    for (int j = 0; j < 3; j++) {
+                        sigmoid_rgb[j] = 1.0 / (1.0 + exp(-computed_rgb[j]));
+                    }
+                }
+
+                // compute grad wrt sigmoid
+                T grad_rgb_no_activation[3];
+                #pragma unroll
+                for (int j = 0; j < 3; j++) {
+                    grad_rgb_no_activation[j] = sigmoid_rgb[j] * (1.0 - sigmoid_rgb[j]) * grad_rgb[j];
+                }
+
                 // compute grad wrt spherical harmonic coeff
                 compute_sh_grad<T, N_SH>(
-                    grad_rgb,
+                    grad_rgb_no_activation,
                     view_dir,
                     grad_sh
                 );
 
-
-                T grad_alpha_r = (computed_rgb[0] * weight - color_accum[0] * reciprocal_one_minus_alpha) * grad_image_r;
-                T grad_alpha_g = (computed_rgb[1] * weight - color_accum[1] * reciprocal_one_minus_alpha) * grad_image_g;
-                T grad_alpha_b = (computed_rgb[2] * weight - color_accum[2] * reciprocal_one_minus_alpha) * grad_image_b;
+                T grad_alpha_r = (sigmoid_rgb[0] * weight - color_accum[0] * reciprocal_one_minus_alpha) * grad_image_r;
+                T grad_alpha_g = (sigmoid_rgb[1] * weight - color_accum[1] * reciprocal_one_minus_alpha) * grad_image_g;
+                T grad_alpha_b = (sigmoid_rgb[2] * weight - color_accum[2] * reciprocal_one_minus_alpha) * grad_image_b;
                 T grad_alpha = grad_alpha_r + grad_alpha_g + grad_alpha_b;
                 grad_opa = norm_prob * grad_alpha;
 
@@ -210,9 +229,9 @@ __global__ void render_tiles_backward_kernel(
                 grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
         
                 // update color_accum for next splat
-                color_accum[0] += computed_rgb[0] * alpha * weight;
-                color_accum[1] += computed_rgb[1] * alpha * weight;
-                color_accum[2] += computed_rgb[2] * alpha * weight;
+                color_accum[0] += sigmoid_rgb[0] * alpha * weight;
+                color_accum[1] += sigmoid_rgb[1] * alpha * weight;
+                color_accum[2] += sigmoid_rgb[2] * alpha * weight;
             }
 
             // reduce gradients across warp_cg
