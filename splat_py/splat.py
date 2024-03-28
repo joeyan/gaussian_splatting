@@ -1,7 +1,7 @@
 import torch
 
 from splat_py.constants import *
-from splat_py.utils import transform_points_torch
+from splat_py.utils import transform_points_torch, compute_rays_in_world_frame
 from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeSigmaWorld,
@@ -46,9 +46,7 @@ def splat(gaussians, world_T_image, camera):
         opacities=torch.sigmoid(
             gaussians.opacities[~culling_mask]
         ),  # apply sigmoid activation to opacities
-        rgb=torch.sigmoid(
-            gaussians.rgb[~culling_mask, :]
-        ),  # apply sigmoid activation to rgb
+        rgb=gaussians.rgb[~culling_mask, :],
     )
 
     sigma_world = ComputeSigmaWorld.apply(
@@ -68,11 +66,13 @@ def splat(gaussians, world_T_image, camera):
     sorted_gaussian_idx_by_splat_idx = sort_gaussians(
         xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
     )
+    rays = compute_rays_in_world_frame(camera, world_T_image)
     image = RenderImage.apply(
         culled_gaussians.rgb,
         culled_gaussians.opacities,
         uv,
         sigma_image,
+        rays,
         splat_start_end_idx_by_tile_idx,
         sorted_gaussian_idx_by_splat_idx,
         torch.tensor([camera.height, camera.width], device=uv.device),

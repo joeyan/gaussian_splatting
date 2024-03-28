@@ -11,7 +11,7 @@ from splat_py.cuda_autograd_functions import (
     ComputeSigmaImage,
     RenderImage,
 )
-from splat_py.structs import Gaussians, Tiles, SimpleTimer
+from splat_py.structs import Gaussians, Tiles, SimpleTimer, GSMetrics
 from splat_py.splat import splat
 from splat_py.tile_culling import (
     match_gaussians_to_tiles_gpu,
@@ -21,8 +21,8 @@ from splat_py.utils import (
     inverse_sigmoid,
     quaternion_to_rotation_torch,
     transform_points_torch,
+    compute_rays_in_world_frame,
 )
-
 
 class GSTrainer:
     def __init__(self, gaussians, images, cameras):
@@ -34,9 +34,11 @@ class GSTrainer:
             self.gaussians.xyz.device
         )
 
-        self.update_optimizer(iter_num=0)
+        self.update_optimizer()
         self.reset_grad_accum()
         self.setup_test_train_split()
+
+        self.metrics = GSMetrics()
 
     def setup_test_train_split(self):
         num_images = len(self.images)
@@ -44,23 +46,22 @@ class GSTrainer:
         self.test_split = np.arange(0, num_images, TEST_SPLIT_RATIO)
         self.train_split = np.array(list(set(all_images) - set(self.test_split)))
 
-    def update_optimizer(self, iter_num):
+    def update_optimizer(self):
         print("Updating optimizer")
         # add new params to optimizer
-        new_lr = BASE_LR * (NUM_ITERS - iter_num * 0.9) / NUM_ITERS
         self.optimizer = torch.optim.Adam(
             [
-                {"params": self.gaussians.xyz, "lr": new_lr * XYZ_LR_MULTIPLIER},
+                {"params": self.gaussians.xyz, "lr": BASE_LR * XYZ_LR_MULTIPLIER},
                 {
                     "params": self.gaussians.quaternions,
-                    "lr": new_lr * QUAT_LR_MULTIPLIER,
+                    "lr": BASE_LR * QUAT_LR_MULTIPLIER,
                 },
-                {"params": self.gaussians.scales, "lr": new_lr * SCALE_LR_MULTIPLIER},
+                {"params": self.gaussians.scales, "lr": BASE_LR * SCALE_LR_MULTIPLIER},
                 {
                     "params": self.gaussians.opacities,
-                    "lr": new_lr * OPACITY_LR_MULTIPLIER,
+                    "lr": BASE_LR * OPACITY_LR_MULTIPLIER,
                 },
-                {"params": self.gaussians.rgb, "lr": new_lr * RGB_LR_MULTIPLIER},
+                {"params": self.gaussians.rgb, "lr": BASE_LR * RGB_LR_MULTIPLIER},
             ],
         )
 
@@ -103,8 +104,26 @@ class GSTrainer:
         self.gaussians.opacities = torch.nn.Parameter(
             torch.ones_like(self.gaussians.opacities) * inverse_sigmoid(INITIAL_OPACITY)
         )
-        self.update_optimizer(iter)
+        self.update_optimizer()
         self.reset_grad_accum()
+
+    def add_sh_band(self):
+        num_gaussians = self.gaussians.xyz.shape[0]
+        current_sh_band = 1
+        if self.gaussians.rgb.dim() == 3:
+            current_sh_band = self.gaussians.rgb.shape[2]
+
+        if current_sh_band == 1:
+            new_rgb = torch.zeros(num_gaussians, 3, 4, dtype=self.gaussians.rgb.dtype, device=self.gaussians.rgb.device)
+            new_rgb[:, :, 0] = self.gaussians.rgb
+            self.gaussians.rgb = torch.nn.Parameter(new_rgb)
+            self.update_optimizer()
+        
+        if current_sh_band == 4:
+            new_rgb = torch.zeros(num_gaussians, 3, 9, dtype=self.gaussians.rgb.dtype, device=self.gaussians.rgb.device)
+            new_rgb[:, :, :4] = self.gaussians.rgb
+            self.gaussians.rgb = torch.nn.Parameter(new_rgb)
+            self.update_optimizer()
 
     def delete_param_from_optimizer(self, new_param, keep_mask, param_index):
         old_optimizer_param = self.optimizer.param_groups[param_index]["params"][0]
@@ -135,31 +154,60 @@ class GSTrainer:
         old_optimizer_param = self.optimizer.param_groups[param_index]["params"][0]
         optimizer_param_state = self.optimizer.state[old_optimizer_param]
 
-        # set exp_avg and exp_avg_sq for cloned gaussians to zero
-        optimizer_param_state["exp_avg"] = torch.cat(
-            [
-                optimizer_param_state["exp_avg"],
-                torch.zeros(
-                    num_added,
-                    optimizer_param_state["exp_avg"].shape[1],
-                    device=optimizer_param_state["exp_avg"].device,
-                    dtype=optimizer_param_state["exp_avg"].dtype,
-                ),
-            ],
-            dim=0,
-        )
-        optimizer_param_state["exp_avg_sq"] = torch.cat(
-            [
-                optimizer_param_state["exp_avg_sq"],
-                torch.zeros(
-                    num_added,
-                    optimizer_param_state["exp_avg_sq"].shape[1],
-                    device=optimizer_param_state["exp_avg_sq"].device,
-                    dtype=optimizer_param_state["exp_avg_sq"].dtype,
-                ),
-            ],
-            dim=0,
-        )
+        if new_param.dim() == 2:
+            # set exp_avg and exp_avg_sq for cloned gaussians to zero
+            optimizer_param_state["exp_avg"] = torch.cat(
+                [
+                    optimizer_param_state["exp_avg"],
+                    torch.zeros(
+                        num_added,
+                        new_param.shape[1],
+                        device=optimizer_param_state["exp_avg"].device,
+                        dtype=optimizer_param_state["exp_avg"].dtype,
+                    ),
+                ],
+                dim=0,
+            )
+            optimizer_param_state["exp_avg_sq"] = torch.cat(
+                [
+                    optimizer_param_state["exp_avg_sq"],
+                    torch.zeros(
+                        num_added,
+                        new_param.shape[1],
+                        device=optimizer_param_state["exp_avg_sq"].device,
+                        dtype=optimizer_param_state["exp_avg_sq"].dtype,
+                    ),
+                ],
+                dim=0,
+            )
+        if new_param.dim() == 3:
+            # set exp_avg and exp_avg_sq for cloned gaussians to zero
+            optimizer_param_state["exp_avg"] = torch.cat(
+                [
+                    optimizer_param_state["exp_avg"],
+                    torch.zeros(
+                        num_added,
+                        new_param.shape[1],
+                        new_param.shape[2],
+                        device=optimizer_param_state["exp_avg"].device,
+                        dtype=optimizer_param_state["exp_avg"].dtype,
+                    ),
+                ],
+                dim=0,
+            )
+            optimizer_param_state["exp_avg_sq"] = torch.cat(
+                [
+                    optimizer_param_state["exp_avg_sq"],
+                    torch.zeros(
+                        num_added,
+                        new_param.shape[1],
+                        new_param.shape[2],
+                        device=optimizer_param_state["exp_avg_sq"].device,
+                        dtype=optimizer_param_state["exp_avg_sq"].dtype,
+                    ),
+                ],
+                dim=0,
+            )
 
         del self.optimizer.state[old_optimizer_param]
         del old_optimizer_param
@@ -223,9 +271,14 @@ class GSTrainer:
         split_opacities = (
             self.gaussians.opacities[split_mask].clone().detach().repeat(samples, 1)
         )
-        split_rgb = (
-            self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1)
-        )
+        if self.gaussians.rgb.dim() == 3:
+            split_rgb = (
+                self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1, 1)
+            )
+        else:
+            split_rgb = (
+                self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1)
+            )
         split_xyz = (
             self.gaussians.xyz[split_mask, :].clone().detach().repeat(samples, 1)
         )
@@ -327,7 +380,7 @@ class GSTrainer:
         self.reset_grad_accum()
         self.check_nans()
 
-    def compute_test_psnr(self):
+    def compute_test_psnr(self, save_test_images=False, iter=0):
         with torch.no_grad():
             test_psnrs = []
             for test_img_idx in self.test_split:
@@ -343,6 +396,17 @@ class GSTrainer:
                 l2_loss = torch.nn.functional.mse_loss(test_image, gt_image)
                 psnr = -10 * torch.log10(l2_loss).item()
                 test_psnrs.append(psnr)
+
+                if save_test_images:
+                    debug_image = test_image.clip(0, 1).detach().cpu().numpy()
+                    cv2.imwrite(
+                        "{}/iter{}_test_image_{}.png".format(OUTPUT_DIR, iter, test_img_idx),
+                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[
+                            ..., ::-1
+                        ],
+                    )
+
+
         return torch.tensor(test_psnrs)
 
     def splat_and_compute_loss(self, image_idx, world_T_image, camera):
@@ -377,9 +441,7 @@ class GSTrainer:
                 opacities=torch.sigmoid(
                     self.gaussians.opacities[~culling_mask]
                 ),  # apply sigmoid activation to opacities
-                rgb=torch.sigmoid(
-                    self.gaussians.rgb[~culling_mask, :]
-                ),  # apply sigmoid activation to rgb
+                rgb=self.gaussians.rgb[~culling_mask, :],
             )
             sigma_world = ComputeSigmaWorld.apply(
                 culled_gaussians.quaternions, culled_gaussians.scales
@@ -402,11 +464,13 @@ class GSTrainer:
                 gaussian_idx_by_splat_idx,
                 tile_idx_by_splat_idx,
             )
+            rays = compute_rays_in_world_frame(camera, world_T_image)
             image = RenderImage.apply(
                 culled_gaussians.rgb,
                 culled_gaussians.opacities,
                 culled_uv,
                 sigma_image,
+                rays,
                 splat_start_end_idx_by_tile_idx,
                 sorted_gaussian_idx_by_splat_idx,
                 torch.tensor([camera.height, camera.width], device=culled_uv.device),
@@ -448,6 +512,8 @@ class GSTrainer:
             self.optimizer.zero_grad()
 
             image, psnr = self.splat_and_compute_loss(image_idx, world_T_image, camera)
+            self.metrics.train_psnr.append(psnr.item())
+            self.metrics.num_gaussians.append(self.gaussians.xyz.shape[0])
 
             if i % PRINT_INTERVAL == 0:
                 print(
@@ -460,6 +526,7 @@ class GSTrainer:
             # if adaptive control occurs in the same iteration, test psnr will be low
             if i % TEST_EVAL_INTERVAL == 0:
                 test_psnrs = self.compute_test_psnr()
+                self.metrics.test_psnr.append(test_psnrs.mean().item())
                 print("\tTEST SPLIT PSNR: ", test_psnrs.mean().item())
 
             if (
@@ -476,6 +543,9 @@ class GSTrainer:
             ):
                 self.reset_opacities(i)
 
+            if USE_SH_COEFF and i > 0 and i % ADD_SH_BAND_INTERVAL == 0:
+                self.add_sh_band()
+
             if i % SAVE_DEBUG_IMAGE_INTERVAL == 0:
                 with SimpleTimer("Save Images"):
                     debug_image = image.clip(0, 1).detach().cpu().numpy()
@@ -485,5 +555,5 @@ class GSTrainer:
                             ..., ::-1
                         ],
                     )
-        final_psnrs = self.compute_test_psnr()
+        final_psnrs = self.compute_test_psnr(save_test_images=True, iter=i)
         print("Final PSNR: ", final_psnrs.mean().item())

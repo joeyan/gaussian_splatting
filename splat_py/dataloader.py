@@ -118,10 +118,8 @@ class ColmapData(GaussianSplattingDataset):
         row = 0
         for _, point in sparse_points.items():
             self.xyz[row] = torch.tensor(point.xyz, dtype=torch.float32)
-            # TODO - is inverse sigmoid required for this step?
             self.rgb[row] = torch.tensor(point.rgb / 255.0, dtype=torch.float32)
             row += 1
-        self.rgb = inverse_sigmoid(self.rgb)
 
         # load images
         image_info_path = os.path.join(
