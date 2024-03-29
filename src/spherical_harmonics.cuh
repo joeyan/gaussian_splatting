@@ -80,17 +80,17 @@ __device__ __inline__ void sh_to_rgb(
 ){
     // set rgb to zero order value
     #pragma unroll
-    for (int channel_idx = 0; channel_idx < 3; channel_idx++){
-        rgb[channel_idx] = sh_at_view_dir[0] * sh_coeff[N_SH * channel_idx];
+    for (int channel = 0; channel < 3; channel++){
+        rgb[channel] = sh_at_view_dir[0] * sh_coeff[N_SH * channel];
     }
 
     // add higher order values if needed
     if (N_SH < 4) return;
     #pragma unroll
-    for (int sh_idx = 1; sh_idx < N_SH; sh_idx++){
+    for (int sh = 1; sh < N_SH; sh++){
         #pragma unroll
-        for (int channel_idx = 0; channel_idx < 3; channel_idx++){
-            rgb[channel_idx] += sh_at_view_dir[sh_idx] * sh_coeff[N_SH * channel_idx + sh_idx];
+        for (int channel = 0; channel < 3; channel++){
+            rgb[channel] += sh_at_view_dir[sh] * sh_coeff[N_SH * channel + sh];
         }
     }
 }
@@ -102,10 +102,10 @@ __device__ __inline__ void compute_sh_grad(
     T* __restrict__ grad_sh
 ) {
     #pragma unroll
-    for (int sh_idx = 0; sh_idx < N_SH; sh_idx++){
+    for (int sh = 0; sh < N_SH; sh++){
         #pragma unroll
-        for (int channel_idx = 0; channel_idx < 3; channel_idx++){
-            grad_sh[N_SH * channel_idx + sh_idx] = sh_at_view_dir[sh_idx] * grad_rgb[channel_idx];
+        for (int channel = 0; channel < 3; channel++){
+            grad_sh[N_SH * channel + sh] = sh_at_view_dir[sh] * grad_rgb[channel];
         }
     }
 }

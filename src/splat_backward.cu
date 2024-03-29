@@ -44,10 +44,9 @@ __global__ void render_tiles_backward_kernel(
     int num_splats_this_tile = splat_idx_end - splat_idx_start;
 
     int num_splats_this_pixel;
-    T grad_image_r;
-    T grad_image_g;
-    T grad_image_b;
     T weight;
+    // make local copy for faster access
+    T grad_image_local[3];
     T color_accum[3] = {0.0, 0.0, 0.0};
     T view_dir[3];
     T sh_at_view_dir[N_SH];
@@ -57,21 +56,19 @@ __global__ void render_tiles_backward_kernel(
 
     if (valid_pixel) {
         num_splats_this_pixel = num_splats_per_pixel[v_splat * image_width + u_splat];
-        grad_image_r = grad_image[(v_splat * image_width + u_splat) * 3 + 0];
-        grad_image_g = grad_image[(v_splat * image_width + u_splat) * 3 + 1];
-        grad_image_b = grad_image[(v_splat * image_width + u_splat) * 3 + 2];
-        
-        view_dir[0] = rays[(v_splat * image_width + u_splat) * 3 + 0];
-        view_dir[1] = rays[(v_splat * image_width + u_splat) * 3 + 1];
-        view_dir[2] = rays[(v_splat * image_width + u_splat) * 3 + 2];
-        
+
+        #pragma unroll
+        for (int channel = 0; channel < 3; channel++){
+            grad_image_local[channel] = grad_image[(v_splat * image_width + u_splat) * 3 + channel];
+            view_dir[channel] = rays[(v_splat * image_width + u_splat) * 3 + channel];
+        }
         compute_sh_coeffs_for_view_dir<T, N_SH>(
             view_dir,
             sh_at_view_dir
         );
-        
         weight = final_weight_per_pixel[u_splat + v_splat * image_width];
     }
+
     // shared memory copies of inputs
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
@@ -119,9 +116,7 @@ __global__ void render_tiles_backward_kernel(
         int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
         for (int i = chunk_end - chunk_start - 1; i >= 0; i--) {
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
-            T grad_red = 0;
-            T grad_green = 0;
-            T grad_blue = 0;
+            T grad_sh[3 * N_SH] = {0.0};
             T grad_opa = 0;
             T grad_u = 0;
             T grad_v = 0;
@@ -130,7 +125,6 @@ __global__ void render_tiles_backward_kernel(
             T grad_c = 0;
             T grad_d = 0;
 
-            T grad_sh[3 * N_SH] = {0.0};
             // don't compute grad if pixel is out of bounds or this splat is after saturation during forward pass
             if (valid_pixel && tile_splat_idx < num_splats_this_pixel) {
                 const T u_mean = _uvs[i * 2 + 0];
@@ -176,9 +170,11 @@ __global__ void render_tiles_backward_kernel(
                 }
 
                 T grad_rgb[3];
-                grad_rgb[0] = alpha * weight * grad_image_r;
-                grad_rgb[1] = alpha * weight * grad_image_g;
-                grad_rgb[2] = alpha * weight * grad_image_b;
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    grad_rgb[channel] = alpha * weight * grad_image_local[channel];
+                }
+
 
                 // compute rgb from sh
                 T computed_rgb[3];
@@ -195,10 +191,11 @@ __global__ void render_tiles_backward_kernel(
                     grad_sh
                 );
 
-                T grad_alpha_r = (computed_rgb[0] * weight - color_accum[0] * reciprocal_one_minus_alpha) * grad_image_r;
-                T grad_alpha_g = (computed_rgb[1] * weight - color_accum[1] * reciprocal_one_minus_alpha) * grad_image_g;
-                T grad_alpha_b = (computed_rgb[2] * weight - color_accum[2] * reciprocal_one_minus_alpha) * grad_image_b;
-                T grad_alpha = grad_alpha_r + grad_alpha_g + grad_alpha_b;
+                T grad_alpha = 0.0;
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    grad_alpha += (computed_rgb[channel] * weight - color_accum[channel] * reciprocal_one_minus_alpha) * grad_image_local[channel];
+                }
                 grad_opa = norm_prob * grad_alpha;
 
 
@@ -217,9 +214,9 @@ __global__ void render_tiles_backward_kernel(
                 grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
         
                 // update color_accum for next splat
-                color_accum[0] += computed_rgb[0] * alpha * weight;
-                color_accum[1] += computed_rgb[1] * alpha * weight;
-                color_accum[2] += computed_rgb[2] * alpha * weight;
+                for (int channel = 0; channel < 3; channel++) {
+                    color_accum[channel] += computed_rgb[channel] * alpha * weight;
+                }
             }
 
             // reduce gradients across warp_cg
@@ -254,11 +251,6 @@ __global__ void render_tiles_backward_kernel(
                         atomicAdd(grad_rgb + (gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx, grad_sh[(channel * N_SH) + sh_idx]);
                     }
                 }
-
-                atomicAdd(grad_rgb + gaussian_idx * 3 + 0, grad_red);
-                atomicAdd(grad_rgb + gaussian_idx * 3 + 1, grad_green);
-                atomicAdd(grad_rgb + gaussian_idx * 3 + 2, grad_blue);
-
                 atomicAdd(grad_opacity + gaussian_idx, grad_opa);
                 atomicAdd(grad_uv + gaussian_idx * 2 + 0, grad_u);
                 atomicAdd(grad_uv + gaussian_idx * 2 + 1, grad_v);

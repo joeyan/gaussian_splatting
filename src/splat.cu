@@ -84,11 +84,12 @@ __global__ void render_tiles_kernel(
             _opacity[i] = opacity[gaussian_idx];
 
             #pragma unroll
-            for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
-                // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
-                _rgb[(i * 3 + 0) * N_SH + sh_idx] = rgb[(gaussian_idx * 3 + 0) * N_SH + sh_idx];
-                _rgb[(i * 3 + 1) * N_SH + sh_idx] = rgb[(gaussian_idx * 3 + 1) * N_SH + sh_idx];
-                _rgb[(i * 3 + 2) * N_SH + sh_idx] = rgb[(gaussian_idx * 3 + 2) * N_SH + sh_idx];
+            for (int sh = 0; sh < N_SH; sh++) {
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
+                    _rgb[(i * 3 + channel) * N_SH + sh] = rgb[(gaussian_idx * 3 + channel) * N_SH + sh];
+                }
             }
 
             _sigma_image[i * 4 + 0] = sigma_image[gaussian_idx * 4 + 0];
@@ -166,9 +167,10 @@ __global__ void render_tiles_kernel(
         num_splats_per_pixel[v_splat * image_width + u_splat] = num_splats;
         final_weight_per_pixel[v_splat * image_width + u_splat] = alpha_weight;
 
-        image[(v_splat * image_width + u_splat) * 3 + 0] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 0];
-        image[(v_splat * image_width + u_splat) * 3 + 1] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 1];
-        image[(v_splat * image_width + u_splat) * 3 + 2] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + 2];
+        #pragma unroll
+        for (int channel = 0; channel < 3; channel++) {
+            image[(v_splat * image_width + u_splat) * 3 + channel] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel];
+        }
     }
 }
 

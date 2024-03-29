@@ -344,24 +344,24 @@ class GSTrainer:
     def adaptive_density_control(self):
         if not (USE_DELETE or USE_CLONE or USE_SPLIT):
             return
-        print("adaptive_density control update")
+        print("Adaptive_density control update")
         self.check_nans()
 
         # Step 1. Delete gaussians
         # low opacity
         keep_mask = self.gaussians.opacities > inverse_sigmoid(DELETE_OPACITY_THRESHOLD)
         keep_mask = keep_mask.squeeze(1)
-        print("low opacity mask: ", torch.sum(~keep_mask).detach().cpu().numpy())
+        print("\tlow opacity mask: ", torch.sum(~keep_mask).detach().cpu().numpy())
         # no views or grad
         zero_view_mask = self.grad_accum_count == 0
         zero_grad_mask = torch.norm(self.uv_grad_accum, dim=1) == 0.0
-        print("zero view mask: ", torch.sum(zero_view_mask).detach().cpu().numpy())
-        print("zero grad mask: ", torch.sum(zero_grad_mask).detach().cpu().numpy())
+        print("\tzero view mask: ", torch.sum(zero_view_mask).detach().cpu().numpy())
+        print("\tzero grad mask: ", torch.sum(zero_grad_mask).detach().cpu().numpy())
         keep_mask &= ~zero_view_mask
         keep_mask &= ~zero_grad_mask
 
         delete_count = torch.sum(~keep_mask).detach().cpu().numpy()
-        print("Deleting: ", delete_count)
+        print("\tDeleting: ", delete_count)
         if (delete_count > 0) and USE_DELETE:
             self.delete_gaussians(keep_mask)
 
@@ -377,7 +377,7 @@ class GSTrainer:
             uv_split_val = UV_GRAD_TRHRESHOLD
         densify_mask = uv_grad_avg_norm > uv_split_val
         print(
-            "Densify mask: ",
+            "\tDensify mask: ",
             torch.sum(densify_mask).detach().cpu().numpy(),
             "split_val",
             uv_split_val,
@@ -385,7 +385,7 @@ class GSTrainer:
 
         scale_max = self.gaussians.scales.exp().max(dim=-1).values
         clone_mask = densify_mask & (scale_max <= CLONE_SCALE_THRESHOLD)
-        print("Clone Mask: ", torch.sum(clone_mask).detach().cpu().numpy())
+        print("\tClone Mask: ", torch.sum(clone_mask).detach().cpu().numpy())
 
         # Step 2.1 clone gaussians
         if clone_mask.any() and USE_CLONE:
@@ -400,7 +400,7 @@ class GSTrainer:
         too_big_mask = scale_max > scale_split
         split_mask = split_mask | too_big_mask
 
-        print("Split Mask: ", torch.sum(split_mask).detach().cpu().numpy())
+        print("\tSplit Mask: ", torch.sum(split_mask).detach().cpu().numpy())
         # Step 2.2 split gaussians
         if split_mask.any() and USE_SPLIT:
             self.split_gaussians(split_mask)
@@ -556,7 +556,7 @@ class GSTrainer:
             if i % TEST_EVAL_INTERVAL == 0:
                 test_psnrs = self.compute_test_psnr()
                 self.metrics.test_psnr.append(test_psnrs.mean().item())
-                print("\tTEST SPLIT PSNR: ", test_psnrs.mean().item())
+                print("\t\t\t\t\t\tTEST SPLIT PSNR: ", test_psnrs.mean().item())
 
             if (
                 i > ADAPTIVE_CONTROL_START
