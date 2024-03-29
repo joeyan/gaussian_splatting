@@ -1,16 +1,16 @@
 #include <torch/extension.h>
 
 void render_tiles_cuda(
-        torch::Tensor uvs,
-        torch::Tensor opacity,
-        torch::Tensor rgb,
-        torch::Tensor sigma_image,
-        torch::Tensor view_dir_by_pixel,
-        torch::Tensor splat_start_end_idx_by_tile_idx,
-        torch::Tensor gaussian_idx_by_splat_idx,
-        torch::Tensor num_splats_per_pixel,
-        torch::Tensor final_weight_per_pixel,
-        torch::Tensor rendered_image
+    torch::Tensor uvs,
+    torch::Tensor opacity,
+    torch::Tensor rgb,
+    torch::Tensor sigma_image,
+    torch::Tensor view_dir_by_pixel,
+    torch::Tensor splat_start_end_idx_by_tile_idx,
+    torch::Tensor gaussian_idx_by_splat_idx,
+    torch::Tensor num_splats_per_pixel,
+    torch::Tensor final_weight_per_pixel,
+    torch::Tensor rendered_image
 );
 
 void render_tiles_backward_cuda(
@@ -30,13 +30,9 @@ void render_tiles_backward_cuda(
     torch::Tensor grad_sigma_image
 );
 
-void camera_projection_cuda(
-    torch::Tensor xyz,
-    torch::Tensor K,
-    torch::Tensor uv
-);
+void camera_projection_cuda(torch::Tensor xyz, torch::Tensor K, torch::Tensor uv);
 
-void camera_projection_backward_cuda (
+void camera_projection_backward_cuda(
     torch::Tensor xyz,
     torch::Tensor K,
     torch::Tensor uv_grad_out,
@@ -57,11 +53,7 @@ void compute_sigma_world_backward_cuda(
     torch::Tensor scales_grad_in
 );
 
-void compute_projection_jacobian_cuda(
-    torch::Tensor xyz,
-    torch::Tensor K,
-    torch::Tensor J
-);
+void compute_projection_jacobian_cuda(torch::Tensor xyz, torch::Tensor K, torch::Tensor J);
 
 void compute_projection_jacobian_backward_cuda(
     torch::Tensor xyz,
@@ -74,7 +66,7 @@ void compute_sigma_image_cuda(
     torch::Tensor sigma_world,
     torch::Tensor J,
     torch::Tensor world_T_image,
-    torch::Tensor 
+    torch::Tensor
 );
 
 void compute_sigma_image_backward_cuda(
@@ -86,7 +78,7 @@ void compute_sigma_image_backward_cuda(
     torch::Tensor J_grad_in
 );
 
-void compute_tiles_cuda (
+void compute_tiles_cuda(
     torch::Tensor uvs,
     torch::Tensor sigma_image,
     int n_tiles_x,
@@ -108,13 +100,37 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("render_tiles_cuda", &render_tiles_cuda, "Render tiles CUDA");
     m.def("render_tiles_backward_cuda", &render_tiles_backward_cuda, "Render tiles backward");
     m.def("camera_projection_cuda", &camera_projection_cuda, "project point into image CUDA");
-    m.def("camera_projection_backward_cuda", &camera_projection_backward_cuda, "project point into image backward CUDA");
+    m.def(
+        "camera_projection_backward_cuda",
+        &camera_projection_backward_cuda,
+        "project point into image backward CUDA"
+    );
     m.def("compute_sigma_world_cuda", &compute_sigma_world_cuda, "compute sigma world CUDA");
-    m.def("compute_sigma_world_backward_cuda", &compute_sigma_world_backward_cuda, "compute sigma world backward CUDA");
-    m.def("compute_projection_jacobian_cuda", &compute_projection_jacobian_cuda, "compute projection jacobian CUDA");
-    m.def("compute_projection_jacobian_backward_cuda", &compute_projection_jacobian_backward_cuda, "compute projection jacobian backward CUDA");
+    m.def(
+        "compute_sigma_world_backward_cuda",
+        &compute_sigma_world_backward_cuda,
+        "compute sigma world backward CUDA"
+    );
+    m.def(
+        "compute_projection_jacobian_cuda",
+        &compute_projection_jacobian_cuda,
+        "compute projection jacobian CUDA"
+    );
+    m.def(
+        "compute_projection_jacobian_backward_cuda",
+        &compute_projection_jacobian_backward_cuda,
+        "compute projection jacobian backward CUDA"
+    );
     m.def("compute_sigma_image_cuda", &compute_sigma_image_cuda, "compute sigma image CUDA");
-    m.def("compute_sigma_image_backward_cuda", &compute_sigma_image_backward_cuda, "compute sigma image backward CUDA");
+    m.def(
+        "compute_sigma_image_backward_cuda",
+        &compute_sigma_image_backward_cuda,
+        "compute sigma image backward CUDA"
+    );
     m.def("compute_tiles_cuda", &compute_tiles_cuda, "compute tiles CUDA");
-    m.def("compute_splat_to_gaussian_id_vector_cuda", &compute_splat_to_gaussian_id_vector_cuda, "compute tile to gaussian vector CUDA");
+    m.def(
+        "compute_splat_to_gaussian_id_vector_cuda",
+        &compute_splat_to_gaussian_id_vector_cuda,
+        "compute tile to gaussian vector CUDA"
+    );
 }

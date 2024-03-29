@@ -1,10 +1,10 @@
-#include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <torch/extension.h>
 
 #include "checks.cuh"
 
-__global__ void compute_tiles_kernel (
+__global__ void compute_tiles_kernel(
     const float* __restrict__ uvs,
     const float* __restrict__ sigma_image,
     const int n_tiles_x,
@@ -40,7 +40,8 @@ __global__ void compute_tiles_kernel (
         float box_top = uvs[gaussian_idx * 2 + 1] - r_major;
         float box_bottom = uvs[gaussian_idx * 2 + 1] + r_major;
 
-        // don't need to search the entire image, only need to look at all tiles within max radius of the projected center of the gaussian
+        // don't need to search the entire image, only need to look at all tiles
+        // within max radius of the projected center of the gaussian
         int radius_tiles = ceilf(r_major / 16.0f) + 1;
 
         int projected_tile_x = floorf(uvs[gaussian_idx * 2] / 16.0f);
@@ -61,9 +62,9 @@ __global__ void compute_tiles_kernel (
                 }
 
                 float tile_left = (float)tile_x * 16.0f;
-                float tile_right = (float)(tile_x + 1)  * 16.0f;
-                float tile_top = (float)tile_y  * 16.0f;
-                float tile_bottom = (float)(tile_y + 1)  * 16.0f;
+                float tile_right = (float)(tile_x + 1) * 16.0f;
+                float tile_top = (float)tile_y * 16.0f;
+                float tile_bottom = (float)(tile_y + 1) * 16.0f;
 
                 float min_right = fminf(tile_right, box_right);
                 float max_left = fmaxf(tile_left, box_left);
@@ -73,11 +74,13 @@ __global__ void compute_tiles_kernel (
 
                 // from split axis theorem, need overlap on all axes
                 if (min_right > max_left && min_bottom > max_top) {
-                    // get the next available index in gaussian_indices_per_tile[tile_idx]
+                    // get the next available index in
+                    // gaussian_indices_per_tile[tile_idx]
                     int index = atomicAdd(num_gaussians_per_tile + tile_idx, 1);
                     if (index < max_gaussians_per_tile) {
                         // write gaussian index
-                        gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + index] = gaussian_idx;
+                        gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + index] =
+                            gaussian_idx;
                     }
                 }
             }
@@ -116,7 +119,8 @@ __global__ void compute_tiles_kernel (
         float obb_br_x = r_major * cos_theta - r_minor * sin_theta + uvs[gaussian_idx * 2];
         float obb_br_y = r_major * sin_theta + r_minor * cos_theta + uvs[gaussian_idx * 2 + 1];
 
-        // don't need to search the entire image, only need to look at all tiles within max radius of the projected center of the gaussian
+        // don't need to search the entire image, only need to look at all tiles
+        // within max radius of the projected center of the gaussian
         int radius_tiles = ceilf(r_major / 16.0f) + 1;
 
         int projected_tile_x = floorf(uvs[gaussian_idx * 2] / 16.0f);
@@ -137,9 +141,9 @@ __global__ void compute_tiles_kernel (
                 }
 
                 float tile_left = (float)tile_x * 16.0f;
-                float tile_right = (float)(tile_x + 1)  * 16.0f;
-                float tile_top = (float)tile_y  * 16.0f;
-                float tile_bottom = (float)(tile_y + 1)  * 16.0f;
+                float tile_right = (float)(tile_x + 1) * 16.0f;
+                float tile_top = (float)tile_y * 16.0f;
+                float tile_bottom = (float)(tile_y + 1) * 16.0f;
 
                 // from split axis theorem, need overlap on all axes
                 // axis0 - X axis
@@ -157,17 +161,19 @@ __global__ void compute_tiles_kernel (
                 // axis 2 - obb major axis
                 float obb_major_axis_x = obb_tr_x - obb_tl_x;
                 float obb_major_axis_y = obb_tr_y - obb_tl_y;
-                float tl_ax2 = obb_major_axis_x * tile_left + obb_major_axis_y * tile_top; // tl
-                float tr_ax2 = obb_major_axis_x * tile_right + obb_major_axis_y * tile_top; // tr
-                float bl_ax2 = obb_major_axis_x * tile_left + obb_major_axis_y * tile_bottom; // bl
+                float tl_ax2 = obb_major_axis_x * tile_left + obb_major_axis_y * tile_top;     // tl
+                float tr_ax2 = obb_major_axis_x * tile_right + obb_major_axis_y * tile_top;    // tr
+                float bl_ax2 = obb_major_axis_x * tile_left + obb_major_axis_y * tile_bottom;  // bl
                 float br_ax2 = obb_major_axis_x * tile_right + obb_major_axis_y * tile_bottom; // br
 
                 float min_tile = fminf(fminf(tl_ax2, tr_ax2), fminf(bl_ax2, br_ax2));
                 float max_tile = fmaxf(fmaxf(tl_ax2, tr_ax2), fmaxf(bl_ax2, br_ax2));
 
                 // top and bottom corners of obb project to same points on ax2
-                float obb_r_ax2 = obb_major_axis_x * obb_tr_x + obb_major_axis_y * obb_tr_y; // obb top right
-                float obb_l_ax2 = obb_major_axis_x * obb_tl_x + obb_major_axis_y * obb_tl_y; // obb top left
+                float obb_r_ax2 =
+                    obb_major_axis_x * obb_tr_x + obb_major_axis_y * obb_tr_y; // obb top right
+                float obb_l_ax2 =
+                    obb_major_axis_x * obb_tl_x + obb_major_axis_y * obb_tl_y; // obb top left
                 float min_obb = fminf(obb_r_ax2, obb_l_ax2);
                 float max_obb = fmaxf(obb_r_ax2, obb_l_ax2);
 
@@ -177,36 +183,39 @@ __global__ void compute_tiles_kernel (
                 // axis 3 - obb minor axis
                 float obb_minor_axis_x = obb_tr_x - obb_br_x;
                 float obb_minor_axis_y = obb_tr_y - obb_br_y;
-                tl_ax2 = obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_top; // tl
-                tr_ax2 = obb_minor_axis_x * tile_right + obb_minor_axis_y * tile_top; // tr
-                bl_ax2 = obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_bottom; // bl
+                tl_ax2 = obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_top;     // tl
+                tr_ax2 = obb_minor_axis_x * tile_right + obb_minor_axis_y * tile_top;    // tr
+                bl_ax2 = obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_bottom;  // bl
                 br_ax2 = obb_minor_axis_x * tile_right + obb_minor_axis_y * tile_bottom; // br
 
                 min_tile = fminf(fminf(tl_ax2, tr_ax2), fminf(bl_ax2, br_ax2));
                 max_tile = fmaxf(fmaxf(tl_ax2, tr_ax2), fmaxf(bl_ax2, br_ax2));
 
                 // top and bottom corners of obb project to same points on ax2
-                float obb_t_ax2 = obb_minor_axis_x * obb_tr_x + obb_minor_axis_y * obb_tr_y; // obb top right
-                float obb_b_ax2 = obb_minor_axis_x * obb_br_x + obb_minor_axis_y * obb_br_y; // obb bottom right
+                float obb_t_ax2 =
+                    obb_minor_axis_x * obb_tr_x + obb_minor_axis_y * obb_tr_y; // obb top right
+                float obb_b_ax2 =
+                    obb_minor_axis_x * obb_br_x + obb_minor_axis_y * obb_br_y; // obb bottom right
                 min_obb = fminf(obb_t_ax2, obb_b_ax2);
                 max_obb = fmaxf(obb_t_ax2, obb_b_ax2);
                 if (min_tile > max_obb || max_tile < min_obb) {
                     continue;
                 }
                 // passed all checks - there is overlap
-                // get the next available index in gaussian_indices_per_tile[tile_idx]
+                // get the next available index in
+                // gaussian_indices_per_tile[tile_idx]
                 int index = atomicAdd(num_gaussians_per_tile + tile_idx, 1);
                 if (index < max_gaussians_per_tile) {
                     // write gaussian index
-                    gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + index] = gaussian_idx;
+                    gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + index] =
+                        gaussian_idx;
                 }
             }
         }
     }
 }
 
-
-void compute_tiles_cuda (
+void compute_tiles_cuda(
     torch::Tensor uvs,
     torch::Tensor sigma_image,
     int n_tiles_x,
@@ -230,9 +239,18 @@ void compute_tiles_cuda (
     TORCH_CHECK(sigma_image.size(0) == N, "sigma_image must have shape Nx2x2");
     TORCH_CHECK(sigma_image.size(1) == 2, "sigma_image must have shape Nx2x2");
     TORCH_CHECK(sigma_image.size(2) == 2, "sigma_image must have shape Nx2x2");
-    TORCH_CHECK(gaussian_indices_per_tile.size(0) == n_tiles_x * n_tiles_y, "gaussian_indices_per_tile must have shape n_tiles x max_gaussians_per_tile");
-    TORCH_CHECK(num_gaussians_per_tile.size(0) == n_tiles_x * n_tiles_y, "num_gaussians_per_tile must have shape n_tiles x 1");
-    TORCH_CHECK(num_gaussians_per_tile.size(1) == 1, "num_gaussians_per_tile must have shape n_tiles x 1");
+    TORCH_CHECK(
+        gaussian_indices_per_tile.size(0) == n_tiles_x * n_tiles_y,
+        "gaussian_indices_per_tile must have shape n_tiles x "
+        "max_gaussians_per_tile"
+    );
+    TORCH_CHECK(
+        num_gaussians_per_tile.size(0) == n_tiles_x * n_tiles_y,
+        "num_gaussians_per_tile must have shape n_tiles x 1"
+    );
+    TORCH_CHECK(
+        num_gaussians_per_tile.size(1) == 1, "num_gaussians_per_tile must have shape n_tiles x 1"
+    );
 
     int max_gaussians_per_tile = gaussian_indices_per_tile.size(1);
     const int max_threads_per_block = 1024;
@@ -255,7 +273,7 @@ void compute_tiles_cuda (
 }
 
 __global__ void compute_splat_to_gaussian_id_vector_kernel(
-    const int* __restrict__ gaussian_indices_per_tile, 
+    const int* __restrict__ gaussian_indices_per_tile,
     const int* __restrict__ num_gaussians_per_tile,
     const int* __restrict__ splat_to_gaussian_id_vector_offsets,
     const int n_tiles,
@@ -272,10 +290,10 @@ __global__ void compute_splat_to_gaussian_id_vector_kernel(
         return;
     }
     int splat_idx = splat_to_gaussian_id_vector_offsets[tile_idx] + gaussian_idx;
-    splat_to_gaussian_id_vector[splat_idx] = gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + gaussian_idx];
+    splat_to_gaussian_id_vector[splat_idx] =
+        gaussian_indices_per_tile[tile_idx * max_gaussians_per_tile + gaussian_idx];
     tile_idx_by_splat_idx[splat_idx] = tile_idx;
 }
-
 
 void compute_splat_to_gaussian_id_vector_cuda(
     torch::Tensor gaussian_indices_per_tile,
@@ -289,7 +307,7 @@ void compute_splat_to_gaussian_id_vector_cuda(
     CHECK_VALID_INPUT(splat_to_gaussian_id_vector_offsets);
     CHECK_VALID_INPUT(splat_to_gaussian_id_vector);
     CHECK_VALID_INPUT(tile_idx_by_splat_idx);
-    
+
     CHECK_INT_TENSOR(gaussian_indices_per_tile);
     CHECK_INT_TENSOR(num_gaussians_per_tile);
     CHECK_INT_TENSOR(splat_to_gaussian_id_vector_offsets);
@@ -303,7 +321,7 @@ void compute_splat_to_gaussian_id_vector_cuda(
     const int n_tiles = num_gaussians_per_tile.size(0);
     const int n_tile_blocks = (n_tiles + 32 - 1) / 32;
 
-    // y dimension is the gaussian in each tile 
+    // y dimension is the gaussian in each tile
     const int max_gaussians_per_tile = gaussian_indices_per_tile.size(1);
     const int n_gaussian_blocks = (max_gaussians_per_tile + 32 - 1) / 32;
 

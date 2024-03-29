@@ -3,7 +3,9 @@
 # INITIALIZATION OPTIONS
 INITIAL_OPACITY = 0.2  # initial opacity value (sigmoid activation)
 INITIAL_SCALE_NUM_NEIGHBORS = 3  # number of neighbors used to compute initial scale
-INITIAL_SCALE_FACTOR = 0.8  # scaling factor for initial scale:  log(mean_neighbor_dist * factor = initial_scale)
+INITIAL_SCALE_FACTOR = (
+    0.8  # scaling factor for initial scale:  log(mean_neighbor_dist * factor = initial_scale)
+)
 MAX_INITIAL_SCALE = 0.1  # maximum initial scale value
 
 # SPLAT OPTIONS

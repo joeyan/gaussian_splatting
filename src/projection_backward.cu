@@ -1,6 +1,6 @@
-#include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <torch/extension.h>
 
 #include "checks.cuh"
 #include "matrix.cuh"
@@ -17,24 +17,25 @@ __global__ void camera_projection_backwards_kernel(
     if (i >= N) {
         return;
     }
-    if (xyz[i*3+2] <= 0.0) {
+    if (xyz[i * 3 + 2] <= 0.0) {
         return;
     }
     // du/dx = fx / z
-    T du_dx = K[0] / xyz[i*3+2];
+    T du_dx = K[0] / xyz[i * 3 + 2];
     // dv/dy = fy / z
-    T dv_dy = K[4] / xyz[i*3+2];
+    T dv_dy = K[4] / xyz[i * 3 + 2];
     // du/dz = -x* fx / (z * z)
-    T du_dz = -K[0] * xyz[i*3+0] / (xyz[i*3+2] * xyz[i*3+2]);
+    T du_dz = -K[0] * xyz[i * 3 + 0] / (xyz[i * 3 + 2] * xyz[i * 3 + 2]);
     // dv/dz = -y * fy / (z * z)
-    T dv_dz = -K[4] * xyz[i*3+1] / (xyz[i*3+2] * xyz[i*3+2]);
+    T dv_dz = -K[4] * xyz[i * 3 + 1] / (xyz[i * 3 + 2] * xyz[i * 3 + 2]);
 
-    xyz_grad_in[i*3+0] = uv_grad_out[i*2+0] * du_dx; // grad_x
-    xyz_grad_in[i*3+1] = uv_grad_out[i*2+1] * dv_dy; // grad_y
-    xyz_grad_in[i*3+2] = uv_grad_out[i*2+0] * du_dz + uv_grad_out[i*2+1] * dv_dz; // grad_z
+    xyz_grad_in[i * 3 + 0] = uv_grad_out[i * 2 + 0] * du_dx; // grad_x
+    xyz_grad_in[i * 3 + 1] = uv_grad_out[i * 2 + 1] * dv_dy; // grad_y
+    xyz_grad_in[i * 3 + 2] =
+        uv_grad_out[i * 2 + 0] * du_dz + uv_grad_out[i * 2 + 1] * dv_dz; // grad_z
 }
 
-void camera_projection_backward_cuda (
+void camera_projection_backward_cuda(
     torch::Tensor xyz,
     torch::Tensor K,
     torch::Tensor uv_grad_out,
@@ -48,8 +49,12 @@ void camera_projection_backward_cuda (
     const int N = xyz.size(0);
     TORCH_CHECK(xyz.size(1) == 3, "xyz must be of shape Nx3");
     TORCH_CHECK(K.size(0) == 3 && K.size(1) == 3, "K must be of shape 3x3");
-    TORCH_CHECK(uv_grad_out.size(0) == N && uv_grad_out.size(1) == 2, "uv_grad_out must be of shape Nx2");
-    TORCH_CHECK(xyz_grad_in.size(0) == N && xyz_grad_in.size(1) == 3, "xyz_grad_in must be of shape Nx3");
+    TORCH_CHECK(
+        uv_grad_out.size(0) == N && uv_grad_out.size(1) == 2, "uv_grad_out must be of shape Nx2"
+    );
+    TORCH_CHECK(
+        xyz_grad_in.size(0) == N && xyz_grad_in.size(1) == 3, "xyz_grad_in must be of shape Nx3"
+    );
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
@@ -79,11 +84,10 @@ void camera_projection_backward_cuda (
             xyz_grad_in.data_ptr<double>()
         );
     } else {
-       AT_ERROR("Inputs must be float32 or float64");
+        AT_ERROR("Inputs must be float32 or float64");
     }
     cudaDeviceSynchronize();
 }
-
 
 template <typename T>
 __global__ void compute_projection_jacobian_backward_kernel(
@@ -97,21 +101,23 @@ __global__ void compute_projection_jacobian_backward_kernel(
     if (i >= N) {
         return;
     }
-    
+
     T fx = K[0];
     T fy = K[4];
 
     // dJ/dx = dz/du * -fx/z^2
-    xyz_grad_in[i*3+0] = jac_grad_out[i*6+2] * -fx / (xyz[i*3+2] * xyz[i*3+2]);
+    xyz_grad_in[i * 3 + 0] = jac_grad_out[i * 6 + 2] * -fx / (xyz[i * 3 + 2] * xyz[i * 3 + 2]);
     // dJ/dy = dz/dv * -fy/z^2
-    xyz_grad_in[i*3+1] = jac_grad_out[i*6+5] * -fy / (xyz[i*3+2] * xyz[i*3+2]);
-    // dJ/dz = dx/du * -fx/z^2 + dy/dv * -fy/z^2 + dz/du * 2x * fx / z^3 + dz/dv * 2y * fy / z^3
-    xyz_grad_in[i*3+2] = jac_grad_out[i*6+0] * -fx / (xyz[i*3+2] * xyz[i*3+2]) + 
-                        jac_grad_out[i*6+4] * -fy / (xyz[i*3+2] * xyz[i*3+2]) + 
-                        jac_grad_out[i*6+2] * 2 * xyz[i*3+0] * fx / (xyz[i*3+2] * xyz[i*3+2] * xyz[i*3+2]) + 
-                        jac_grad_out[i*6+5] * 2 * xyz[i*3+1] * fy / (xyz[i*3+2] * xyz[i*3+2] * xyz[i*3+2]);
+    xyz_grad_in[i * 3 + 1] = jac_grad_out[i * 6 + 5] * -fy / (xyz[i * 3 + 2] * xyz[i * 3 + 2]);
+    // dJ/dz = dx/du * -fx/z^2 + dy/dv * -fy/z^2 + dz/du * 2x * fx / z^3 + dz/dv
+    // * 2y * fy / z^3
+    xyz_grad_in[i * 3 + 2] = jac_grad_out[i * 6 + 0] * -fx / (xyz[i * 3 + 2] * xyz[i * 3 + 2]) +
+                             jac_grad_out[i * 6 + 4] * -fy / (xyz[i * 3 + 2] * xyz[i * 3 + 2]) +
+                             jac_grad_out[i * 6 + 2] * 2 * xyz[i * 3 + 0] * fx /
+                                 (xyz[i * 3 + 2] * xyz[i * 3 + 2] * xyz[i * 3 + 2]) +
+                             jac_grad_out[i * 6 + 5] * 2 * xyz[i * 3 + 1] * fy /
+                                 (xyz[i * 3 + 2] * xyz[i * 3 + 2] * xyz[i * 3 + 2]);
 }
-
 
 void compute_projection_jacobian_backward_cuda(
     torch::Tensor xyz,
@@ -130,7 +136,7 @@ void compute_projection_jacobian_backward_cuda(
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
     dim3 gridsize(num_blocks, 1, 1);
     dim3 blocksize(max_threads_per_block, 1, 1);
-    
+
     if (xyz.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(K);
         CHECK_FLOAT_TENSOR(jac_grad_out);
@@ -159,15 +165,13 @@ void compute_projection_jacobian_backward_cuda(
     cudaDeviceSynchronize();
 }
 
-
 // __launch_bounds__ limits max threads per block
 // This is necesary for float64 used in gradcheck
 // See more:
 // https://github.com/pytorch/pytorch/issues/7680#issuecomment-390729076
 // https://discuss.pytorch.org/t/too-many-resources-requested-for-launch-when-use-gradcheck/9761
 template <typename T>
-__launch_bounds__(1024)
-__global__ void compute_sigma_world_backward_kernel(
+__launch_bounds__(1024) __global__ void compute_sigma_world_backward_kernel(
     const T* __restrict__ quaternions,
     const T* __restrict__ scales,
     const T* __restrict__ sigma_world_grad_out,
@@ -203,7 +207,7 @@ __global__ void compute_sigma_world_backward_kernel(
     T qz_norm = qz / norm_q;
 
     T R[9];
-    R[0] = 1.0 - 2.0 * qy_norm * qy_norm - 2.0 * qz_norm * qz_norm;  
+    R[0] = 1.0 - 2.0 * qy_norm * qy_norm - 2.0 * qz_norm * qz_norm;
     R[1] = 2.0 * qx_norm * qy_norm - 2.0 * qz_norm * qw_norm;
     R[2] = 2.0 * qx_norm * qz_norm + 2 * qy_norm * qw_norm;
     R[3] = 2.0 * qx_norm * qy_norm + 2 * qz_norm * qw_norm;
@@ -217,13 +221,13 @@ __global__ void compute_sigma_world_backward_kernel(
     matrix_multiply(R, S, RS, 3, 3, 3);
 
     T gradRS[9];
-    matrix_multiply(sigma_world_grad_out + i*9, RS, gradRS, 3, 3, 3);
-    
+    matrix_multiply(sigma_world_grad_out + i * 9, RS, gradRS, 3, 3, 3);
+
     T RS_t[9];
     transpose(RS, RS_t, 3, 3);
 
     T gradSR[9];
-    matrix_multiply(RS_t, sigma_world_grad_out + i*9, gradSR, 3, 3, 3);
+    matrix_multiply(RS_t, sigma_world_grad_out + i * 9, gradSR, 3, 3, 3);
 
     // first half of gradR
     T gradR[9];
@@ -273,21 +277,42 @@ __global__ void compute_sigma_world_backward_kernel(
 
     // compute gradient for normalized quaternion
     T grad_q_norm[4];
-    grad_q_norm[0] = -2.0 * qz_norm * gradR[1] + 2.0 * qy_norm * gradR[2] + 2.0 * qz_norm * gradR[3] - 2.0 * qx_norm * gradR[5] - 2.0 * qy_norm * gradR[6] + 2.0 * qx_norm * gradR[7];
-    grad_q_norm[1] = 2.0 * qy_norm * gradR[1] + 2.0 * qz_norm * gradR[2] + 2.0 * qy_norm * gradR[3] - 4.0 * qx_norm * gradR[4] - 2.0 * qw_norm * gradR[5] + 2.0 * qz_norm * gradR[6] + 2.0 * qw_norm * gradR[7] - 4.0 * qx_norm * gradR[8];
-    grad_q_norm[2] = -4.0 * qy_norm * gradR[0] + 2.0 * qx_norm * gradR[1] + 2.0 * qw_norm * gradR[2] + 2.0 * qx_norm * gradR[3] + 2.0 * qz_norm * gradR[5] - 2.0 * qw_norm * gradR[6] + 2.0 * qz_norm * gradR[7] - 4.0 * qy_norm * gradR[8];
-    grad_q_norm[3] = -4.0 * qz_norm * gradR[0] - 2.0 * qw_norm * gradR[1] + 2.0 * qx_norm * gradR[2] + 2.0 * qw_norm * gradR[3] - 4.0 * qz_norm * gradR[4] + 2.0 * qy_norm * gradR[5] + 2.0 * qx_norm * gradR[6] + 2.0 * qy_norm * gradR[7];
-
+    grad_q_norm[0] = -2.0 * qz_norm * gradR[1] + 2.0 * qy_norm * gradR[2] +
+                     2.0 * qz_norm * gradR[3] - 2.0 * qx_norm * gradR[5] -
+                     2.0 * qy_norm * gradR[6] + 2.0 * qx_norm * gradR[7];
+    grad_q_norm[1] = 2.0 * qy_norm * gradR[1] + 2.0 * qz_norm * gradR[2] +
+                     2.0 * qy_norm * gradR[3] - 4.0 * qx_norm * gradR[4] -
+                     2.0 * qw_norm * gradR[5] + 2.0 * qz_norm * gradR[6] +
+                     2.0 * qw_norm * gradR[7] - 4.0 * qx_norm * gradR[8];
+    grad_q_norm[2] = -4.0 * qy_norm * gradR[0] + 2.0 * qx_norm * gradR[1] +
+                     2.0 * qw_norm * gradR[2] + 2.0 * qx_norm * gradR[3] +
+                     2.0 * qz_norm * gradR[5] - 2.0 * qw_norm * gradR[6] +
+                     2.0 * qz_norm * gradR[7] - 4.0 * qy_norm * gradR[8];
+    grad_q_norm[3] = -4.0 * qz_norm * gradR[0] - 2.0 * qw_norm * gradR[1] +
+                     2.0 * qx_norm * gradR[2] + 2.0 * qw_norm * gradR[3] -
+                     4.0 * qz_norm * gradR[4] + 2.0 * qy_norm * gradR[5] +
+                     2.0 * qx_norm * gradR[6] + 2.0 * qy_norm * gradR[7];
 
     // apply gradient for quaternion normalization
     T q_norm_cubed = norm_q * norm_q * norm_q; // (x^2 + y^2 + z^2 + w^2)^(3/2)
 
-    quaternions_grad_in[i * 4 + 0] = (1.0 / norm_q - qw * qw / q_norm_cubed) * grad_q_norm[0] - qw * qx / q_norm_cubed * grad_q_norm[1] - qw * qy / q_norm_cubed * grad_q_norm[2] - qw * qz / q_norm_cubed * grad_q_norm[3];
-    quaternions_grad_in[i * 4 + 1] = -qw * qx / q_norm_cubed * grad_q_norm[0] + (1.0 / norm_q - qx * qx / q_norm_cubed) * grad_q_norm[1] - qx * qy / q_norm_cubed * grad_q_norm[2] - qx * qz / q_norm_cubed * grad_q_norm[3];
-    quaternions_grad_in[i * 4 + 2] = -qw * qy / q_norm_cubed * grad_q_norm[0] - qx * qy / q_norm_cubed * grad_q_norm[1] + (1.0 / norm_q - qy * qy / q_norm_cubed) * grad_q_norm[2] - qy * qz / q_norm_cubed * grad_q_norm[3];
-    quaternions_grad_in[i * 4 + 3] = -qw * qz / q_norm_cubed * grad_q_norm[0] - qx * qz / q_norm_cubed * grad_q_norm[1] - qy * qz / q_norm_cubed * grad_q_norm[2] + (1.0 / norm_q - qz * qz / q_norm_cubed) * grad_q_norm[3];
+    quaternions_grad_in[i * 4 + 0] = (1.0 / norm_q - qw * qw / q_norm_cubed) * grad_q_norm[0] -
+                                     qw * qx / q_norm_cubed * grad_q_norm[1] -
+                                     qw * qy / q_norm_cubed * grad_q_norm[2] -
+                                     qw * qz / q_norm_cubed * grad_q_norm[3];
+    quaternions_grad_in[i * 4 + 1] = -qw * qx / q_norm_cubed * grad_q_norm[0] +
+                                     (1.0 / norm_q - qx * qx / q_norm_cubed) * grad_q_norm[1] -
+                                     qx * qy / q_norm_cubed * grad_q_norm[2] -
+                                     qx * qz / q_norm_cubed * grad_q_norm[3];
+    quaternions_grad_in[i * 4 + 2] = -qw * qy / q_norm_cubed * grad_q_norm[0] -
+                                     qx * qy / q_norm_cubed * grad_q_norm[1] +
+                                     (1.0 / norm_q - qy * qy / q_norm_cubed) * grad_q_norm[2] -
+                                     qy * qz / q_norm_cubed * grad_q_norm[3];
+    quaternions_grad_in[i * 4 + 3] = -qw * qz / q_norm_cubed * grad_q_norm[0] -
+                                     qx * qz / q_norm_cubed * grad_q_norm[1] -
+                                     qy * qz / q_norm_cubed * grad_q_norm[2] +
+                                     (1.0 / norm_q - qz * qz / q_norm_cubed) * grad_q_norm[3];
 }
-
 
 void compute_sigma_world_backward_cuda(
     torch::Tensor quaternions,
@@ -305,9 +330,19 @@ void compute_sigma_world_backward_cuda(
     const int N = quaternions.size(0);
     TORCH_CHECK(quaternions.size(1) == 4, "quaternions must be of shape Nx4");
     TORCH_CHECK(scales.size(0) == N && scales.size(1) == 3, "scales must be of shape Nx3");
-    TORCH_CHECK(sigma_world_grad_out.size(0) == N && sigma_world_grad_out.size(1) == 3 && sigma_world_grad_out.size(2) == 3, "sigma_world_grad_out must be of shape Nx3x3");
-    TORCH_CHECK(quaternions_grad_in.size(0) == N && quaternions_grad_in.size(1) == 4, "quaternions_grad_in must be of shape Nx4");
-    TORCH_CHECK(scales_grad_in.size(0) == N && scales_grad_in.size(1) == 3, "scales_grad_in must be of shape Nx3");
+    TORCH_CHECK(
+        sigma_world_grad_out.size(0) == N && sigma_world_grad_out.size(1) == 3 &&
+            sigma_world_grad_out.size(2) == 3,
+        "sigma_world_grad_out must be of shape Nx3x3"
+    );
+    TORCH_CHECK(
+        quaternions_grad_in.size(0) == N && quaternions_grad_in.size(1) == 4,
+        "quaternions_grad_in must be of shape Nx4"
+    );
+    TORCH_CHECK(
+        scales_grad_in.size(0) == N && scales_grad_in.size(1) == 3,
+        "scales_grad_in must be of shape Nx3"
+    );
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
@@ -347,8 +382,7 @@ void compute_sigma_world_backward_cuda(
 }
 
 template <typename T>
-__launch_bounds__(1024)
-__global__ void compute_sigma_image_backward_kernel(
+__launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
     const T* __restrict__ sigma_world,
     const T* __restrict__ J,
     const T* __restrict__ world_T_image,
@@ -377,14 +411,15 @@ __global__ void compute_sigma_image_backward_kernel(
     T JW[6]; // 2x3
     matrix_multiply<T>(J + i * 6, W, JW, 2, 3, 3);
 
-    T JW_t[6]; // 3x2 
+    T JW_t[6]; // 3x2
     transpose<T>(JW, JW_t, 2, 3);
 
     T JW_t_grad_sigma_image[6]; // 3x2
     matrix_multiply<T>(JW_t, sigma_image_grad_out + i * 4, JW_t_grad_sigma_image, 3, 2, 2);
 
     // Write sigma_world_grad to output
-    // compute sigma_world_grad_in (3x3) = JW_t_grad_sigma_image (3x2) @ JW (2x3)
+    // compute sigma_world_grad_in (3x3) = JW_t_grad_sigma_image (3x2) @ JW
+    // (2x3)
     matrix_multiply<T>(JW_t_grad_sigma_image, JW, sigma_world_grad_in + i * 9, 3, 2, 3);
 
     T sigma_world_JW_t[6]; // (3x2) = sigma_world (3x3) @ JW_t (3x2)
@@ -393,7 +428,8 @@ __global__ void compute_sigma_image_backward_kernel(
     T grad_sigma_image_t[4]; // 2x2
     transpose<T>(sigma_image_grad_out + i * 4, grad_sigma_image_t, 2, 2);
 
-    T grad_JW_t_left[6]; // (3x2) = sigma_world_JW_t (3x2) @ grad_sigma_image_t (2x2)
+    T grad_JW_t_left[6]; // (3x2) = sigma_world_JW_t (3x2) @ grad_sigma_image_t
+                         // (2x2)
     matrix_multiply<T>(sigma_world_JW_t, grad_sigma_image_t, grad_JW_t_left, 3, 2, 2);
 
     T sigma_world_t[9]; // 3x3
@@ -402,7 +438,8 @@ __global__ void compute_sigma_image_backward_kernel(
     T sigma_world_tJW_t[6]; // (3x2) = sigma_world_t (3x3) @ JW_t (3x2)
     matrix_multiply<T>(sigma_world_t, JW_t, sigma_world_tJW_t, 3, 3, 2);
 
-    T grad_JW_t_right[6]; // (3x2) = sigma_world_tJW_t (3x2) @ grad_sigma_image (2x2)
+    T grad_JW_t_right[6]; // (3x2) = sigma_world_tJW_t (3x2) @ grad_sigma_image
+                          // (2x2)
     matrix_multiply<T>(sigma_world_tJW_t, sigma_image_grad_out + i * 4, grad_JW_t_right, 3, 2, 2);
 
     // add grad_JW_t_left and grad_JW_t_right
@@ -421,11 +458,10 @@ __global__ void compute_sigma_image_backward_kernel(
 
     T grad_J_t[6]; // 3x2 = W (3x3) @ grad_JW_t (3x2)
     matrix_multiply<T>(W, grad_JW_t, grad_J_t, 3, 3, 2);
-    
+
     // write out grad_J
     transpose<T>(grad_J_t, J_grad_in + i * 6, 3, 2);
 }
-
 
 void compute_sigma_image_backward_cuda(
     torch::Tensor sigma_world,
@@ -443,12 +479,28 @@ void compute_sigma_image_backward_cuda(
     CHECK_VALID_INPUT(J_grad_in);
 
     const int N = sigma_world.size(0);
-    TORCH_CHECK(sigma_world.size(1) == 3 && sigma_world.size(2) == 3, "sigma_world must be of shape Nx3x3");
+    TORCH_CHECK(
+        sigma_world.size(1) == 3 && sigma_world.size(2) == 3, "sigma_world must be of shape Nx3x3"
+    );
     TORCH_CHECK(J.size(0) == N && J.size(1) == 2 && J.size(2) == 3, "J must be of shape Nx2x3");
-    TORCH_CHECK(world_T_image.size(0) == 4 && world_T_image.size(1) == 4, "world_T_image must be of shape 4x4");
-    TORCH_CHECK(sigma_image_grad_out.size(0) == N && sigma_image_grad_out.size(1) == 2 && sigma_image_grad_out.size(2) == 2, "sigma_image_grad_out must be of shape Nx2x2");
-    TORCH_CHECK(sigma_world_grad_in.size(0) == N && sigma_world_grad_in.size(1) == 3 && sigma_world_grad_in.size(2) == 3, "sigma_world_grad_in must be of shape Nx3x3");
-    TORCH_CHECK(J_grad_in.size(0) == N && J_grad_in.size(1) == 2 && J_grad_in.size(2) == 3, "J_grad_in must be of shape Nx2x3");
+    TORCH_CHECK(
+        world_T_image.size(0) == 4 && world_T_image.size(1) == 4,
+        "world_T_image must be of shape 4x4"
+    );
+    TORCH_CHECK(
+        sigma_image_grad_out.size(0) == N && sigma_image_grad_out.size(1) == 2 &&
+            sigma_image_grad_out.size(2) == 2,
+        "sigma_image_grad_out must be of shape Nx2x2"
+    );
+    TORCH_CHECK(
+        sigma_world_grad_in.size(0) == N && sigma_world_grad_in.size(1) == 3 &&
+            sigma_world_grad_in.size(2) == 3,
+        "sigma_world_grad_in must be of shape Nx3x3"
+    );
+    TORCH_CHECK(
+        J_grad_in.size(0) == N && J_grad_in.size(1) == 2 && J_grad_in.size(2) == 3,
+        "J_grad_in must be of shape Nx2x3"
+    );
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
@@ -486,7 +538,7 @@ void compute_sigma_image_backward_cuda(
             J_grad_in.data_ptr<double>()
         );
     } else {
-       AT_ERROR("Inputs must be float32 or float64");
+        AT_ERROR("Inputs must be float32 or float64");
     }
     cudaDeviceSynchronize();
 }

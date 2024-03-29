@@ -15,14 +15,9 @@ def match_gaussians_to_tiles_gpu(
 ):
     max_gaussians = max(uvs.shape[0] // 10, 1024)
     gaussian_indices_per_tile = (
-        torch.ones(
-            tiles.tile_count, max_gaussians, dtype=torch.int32, device=uvs.device
-        )
-        * -1
+        torch.ones(tiles.tile_count, max_gaussians, dtype=torch.int32, device=uvs.device) * -1
     )
-    num_gaussians_per_tile = torch.zeros(
-        tiles.tile_count, 1, dtype=torch.int32, device=uvs.device
-    )
+    num_gaussians_per_tile = torch.zeros(tiles.tile_count, 1, dtype=torch.int32, device=uvs.device)
 
     with SimpleTimer("\t\tGPU compute tiles"):
         compute_tiles_cuda(
@@ -40,18 +35,12 @@ def match_gaussians_to_tiles_gpu(
         splat_start_end_idx_by_tile_idx = torch.zeros(
             tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
         )
-        splat_start_end_idx_by_tile_idx[1:] = torch.cumsum(
-            num_gaussians_per_tile.squeeze(), dim=0
-        )
+        splat_start_end_idx_by_tile_idx[1:] = torch.cumsum(num_gaussians_per_tile.squeeze(), dim=0)
 
     num_splats = splat_start_end_idx_by_tile_idx[-1]
     # create gaussian to tile vector
-    gaussian_idx_by_splat_idx = (
-        torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
-    )
-    tile_idx_by_splat_idx = (
-        torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
-    )
+    gaussian_idx_by_splat_idx = torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
+    tile_idx_by_splat_idx = torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
 
     with SimpleTimer("\t\tGPU Tile Vectorization"):
         compute_splat_to_gaussian_id_vector_cuda(
@@ -87,9 +76,9 @@ def sort_gaussians(
         exit()
     depth_per_splat = (xyz_camera_frame[gaussian_idx_by_splat_idx])[:, 2]
     # key should be tile_id and depth in camera frame (z) so the gaussians are still associated with the correct tile
-    sort_keys = depth_per_splat.to(torch.float32) + (
-        max_depth + 1.0
-    ) * tile_idx_by_splat_idx.to(torch.float32)
+    sort_keys = depth_per_splat.to(torch.float32) + (max_depth + 1.0) * tile_idx_by_splat_idx.to(
+        torch.float32
+    )
 
     if not sort_keys.is_contiguous():
         sort_keys = sort_keys.contiguous()

@@ -26,9 +26,7 @@ def sample_pdf(xyz, sigma_world):
     return mean_1, mean_2
 
 
-def compute_initial_scale_from_sparse_points(
-    points, num_neighbors, neighbor_dist_to_scale_factor
-):
+def compute_initial_scale_from_sparse_points(points, num_neighbors, neighbor_dist_to_scale_factor):
     """
     Computes the initial gaussian scale from the distance to the nearest points
     """
@@ -38,9 +36,7 @@ def compute_initial_scale_from_sparse_points(
     n_pts = points_np.shape[0]
     scale = torch.zeros(n_pts, 3, dtype=torch.float32)
     for pt_idx in range(n_pts):
-        neighbor_dist_vect, _ = tree.query(
-            points_np[pt_idx, :], k=num_neighbors, workers=-1
-        )
+        neighbor_dist_vect, _ = tree.query(points_np[pt_idx, :], k=num_neighbors, workers=-1)
         initial_scale = min(np.mean(neighbor_dist_vect), MAX_INITIAL_SCALE)
         # use log since scale has exp activation
         scale[pt_idx, :] = torch.ones(3, dtype=torch.float32) * np.log(
@@ -73,9 +69,7 @@ def transform_points_torch(pts, transform):  # N x 3  # N x 4 x 4
     """
     Transform points by a 4x4 matrix
     """
-    pts = torch.cat(
-        [pts, torch.ones(pts.shape[0], 1, dtype=pts.dtype, device=pts.device)], dim=1
-    )
+    pts = torch.cat([pts, torch.ones(pts.shape[0], 1, dtype=pts.dtype, device=pts.device)], dim=1)
     transformed_pts = torch.matmul(transform, pts.unsqueeze(-1)).squeeze(-1)[:, :3]
 
     if torch.isnan(transformed_pts).any():

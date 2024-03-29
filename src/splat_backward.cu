@@ -1,34 +1,33 @@
-#include <torch/extension.h>
+#include <cooperative_groups.h>
+#include <cooperative_groups/reduce.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <torch/extension.h>
 
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
-#include <cooperative_groups.h>
-#include <cooperative_groups/reduce.h>
-
 namespace cg = cooperative_groups;
 
-template<typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
+template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
 __global__ void render_tiles_backward_kernel(
-        const T* __restrict__ uvs,
-        const T* __restrict__ opacity,
-        const T* __restrict__ rgb,
-        const T* __restrict__ sigma_image,
-        const T* __restrict__ view_dir_by_pixel,
-        const int* __restrict__ splat_start_end_idx_by_tile_idx,
-        const int* __restrict__ gaussian_idx_by_splat_idx,
-        const int* __restrict__ num_splats_per_pixel,
-        const T* __restrict__ final_weight_per_pixel,
-        const T* __restrict__ grad_image,
-        const int image_width,
-        const int image_height,
-        bool use_fast_exp,
-        T* __restrict__ grad_rgb, // N_gaussians x 3
-        T* __restrict__ grad_opacity, // N_gaussians x 1
-        T* __restrict__ grad_uv, // N_gaussians x 2
-        T* __restrict__ grad_sigma_image // N_gaussians x 4
+    const T* __restrict__ uvs,
+    const T* __restrict__ opacity,
+    const T* __restrict__ rgb,
+    const T* __restrict__ sigma_image,
+    const T* __restrict__ view_dir_by_pixel,
+    const int* __restrict__ splat_start_end_idx_by_tile_idx,
+    const int* __restrict__ gaussian_idx_by_splat_idx,
+    const int* __restrict__ num_splats_per_pixel,
+    const T* __restrict__ final_weight_per_pixel,
+    const T* __restrict__ grad_image,
+    const int image_width,
+    const int image_height,
+    bool use_fast_exp,
+    T* __restrict__ grad_rgb,        // N_gaussians x 3
+    T* __restrict__ grad_opacity,    // N_gaussians x 1
+    T* __restrict__ grad_uv,         // N_gaussians x 2
+    T* __restrict__ grad_sigma_image // N_gaussians x 4
 ) {
     auto block = cg::this_thread_block();
     cg::thread_block_tile<32> warp_cg = cg::tiled_partition<32>(block);
@@ -58,14 +57,11 @@ __global__ void render_tiles_backward_kernel(
         num_splats_this_pixel = num_splats_per_pixel[v_splat * image_width + u_splat];
 
         #pragma unroll
-        for (int channel = 0; channel < 3; channel++){
+        for (int channel = 0; channel < 3; channel++) {
             grad_image_local[channel] = grad_image[(v_splat * image_width + u_splat) * 3 + channel];
             view_dir[channel] = view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + channel];
         }
-        compute_sh_coeffs_for_view_dir<T, N_SH>(
-            view_dir,
-            sh_at_view_dir
-        );
+        compute_sh_coeffs_for_view_dir<T, N_SH>(view_dir, sh_at_view_dir);
         weight = final_weight_per_pixel[u_splat + v_splat * image_width];
     }
 
@@ -81,7 +77,8 @@ __global__ void render_tiles_backward_kernel(
     // copy chunks last to first
     for (int chunk_idx = num_chunks - 1; chunk_idx >= 0; chunk_idx--) {
         // copy gaussians in-order
-        __syncthreads(); // make sure previous iteration is complete before modifying inputs
+        __syncthreads(); // make sure previous iteration is complete before
+                         // modifying inputs
         for (int i = thread_id; i < CHUNK_SIZE; i += block_size) {
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
             if (tile_splat_idx >= num_splats_this_tile) {
@@ -100,7 +97,8 @@ __global__ void render_tiles_backward_kernel(
                 #pragma unroll
                 for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
                     // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
-                    _rgb[(i * 3 * N_SH) + (channel * N_SH) + sh_idx] = rgb[(gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx];
+                    _rgb[(i * 3 * N_SH) + (channel * N_SH) + sh_idx] =
+                        rgb[(gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx];
                 }
             }
 
@@ -109,7 +107,8 @@ __global__ void render_tiles_backward_kernel(
             _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
             _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
         }
-        __syncthreads(); // wait for copying to complete before attempting to use data
+        __syncthreads(); // wait for copying to complete before attempting to
+                         // use data
 
         // compute gradients for this chunk
         int chunk_start = chunk_idx * CHUNK_SIZE;
@@ -125,14 +124,15 @@ __global__ void render_tiles_backward_kernel(
             T grad_c = 0;
             T grad_d = 0;
 
-            // don't compute grad if pixel is out of bounds or this splat is after saturation during forward pass
+            // don't compute grad if pixel is out of bounds or this splat is
+            // after saturation during forward pass
             if (valid_pixel && tile_splat_idx < num_splats_this_pixel) {
                 const T u_mean = _uvs[i * 2 + 0];
                 const T v_mean = _uvs[i * 2 + 1];
 
                 const T u_diff = T(u_splat) - u_mean;
                 const T v_diff = T(v_splat) - v_mean;
-                
+
                 // 2d covariance matrix
                 const T a = _sigma_image[i * 4 + 0];
                 const T b = _sigma_image[i * 4 + 1];
@@ -148,7 +148,9 @@ __global__ void render_tiles_backward_kernel(
                         reciprocal_det = 1.0 / det;
                     }
                     // compute mahalanobis distance
-                    const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) * reciprocal_det;
+                    const T mh_sq =
+                        (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) *
+                        reciprocal_det;
                     if (mh_sq > 0.0) {
                         if (use_fast_exp) {
                             norm_prob = __expf(-0.5 * mh_sq);
@@ -157,13 +159,13 @@ __global__ void render_tiles_backward_kernel(
                         }
                     }
                 }
-                
+
                 T alpha = _opacity[i] * norm_prob;
                 if (abs(alpha - 1.0) < 1e-14) {
                     alpha -= 1e-14;
                 }
                 const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
-        
+
                 // update weight if this is not the first iteration
                 if (i < num_splats_this_pixel - 1) {
                     weight = weight * reciprocal_one_minus_alpha;
@@ -175,44 +177,38 @@ __global__ void render_tiles_backward_kernel(
                     grad_rgb[channel] = alpha * weight * grad_image_local[channel];
                 }
 
-
                 // compute rgb from sh
                 T computed_rgb[3];
-                sh_to_rgb<T, N_SH>(
-                    _rgb + i * 3 * N_SH,
-                    sh_at_view_dir,
-                    computed_rgb
-                );
-                
+                sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
+
                 // compute grad wrt spherical harmonic coeff
-                compute_sh_grad<T, N_SH>(
-                    grad_rgb,
-                    sh_at_view_dir,
-                    grad_sh
-                );
+                compute_sh_grad<T, N_SH>(grad_rgb, sh_at_view_dir, grad_sh);
 
                 T grad_alpha = 0.0;
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
-                    grad_alpha += (computed_rgb[channel] * weight - color_accum[channel] * reciprocal_one_minus_alpha) * grad_image_local[channel];
+                    grad_alpha += (computed_rgb[channel] * weight -
+                                   color_accum[channel] * reciprocal_one_minus_alpha) *
+                                  grad_image_local[channel];
                 }
                 grad_opa = norm_prob * grad_alpha;
-
 
                 // compute gradient for probability
                 T grad_prob = _opacity[i] * grad_alpha;
                 T grad_mh_sq = -0.5 * norm_prob * grad_prob;
-        
+
                 // compute gradient for projected mean
                 grad_u = -(-b * v_diff - c * v_diff + 2 * d * u_diff) * reciprocal_det * grad_mh_sq;
                 grad_v = -(2 * a * v_diff - b * u_diff - c * u_diff) * reciprocal_det * grad_mh_sq;
-        
-                const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff - c * u_diff * v_diff + d * u_diff * u_diff) * reciprocal_det * reciprocal_det;
+
+                const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
+                                       c * u_diff * v_diff + d * u_diff * u_diff) *
+                                      reciprocal_det * reciprocal_det;
                 grad_a = (-d * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_b = (c * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_c = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
-        
+
                 // update color_accum for next splat
                 for (int channel = 0; channel < 3; channel++) {
                     color_accum[channel] += computed_rgb[channel] * alpha * weight;
@@ -225,12 +221,13 @@ __global__ void render_tiles_backward_kernel(
             grad_opa = cg::reduce(warp_cg, grad_opa, cg::plus<T>());
             grad_u = cg::reduce(warp_cg, grad_u, cg::plus<T>());
             grad_v = cg::reduce(warp_cg, grad_v, cg::plus<T>());
-            
+
             #pragma unroll
             for (int channel = 0; channel < 3; channel++) {
                 #pragma unroll
                 for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
-                    grad_sh[(channel * N_SH) + sh_idx] = cg::reduce(warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<T>());
+                    grad_sh[(channel * N_SH) + sh_idx] =
+                        cg::reduce(warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<T>());
                 }
             }
             grad_a = cg::reduce(warp_cg, grad_a, cg::plus<T>());
@@ -247,8 +244,12 @@ __global__ void render_tiles_backward_kernel(
                 for (int channel = 0; channel < 3; channel++) {
                     #pragma unroll
                     for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
-                        // indexing: (gaussian_idx offset) + (channel offset) + (sh_offset)
-                        atomicAdd(grad_rgb + (gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx, grad_sh[(channel * N_SH) + sh_idx]);
+                        // indexing: (gaussian_idx offset) + (channel offset) +
+                        // (sh_offset)
+                        atomicAdd(
+                            grad_rgb + (gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx,
+                            grad_sh[(channel * N_SH) + sh_idx]
+                        );
                     }
                 }
                 atomicAdd(grad_opacity + gaussian_idx, grad_opa);
@@ -260,9 +261,8 @@ __global__ void render_tiles_backward_kernel(
                 atomicAdd(grad_sigma_image + gaussian_idx * 4 + 3, grad_d);
             }
         } // compute chunk grad
-    } // loop over chunks
+    }     // loop over chunks
 }
-
 
 void render_tiles_backward_cuda(
     torch::Tensor uvs,
@@ -303,24 +303,49 @@ void render_tiles_backward_cuda(
     TORCH_CHECK(sigma_image.size(0) == N, "sigma_image must have the same size as uvs");
     TORCH_CHECK(sigma_image.size(1) == 2, "sigma_image must have 2x2 channels");
     TORCH_CHECK(sigma_image.size(2) == 2, "sigma_image must have 2x2 channels");
-    
+
     int image_height = num_splats_per_pixel.size(0);
     int image_width = num_splats_per_pixel.size(1);
-    TORCH_CHECK(view_dir_by_pixel.size(0) == image_height, "view_dir_by_pixel must have the same size as the image");
-    TORCH_CHECK(view_dir_by_pixel.size(1) == image_width, "view_dir_by_pixel must have the same size as the image");
+    TORCH_CHECK(
+        view_dir_by_pixel.size(0) == image_height,
+        "view_dir_by_pixel must have the same size as the image"
+    );
+    TORCH_CHECK(
+        view_dir_by_pixel.size(1) == image_width,
+        "view_dir_by_pixel must have the same size as the image"
+    );
     TORCH_CHECK(view_dir_by_pixel.size(2) == 3, "view_dir_by_pixel must have 3 channels");
 
     int num_tiles_x = (image_width + 16 - 1) / 16;
     int num_tiles_y = (image_height + 16 - 1) / 16;
 
-    TORCH_CHECK(splat_start_end_idx_by_tile_idx.size(0) == num_tiles_x * num_tiles_y + 1, "splat_start_end_idx_by_tile_idx ");
-    TORCH_CHECK(num_splats_per_pixel.size(0) == image_height, "num_splats_per_pixel must have the same size as the image");
-    TORCH_CHECK(num_splats_per_pixel.size(1) == image_width, "num_splats_per_pixel must have the same size as the image");
-    TORCH_CHECK(final_weight_per_pixel.size(0) == image_height, "final_weight_per_pixel must have the same size as the image");
-    TORCH_CHECK(final_weight_per_pixel.size(1) == image_width, "final_weight_per_pixel must have the same size as the image");
-    
-    TORCH_CHECK(grad_image.size(0) == image_height, "grad_image must have the same size as the image");
-    TORCH_CHECK(grad_image.size(1) == image_width, "grad_image must have the same size as the image");
+    TORCH_CHECK(
+        splat_start_end_idx_by_tile_idx.size(0) == num_tiles_x * num_tiles_y + 1,
+        "splat_start_end_idx_by_tile_idx "
+    );
+    TORCH_CHECK(
+        num_splats_per_pixel.size(0) == image_height,
+        "num_splats_per_pixel must have the same size as the image"
+    );
+    TORCH_CHECK(
+        num_splats_per_pixel.size(1) == image_width,
+        "num_splats_per_pixel must have the same size as the image"
+    );
+    TORCH_CHECK(
+        final_weight_per_pixel.size(0) == image_height,
+        "final_weight_per_pixel must have the same size as the image"
+    );
+    TORCH_CHECK(
+        final_weight_per_pixel.size(1) == image_width,
+        "final_weight_per_pixel must have the same size as the image"
+    );
+
+    TORCH_CHECK(
+        grad_image.size(0) == image_height, "grad_image must have the same size as the image"
+    );
+    TORCH_CHECK(
+        grad_image.size(1) == image_width, "grad_image must have the same size as the image"
+    );
     TORCH_CHECK(grad_image.size(2) == 3, "grad_image must have 3 channels");
 
     dim3 block_size(16, 16, 1);
@@ -503,7 +528,7 @@ void render_tiles_backward_cuda(
                 grad_opacity.data_ptr<double>(),
                 grad_uv.data_ptr<double>(),
                 grad_sigma_image.data_ptr<double>()
-            );      
+            );
         } else if (num_sh_coeff == 16) {
             render_tiles_backward_kernel<double, 64, 16><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
@@ -523,7 +548,7 @@ void render_tiles_backward_cuda(
                 grad_opacity.data_ptr<double>(),
                 grad_uv.data_ptr<double>(),
                 grad_sigma_image.data_ptr<double>()
-            );       
+            );
         } else {
             AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
         }

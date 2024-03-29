@@ -1,25 +1,25 @@
-#include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <torch/extension.h>
 
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
-template<typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
+template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
 __global__ void render_tiles_kernel(
-        const T* __restrict__ uvs,
-        const T* __restrict__ opacity,
-        const T* __restrict__ rgb,
-        const T* __restrict__ sigma_image,
-        const T* __restrict__ view_dir_by_pixel,
-        const int* __restrict__ splat_start_end_idx_by_tile_idx,
-        const int* __restrict__ gaussian_idx_by_splat_idx,
-        const int image_width,
-        const int image_height,
-        bool use_fast_exp,
-        int* num_splats_per_pixel,
-        T* final_weight_per_pixel,
-        T* image
+    const T* __restrict__ uvs,
+    const T* __restrict__ opacity,
+    const T* __restrict__ rgb,
+    const T* __restrict__ sigma_image,
+    const T* __restrict__ view_dir_by_pixel,
+    const int* __restrict__ splat_start_end_idx_by_tile_idx,
+    const int* __restrict__ gaussian_idx_by_splat_idx,
+    const int image_width,
+    const int image_height,
+    bool use_fast_exp,
+    int* num_splats_per_pixel,
+    T* final_weight_per_pixel,
+    T* image
 ) {
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
@@ -48,10 +48,7 @@ __global__ void render_tiles_kernel(
             view_dir[axis] = view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + axis];
         }
 
-        compute_sh_coeffs_for_view_dir<T, N_SH>(
-            view_dir,
-            sh_at_view_dir
-        );
+        compute_sh_coeffs_for_view_dir<T, N_SH>(view_dir, sh_at_view_dir);
     }
 
     // shared memory copies of inputs
@@ -62,16 +59,17 @@ __global__ void render_tiles_kernel(
 
     const int shared_image_size = 16 * 16 * 3;
     __shared__ T _image[shared_image_size];
-    
+
     #pragma unroll
     for (int i = thread_id; i < shared_image_size; i += block_size) {
         _image[i] = 0.0;
     }
 
     const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    // copy chunks 
+    // copy chunks
     for (int chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
-        __syncthreads(); // make sure previous iteration is complete before modifying inputs
+        __syncthreads(); // make sure previous iteration is complete before
+                         // modifying inputs
         for (int i = thread_id; i < CHUNK_SIZE; i += block_size) {
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
             if (tile_splat_idx >= num_splats_this_tile) {
@@ -89,7 +87,8 @@ __global__ void render_tiles_kernel(
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
-                    _rgb[(i * 3 + channel) * N_SH + sh] = rgb[(gaussian_idx * 3 + channel) * N_SH + sh];
+                    _rgb[(i * 3 + channel) * N_SH + sh] =
+                        rgb[(gaussian_idx * 3 + channel) * N_SH + sh];
                 }
             }
 
@@ -98,8 +97,9 @@ __global__ void render_tiles_kernel(
             _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
             _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
         }
-        __syncthreads(); // wait for copying to complete before attempting to use data
-        if (valid_pixel){
+        __syncthreads(); // wait for copying to complete before attempting to
+                         // use data
+        if (valid_pixel) {
             int chunk_start = chunk_idx * CHUNK_SIZE;
             int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
             int num_splats_this_chunk = chunk_end - chunk_start;
@@ -109,17 +109,17 @@ __global__ void render_tiles_kernel(
                 }
                 const T u_mean = _uvs[i * 2 + 0];
                 const T v_mean = _uvs[i * 2 + 1];
-    
+
                 const T u_diff = T(u_splat) - u_mean;
                 const T v_diff = T(v_splat) - v_mean;
-                
+
                 // 2d covariance matrix
                 const T a = _sigma_image[i * 4 + 0];
                 const T b = _sigma_image[i * 4 + 1];
                 const T c = _sigma_image[i * 4 + 2];
                 const T d = _sigma_image[i * 4 + 3];
                 T det = a * d - b * c;
-    
+
                 T alpha = 0.0;
                 // skip any covariance matrices that are not positive definite
                 if (det > 0.0) {
@@ -127,9 +127,12 @@ __global__ void render_tiles_kernel(
                         det += 1e-14;
                     }
                     // compute mahalanobis distance
-                    const T mh_sq = (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) / det;
+                    const T mh_sq =
+                        (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) /
+                        det;
                     if (mh_sq > 0.0) {
-                        // probablity at this pixel normalized to have probability at the center of the gaussian to be 1.0
+                        // probablity at this pixel normalized to have
+                        // probability at the center of the gaussian to be 1.0
                         T norm_prob = 0.0;
                         if (use_fast_exp) {
                             norm_prob = __expf(-0.5 * mh_sq);
@@ -141,25 +144,22 @@ __global__ void render_tiles_kernel(
                 }
                 alpha_weight = 1.0 - alpha_accum;
                 const T weight = alpha * (1.0 - alpha_accum);
-    
+
                 // compute rgb
                 T computed_rgb[3];
-                sh_to_rgb<T, N_SH>(
-                    _rgb + i * 3 * N_SH,
-                    sh_at_view_dir,
-                    computed_rgb
-                );
+                sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
 
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
-                    _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] += computed_rgb[channel] * weight;
+                    _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] +=
+                        computed_rgb[channel] * weight;
                 }
 
                 alpha_accum += weight;
                 num_splats++;
             } // end splat loop
-        } // valid pixel check
-    } // end chunk loop
+        }     // valid pixel check
+    }         // end chunk loop
 
     // copy back to global memory
     __syncthreads(); // wait for splatting to complete
@@ -169,22 +169,24 @@ __global__ void render_tiles_kernel(
 
         #pragma unroll
         for (int channel = 0; channel < 3; channel++) {
-            image[(v_splat * image_width + u_splat) * 3 + channel] = _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel];
+            image[(v_splat * image_width + u_splat) * 3 + channel] =
+                _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel];
         }
     }
 }
 
 void render_tiles_cuda(
-        torch::Tensor uvs,
-        torch::Tensor opacity,
-        torch::Tensor rgb,
-        torch::Tensor sigma_image,
-        torch::Tensor view_dir_by_pixel,
-        torch::Tensor splat_start_end_idx_by_tile_idx,
-        torch::Tensor gaussian_idx_by_splat_idx,
-        torch::Tensor num_splats_per_pixel,
-        torch::Tensor final_weight_per_pixel,
-        torch::Tensor rendered_image) {
+    torch::Tensor uvs,
+    torch::Tensor opacity,
+    torch::Tensor rgb,
+    torch::Tensor sigma_image,
+    torch::Tensor view_dir_by_pixel,
+    torch::Tensor splat_start_end_idx_by_tile_idx,
+    torch::Tensor gaussian_idx_by_splat_idx,
+    torch::Tensor num_splats_per_pixel,
+    torch::Tensor final_weight_per_pixel,
+    torch::Tensor rendered_image
+) {
     CHECK_VALID_INPUT(uvs);
     CHECK_VALID_INPUT(opacity);
     CHECK_VALID_INPUT(rgb);
@@ -202,15 +204,23 @@ void render_tiles_cuda(
     TORCH_CHECK(opacity.size(1) == 1, "Opacity must be Nx1");
     TORCH_CHECK(rgb.size(0) == N, "RGB must have the same number of elements as uvs");
     TORCH_CHECK(rgb.size(1) == 3, "RGB must be Nx3");
-    TORCH_CHECK(sigma_image.size(0) == N, "Sigma image must have the same number of elements as uvs");
+    TORCH_CHECK(
+        sigma_image.size(0) == N, "Sigma image must have the same number of elements as uvs"
+    );
     TORCH_CHECK(sigma_image.size(1) == 2, "Sigma image must be Nx2x2");
     TORCH_CHECK(sigma_image.size(1) == 2, "Sigma image must be Nx2x2");
     TORCH_CHECK(rendered_image.size(2) == 3, "Image must be HxWx3");
 
     int image_height = rendered_image.size(0);
     int image_width = rendered_image.size(1);
-    TORCH_CHECK(view_dir_by_pixel.size(0) == image_height, "view_dir_by_pixel must have the same height as the image");
-    TORCH_CHECK(view_dir_by_pixel.size(1) == image_width, "view_dir_by_pixel must have the same width as the image");
+    TORCH_CHECK(
+        view_dir_by_pixel.size(0) == image_height,
+        "view_dir_by_pixel must have the same height as the image"
+    );
+    TORCH_CHECK(
+        view_dir_by_pixel.size(1) == image_width,
+        "view_dir_by_pixel must have the same width as the image"
+    );
     TORCH_CHECK(view_dir_by_pixel.size(2) == 3, "view_dir_by_pixel must have 3 channels");
 
     int num_tiles_x = (image_width + 16 - 1) / 16;
@@ -344,7 +354,7 @@ void render_tiles_cuda(
                 final_weight_per_pixel.data_ptr<double>(),
                 rendered_image.data_ptr<double>()
             );
-        } else if (num_sh_coeff == 9){
+        } else if (num_sh_coeff == 9) {
             render_tiles_kernel<double, 128, 9><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
@@ -360,7 +370,7 @@ void render_tiles_cuda(
                 final_weight_per_pixel.data_ptr<double>(),
                 rendered_image.data_ptr<double>()
             );
-        } else if (num_sh_coeff == 16){
+        } else if (num_sh_coeff == 16) {
             render_tiles_kernel<double, 64, 16><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),

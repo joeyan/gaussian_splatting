@@ -19,9 +19,7 @@ class ProjectionTest(unittest.TestCase):
         self.gaussians, self.camera, self.world_T_image = get_test_data(self.device)
 
     def test_project_points(self):
-        xyz_camera_frame = transform_points_torch(
-            self.gaussians.xyz, self.world_T_image
-        )
+        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
 
         self.assertAlmostEqual(xyz_camera_frame[0, 0].item(), 0.6602, places=4)
         self.assertAlmostEqual(xyz_camera_frame[0, 1].item(), -1.1849998, places=4)
@@ -62,16 +60,12 @@ class ProjectionTest(unittest.TestCase):
         self.assertTrue(
             torch.all(
                 culling_mask
-                == torch.tensor(
-                    [True, True, True, False, False, False], device=self.device
-                )
+                == torch.tensor([True, True, True, False, False, False], device=self.device)
             )
         )
 
     def test_compute_sigma_world(self):
-        sigma_world = ComputeSigmaWorld.apply(
-            self.gaussians.quaternions, self.gaussians.scales
-        )
+        sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternions, self.gaussians.scales)
 
         self.assertEqual(sigma_world.shape, (6, 3, 3))
         # check first sigma_world
@@ -99,9 +93,7 @@ class ProjectionTest(unittest.TestCase):
         self.assertAlmostEqual(sigma_world[4, 2, 2].item(), 3.5965507, places=4)
 
     def test_compute_projection_jacobian(self):
-        xyz_camera_frame = transform_points_torch(
-            self.gaussians.xyz, self.world_T_image
-        )
+        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
 
         jacobian = ComputeProjectionJacobian.apply(xyz_camera_frame, self.camera.K)
 
@@ -115,12 +107,8 @@ class ProjectionTest(unittest.TestCase):
 
     def test_compute_sigma_image(self):
         # compute inputs (tested in previous tests)
-        sigma_world = ComputeSigmaWorld.apply(
-            self.gaussians.quaternions, self.gaussians.scales
-        )
-        xyz_camera_frame = transform_points_torch(
-            self.gaussians.xyz, self.world_T_image
-        )
+        sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternions, self.gaussians.scales)
+        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
         jacobian = ComputeProjectionJacobian.apply(xyz_camera_frame, self.camera.K)
 
         # compute sigma_image
