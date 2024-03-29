@@ -7,13 +7,19 @@
 
 template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
 __global__ void render_tiles_kernel(
-    const T *__restrict__ uvs, const T *__restrict__ opacity,
-    const T *__restrict__ rgb, const T *__restrict__ sigma_image,
-    const T *__restrict__ view_dir_by_pixel,
-    const int *__restrict__ splat_start_end_idx_by_tile_idx,
-    const int *__restrict__ gaussian_idx_by_splat_idx, const int image_width,
-    const int image_height, bool use_fast_exp, int *num_splats_per_pixel,
-    T *final_weight_per_pixel, T *image) {
+    const T* __restrict__ uvs,
+    const T* __restrict__ opacity,
+    const T* __restrict__ rgb,
+    const T* __restrict__ sigma_image,
+    const T* __restrict__ view_dir_by_pixel,
+    const int* __restrict__ splat_start_end_idx_by_tile_idx,
+    const int* __restrict__ gaussian_idx_by_splat_idx,
+    const int image_width,
+    const int image_height,
+    bool use_fast_exp,
+    int* num_splats_per_pixel,
+    T* final_weight_per_pixel,
+    T* image) {
   // grid = tiles, blocks = pixels within each tile
   const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
   const int v_splat = blockIdx.y * blockDim.y + threadIdx.y;
@@ -62,8 +68,8 @@ __global__ void render_tiles_kernel(
   const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
   // copy chunks
   for (int chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
-    __syncthreads(); // make sure previous iteration is complete before
-                     // modifying inputs
+    __syncthreads();  // make sure previous iteration is complete before
+                      // modifying inputs
     for (int i = thread_id; i < CHUNK_SIZE; i += block_size) {
       const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
       if (tile_splat_idx >= num_splats_this_tile) {
@@ -91,8 +97,8 @@ __global__ void render_tiles_kernel(
       _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
       _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
     }
-    __syncthreads(); // wait for copying to complete before attempting to use
-                     // data
+    __syncthreads();  // wait for copying to complete before attempting to use
+                      // data
     if (valid_pixel) {
       int chunk_start = chunk_idx * CHUNK_SIZE;
       int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
@@ -151,12 +157,12 @@ __global__ void render_tiles_kernel(
 
         alpha_accum += weight;
         num_splats++;
-      } // end splat loop
-    }   // valid pixel check
-  }     // end chunk loop
+      }  // end splat loop
+    }    // valid pixel check
+  }      // end chunk loop
 
   // copy back to global memory
-  __syncthreads(); // wait for splatting to complete
+  __syncthreads();  // wait for splatting to complete
   if (valid_pixel) {
     num_splats_per_pixel[v_splat * image_width + u_splat] = num_splats;
     final_weight_per_pixel[v_splat * image_width + u_splat] = alpha_weight;
@@ -169,8 +175,10 @@ __global__ void render_tiles_kernel(
   }
 }
 
-void render_tiles_cuda(torch::Tensor uvs, torch::Tensor opacity,
-                       torch::Tensor rgb, torch::Tensor sigma_image,
+void render_tiles_cuda(torch::Tensor uvs,
+                       torch::Tensor opacity,
+                       torch::Tensor rgb,
+                       torch::Tensor sigma_image,
                        torch::Tensor view_dir_by_pixel,
                        torch::Tensor splat_start_end_idx_by_tile_idx,
                        torch::Tensor gaussian_idx_by_splat_idx,
@@ -236,42 +244,62 @@ void render_tiles_cuda(torch::Tensor uvs, torch::Tensor opacity,
 
     if (num_sh_coeff == 1) {
       render_tiles_kernel<float, 960, 1><<<grid_size, block_size>>>(
-          uvs.data_ptr<float>(), opacity.data_ptr<float>(),
-          rgb.data_ptr<float>(), sigma_image.data_ptr<float>(),
+          uvs.data_ptr<float>(),
+          opacity.data_ptr<float>(),
+          rgb.data_ptr<float>(),
+          sigma_image.data_ptr<float>(),
           view_dir_by_pixel.data_ptr<float>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          true, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          true,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<float>(),
           rendered_image.data_ptr<float>());
     } else if (num_sh_coeff == 4) {
       render_tiles_kernel<float, 576, 4><<<grid_size, block_size>>>(
-          uvs.data_ptr<float>(), opacity.data_ptr<float>(),
-          rgb.data_ptr<float>(), sigma_image.data_ptr<float>(),
+          uvs.data_ptr<float>(),
+          opacity.data_ptr<float>(),
+          rgb.data_ptr<float>(),
+          sigma_image.data_ptr<float>(),
           view_dir_by_pixel.data_ptr<float>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          true, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          true,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<float>(),
           rendered_image.data_ptr<float>());
     } else if (num_sh_coeff == 9) {
       render_tiles_kernel<float, 320, 9><<<grid_size, block_size>>>(
-          uvs.data_ptr<float>(), opacity.data_ptr<float>(),
-          rgb.data_ptr<float>(), sigma_image.data_ptr<float>(),
+          uvs.data_ptr<float>(),
+          opacity.data_ptr<float>(),
+          rgb.data_ptr<float>(),
+          sigma_image.data_ptr<float>(),
           view_dir_by_pixel.data_ptr<float>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          true, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          true,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<float>(),
           rendered_image.data_ptr<float>());
     } else if (num_sh_coeff == 16) {
       render_tiles_kernel<float, 160, 16><<<grid_size, block_size>>>(
-          uvs.data_ptr<float>(), opacity.data_ptr<float>(),
-          rgb.data_ptr<float>(), sigma_image.data_ptr<float>(),
+          uvs.data_ptr<float>(),
+          opacity.data_ptr<float>(),
+          rgb.data_ptr<float>(),
+          sigma_image.data_ptr<float>(),
           view_dir_by_pixel.data_ptr<float>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          true, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          true,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<float>(),
           rendered_image.data_ptr<float>());
     } else {
@@ -288,42 +316,62 @@ void render_tiles_cuda(torch::Tensor uvs, torch::Tensor opacity,
     CHECK_DOUBLE_TENSOR(rendered_image);
     if (num_sh_coeff == 1) {
       render_tiles_kernel<double, 320, 1><<<grid_size, block_size>>>(
-          uvs.data_ptr<double>(), opacity.data_ptr<double>(),
-          rgb.data_ptr<double>(), sigma_image.data_ptr<double>(),
+          uvs.data_ptr<double>(),
+          opacity.data_ptr<double>(),
+          rgb.data_ptr<double>(),
+          sigma_image.data_ptr<double>(),
           view_dir_by_pixel.data_ptr<double>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          false, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          false,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<double>(),
           rendered_image.data_ptr<double>());
     } else if (num_sh_coeff == 4) {
       render_tiles_kernel<double, 160, 4><<<grid_size, block_size>>>(
-          uvs.data_ptr<double>(), opacity.data_ptr<double>(),
-          rgb.data_ptr<double>(), sigma_image.data_ptr<double>(),
+          uvs.data_ptr<double>(),
+          opacity.data_ptr<double>(),
+          rgb.data_ptr<double>(),
+          sigma_image.data_ptr<double>(),
           view_dir_by_pixel.data_ptr<double>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          false, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          false,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<double>(),
           rendered_image.data_ptr<double>());
     } else if (num_sh_coeff == 9) {
       render_tiles_kernel<double, 128, 9><<<grid_size, block_size>>>(
-          uvs.data_ptr<double>(), opacity.data_ptr<double>(),
-          rgb.data_ptr<double>(), sigma_image.data_ptr<double>(),
+          uvs.data_ptr<double>(),
+          opacity.data_ptr<double>(),
+          rgb.data_ptr<double>(),
+          sigma_image.data_ptr<double>(),
           view_dir_by_pixel.data_ptr<double>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          false, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          false,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<double>(),
           rendered_image.data_ptr<double>());
     } else if (num_sh_coeff == 16) {
       render_tiles_kernel<double, 64, 16><<<grid_size, block_size>>>(
-          uvs.data_ptr<double>(), opacity.data_ptr<double>(),
-          rgb.data_ptr<double>(), sigma_image.data_ptr<double>(),
+          uvs.data_ptr<double>(),
+          opacity.data_ptr<double>(),
+          rgb.data_ptr<double>(),
+          sigma_image.data_ptr<double>(),
           view_dir_by_pixel.data_ptr<double>(),
           splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-          gaussian_idx_by_splat_idx.data_ptr<int>(), image_width, image_height,
-          false, num_splats_per_pixel.data_ptr<int>(),
+          gaussian_idx_by_splat_idx.data_ptr<int>(),
+          image_width,
+          image_height,
+          false,
+          num_splats_per_pixel.data_ptr<int>(),
           final_weight_per_pixel.data_ptr<double>(),
           rendered_image.data_ptr<double>());
     } else {

@@ -1,0 +1,14 @@
+BasedOnStyle: Google
+
+# use int& a instead of int &a
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# const int* a instead of int const* a
+QualifierAlignment: Left
+
+# arguments on new line if > 1 line 
+BinPackArguments: false
+BinPackParameters: false
+ExperimentalAutoDetectBinPacking: false
+AllowAllParametersOfDeclarationOnNextLine: false

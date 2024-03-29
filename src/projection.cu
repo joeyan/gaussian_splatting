@@ -6,9 +6,10 @@
 #include "matrix.cuh"
 
 template <typename T>
-__global__ void camera_projection_kernel(const T *__restrict__ xyz,
-                                         const T *__restrict__ K, const int N,
-                                         T *uv) {
+__global__ void camera_projection_kernel(const T* __restrict__ xyz,
+                                         const T* __restrict__ K,
+                                         const int N,
+                                         T* uv) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -19,7 +20,8 @@ __global__ void camera_projection_kernel(const T *__restrict__ xyz,
   uv[i * 2 + 1] = K[4] * xyz[i * 3 + 1] / xyz[i * 3 + 2] + K[5];
 }
 
-void camera_projection_cuda(torch::Tensor xyz, torch::Tensor K,
+void camera_projection_cuda(torch::Tensor xyz,
+                            torch::Tensor K,
                             torch::Tensor uv) {
   CHECK_VALID_INPUT(xyz);
   CHECK_VALID_INPUT(K);
@@ -55,9 +57,10 @@ void camera_projection_cuda(torch::Tensor xyz, torch::Tensor K,
 }
 
 template <typename T>
-__global__ void compute_sigma_world_kernel(const T *__restrict__ quaternions,
-                                           const T *__restrict__ scales,
-                                           const int N, T *sigma_world) {
+__global__ void compute_sigma_world_kernel(const T* __restrict__ quaternions,
+                                           const T* __restrict__ scales,
+                                           const int N,
+                                           T* sigma_world) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -115,7 +118,8 @@ __global__ void compute_sigma_world_kernel(const T *__restrict__ quaternions,
       r20 * r20 * sx_sq + r21 * r21 * sy_sq + r22 * r22 * sz_sq;
 }
 
-void compute_sigma_world_cuda(torch::Tensor quaternions, torch::Tensor scales,
+void compute_sigma_world_cuda(torch::Tensor quaternions,
+                              torch::Tensor scales,
                               torch::Tensor sigma_world) {
   CHECK_VALID_INPUT(quaternions);
   CHECK_VALID_INPUT(scales);
@@ -138,15 +142,19 @@ void compute_sigma_world_cuda(torch::Tensor quaternions, torch::Tensor scales,
   if (quaternions.dtype() == torch::kFloat32) {
     CHECK_FLOAT_TENSOR(scales);
     CHECK_FLOAT_TENSOR(sigma_world);
-    compute_sigma_world_kernel<float><<<gridsize, blocksize>>>(
-        quaternions.data_ptr<float>(), scales.data_ptr<float>(), N,
-        sigma_world.data_ptr<float>());
+    compute_sigma_world_kernel<float>
+        <<<gridsize, blocksize>>>(quaternions.data_ptr<float>(),
+                                  scales.data_ptr<float>(),
+                                  N,
+                                  sigma_world.data_ptr<float>());
   } else if (quaternions.dtype() == torch::kFloat64) {
     CHECK_DOUBLE_TENSOR(scales);
     CHECK_DOUBLE_TENSOR(sigma_world);
-    compute_sigma_world_kernel<double><<<gridsize, blocksize>>>(
-        quaternions.data_ptr<double>(), scales.data_ptr<double>(), N,
-        sigma_world.data_ptr<double>());
+    compute_sigma_world_kernel<double>
+        <<<gridsize, blocksize>>>(quaternions.data_ptr<double>(),
+                                  scales.data_ptr<double>(),
+                                  N,
+                                  sigma_world.data_ptr<double>());
   } else {
     AT_ERROR("Inputs must be float32 or float64");
   }
@@ -154,9 +162,10 @@ void compute_sigma_world_cuda(torch::Tensor quaternions, torch::Tensor scales,
 }
 
 template <typename T>
-__global__ void compute_projection_jacobian_kernel(const T *__restrict__ xyz,
-                                                   const T *__restrict__ K,
-                                                   const int N, T *J) {
+__global__ void compute_projection_jacobian_kernel(const T* __restrict__ xyz,
+                                                   const T* __restrict__ K,
+                                                   const int N,
+                                                   T* J) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -173,7 +182,8 @@ __global__ void compute_projection_jacobian_kernel(const T *__restrict__ xyz,
   J[i * 6 + 5] = -K[4] * y / (z * z);
 }
 
-void compute_projection_jacobian_cuda(torch::Tensor xyz, torch::Tensor K,
+void compute_projection_jacobian_cuda(torch::Tensor xyz,
+                                      torch::Tensor K,
                                       torch::Tensor J) {
   CHECK_VALID_INPUT(xyz);
   CHECK_VALID_INPUT(K);
@@ -210,10 +220,11 @@ void compute_projection_jacobian_cuda(torch::Tensor xyz, torch::Tensor K,
 }
 
 template <typename T>
-__global__ void compute_sigma_image_kernel(const T *__restrict__ sigma_world,
-                                           const T *__restrict__ J,
-                                           const T *__restrict__ world_T_image,
-                                           const int N, T *sigma_image) {
+__global__ void compute_sigma_image_kernel(const T* __restrict__ sigma_world,
+                                           const T* __restrict__ J,
+                                           const T* __restrict__ world_T_image,
+                                           const int N,
+                                           T* sigma_image) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -245,7 +256,8 @@ __global__ void compute_sigma_image_kernel(const T *__restrict__ sigma_world,
   matrix_multiply<T>(JWSigma, JW_t, sigma_image + i * 4, 2, 3, 2);
 }
 
-void compute_sigma_image_cuda(torch::Tensor sigma_world, torch::Tensor J,
+void compute_sigma_image_cuda(torch::Tensor sigma_world,
+                              torch::Tensor J,
                               torch::Tensor world_T_image,
                               torch::Tensor sigma_image) {
   CHECK_VALID_INPUT(sigma_world);
@@ -275,16 +287,22 @@ void compute_sigma_image_cuda(torch::Tensor sigma_world, torch::Tensor J,
     CHECK_FLOAT_TENSOR(J);
     CHECK_FLOAT_TENSOR(world_T_image);
     CHECK_FLOAT_TENSOR(sigma_image);
-    compute_sigma_image_kernel<float><<<gridsize, blocksize>>>(
-        sigma_world.data_ptr<float>(), J.data_ptr<float>(),
-        world_T_image.data_ptr<float>(), N, sigma_image.data_ptr<float>());
+    compute_sigma_image_kernel<float>
+        <<<gridsize, blocksize>>>(sigma_world.data_ptr<float>(),
+                                  J.data_ptr<float>(),
+                                  world_T_image.data_ptr<float>(),
+                                  N,
+                                  sigma_image.data_ptr<float>());
   } else if (sigma_world.dtype() == torch::kFloat64) {
     CHECK_DOUBLE_TENSOR(J);
     CHECK_DOUBLE_TENSOR(world_T_image);
     CHECK_DOUBLE_TENSOR(sigma_image);
-    compute_sigma_image_kernel<double><<<gridsize, blocksize>>>(
-        sigma_world.data_ptr<double>(), J.data_ptr<double>(),
-        world_T_image.data_ptr<double>(), N, sigma_image.data_ptr<double>());
+    compute_sigma_image_kernel<double>
+        <<<gridsize, blocksize>>>(sigma_world.data_ptr<double>(),
+                                  J.data_ptr<double>(),
+                                  world_T_image.data_ptr<double>(),
+                                  N,
+                                  sigma_image.data_ptr<double>());
   } else {
     AT_ERROR("Inputs must be float32 or float64");
   }

@@ -7,8 +7,11 @@
 
 template <typename T>
 __global__ void camera_projection_backwards_kernel(
-    const T *__restrict__ xyz, const T *__restrict__ K,
-    const T *__restrict__ uv_grad_out, const int N, T *xyz_grad_in) {
+    const T* __restrict__ xyz,
+    const T* __restrict__ K,
+    const T* __restrict__ uv_grad_out,
+    const int N,
+    T* xyz_grad_in) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -25,13 +28,14 @@ __global__ void camera_projection_backwards_kernel(
   // dv/dz = -y * fy / (z * z)
   T dv_dz = -K[4] * xyz[i * 3 + 1] / (xyz[i * 3 + 2] * xyz[i * 3 + 2]);
 
-  xyz_grad_in[i * 3 + 0] = uv_grad_out[i * 2 + 0] * du_dx; // grad_x
-  xyz_grad_in[i * 3 + 1] = uv_grad_out[i * 2 + 1] * dv_dy; // grad_y
-  xyz_grad_in[i * 3 + 2] =
-      uv_grad_out[i * 2 + 0] * du_dz + uv_grad_out[i * 2 + 1] * dv_dz; // grad_z
+  xyz_grad_in[i * 3 + 0] = uv_grad_out[i * 2 + 0] * du_dx;  // grad_x
+  xyz_grad_in[i * 3 + 1] = uv_grad_out[i * 2 + 1] * dv_dy;  // grad_y
+  xyz_grad_in[i * 3 + 2] = uv_grad_out[i * 2 + 0] * du_dz +
+                           uv_grad_out[i * 2 + 1] * dv_dz;  // grad_z
 }
 
-void camera_projection_backward_cuda(torch::Tensor xyz, torch::Tensor K,
+void camera_projection_backward_cuda(torch::Tensor xyz,
+                                     torch::Tensor K,
                                      torch::Tensor uv_grad_out,
                                      torch::Tensor xyz_grad_in) {
   CHECK_VALID_INPUT(xyz);
@@ -57,16 +61,22 @@ void camera_projection_backward_cuda(torch::Tensor xyz, torch::Tensor K,
     CHECK_FLOAT_TENSOR(K);
     CHECK_FLOAT_TENSOR(uv_grad_out);
     CHECK_FLOAT_TENSOR(xyz_grad_in);
-    camera_projection_backwards_kernel<float><<<gridsize, blocksize>>>(
-        xyz.data_ptr<float>(), K.data_ptr<float>(),
-        uv_grad_out.data_ptr<float>(), N, xyz_grad_in.data_ptr<float>());
+    camera_projection_backwards_kernel<float>
+        <<<gridsize, blocksize>>>(xyz.data_ptr<float>(),
+                                  K.data_ptr<float>(),
+                                  uv_grad_out.data_ptr<float>(),
+                                  N,
+                                  xyz_grad_in.data_ptr<float>());
   } else if (xyz.dtype() == torch::kFloat64) {
     CHECK_DOUBLE_TENSOR(K);
     CHECK_DOUBLE_TENSOR(uv_grad_out);
     CHECK_DOUBLE_TENSOR(xyz_grad_in);
-    camera_projection_backwards_kernel<double><<<gridsize, blocksize>>>(
-        xyz.data_ptr<double>(), K.data_ptr<double>(),
-        uv_grad_out.data_ptr<double>(), N, xyz_grad_in.data_ptr<double>());
+    camera_projection_backwards_kernel<double>
+        <<<gridsize, blocksize>>>(xyz.data_ptr<double>(),
+                                  K.data_ptr<double>(),
+                                  uv_grad_out.data_ptr<double>(),
+                                  N,
+                                  xyz_grad_in.data_ptr<double>());
   } else {
     AT_ERROR("Inputs must be float32 or float64");
   }
@@ -75,8 +85,11 @@ void camera_projection_backward_cuda(torch::Tensor xyz, torch::Tensor K,
 
 template <typename T>
 __global__ void compute_projection_jacobian_backward_kernel(
-    const T *__restrict__ xyz, const T *__restrict__ K,
-    const T *__restrict__ jac_grad_out, const int N, T *xyz_grad_in) {
+    const T* __restrict__ xyz,
+    const T* __restrict__ K,
+    const T* __restrict__ jac_grad_out,
+    const int N,
+    T* xyz_grad_in) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -123,16 +136,21 @@ void compute_projection_jacobian_backward_cuda(torch::Tensor xyz,
     CHECK_FLOAT_TENSOR(K);
     CHECK_FLOAT_TENSOR(jac_grad_out);
     CHECK_FLOAT_TENSOR(xyz_grad_in);
-    compute_projection_jacobian_backward_kernel<float><<<gridsize, blocksize>>>(
-        xyz.data_ptr<float>(), K.data_ptr<float>(),
-        jac_grad_out.data_ptr<float>(), N, xyz_grad_in.data_ptr<float>());
+    compute_projection_jacobian_backward_kernel<float>
+        <<<gridsize, blocksize>>>(xyz.data_ptr<float>(),
+                                  K.data_ptr<float>(),
+                                  jac_grad_out.data_ptr<float>(),
+                                  N,
+                                  xyz_grad_in.data_ptr<float>());
   } else if (xyz.dtype() == torch::kFloat64) {
     CHECK_DOUBLE_TENSOR(K);
     CHECK_DOUBLE_TENSOR(jac_grad_out);
     CHECK_DOUBLE_TENSOR(xyz_grad_in);
     compute_projection_jacobian_backward_kernel<double>
-        <<<gridsize, blocksize>>>(xyz.data_ptr<double>(), K.data_ptr<double>(),
-                                  jac_grad_out.data_ptr<double>(), N,
+        <<<gridsize, blocksize>>>(xyz.data_ptr<double>(),
+                                  K.data_ptr<double>(),
+                                  jac_grad_out.data_ptr<double>(),
+                                  N,
                                   xyz_grad_in.data_ptr<double>());
   } else {
     AT_ERROR("Inputs must be float32 or float64");
@@ -147,9 +165,12 @@ void compute_projection_jacobian_backward_cuda(torch::Tensor xyz,
 // https://discuss.pytorch.org/t/too-many-resources-requested-for-launch-when-use-gradcheck/9761
 template <typename T>
 __launch_bounds__(1024) __global__ void compute_sigma_world_backward_kernel(
-    const T *__restrict__ quaternions, const T *__restrict__ scales,
-    const T *__restrict__ sigma_world_grad_out, const int N,
-    T *quaternions_grad_in, T *scales_grad_in) {
+    const T* __restrict__ quaternions,
+    const T* __restrict__ scales,
+    const T* __restrict__ sigma_world_grad_out,
+    const int N,
+    T* quaternions_grad_in,
+    T* scales_grad_in) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -265,7 +286,7 @@ __launch_bounds__(1024) __global__ void compute_sigma_world_backward_kernel(
                    2.0 * qx_norm * gradR[6] + 2.0 * qy_norm * gradR[7];
 
   // apply gradient for quaternion normalization
-  T q_norm_cubed = norm_q * norm_q * norm_q; // (x^2 + y^2 + z^2 + w^2)^(3/2)
+  T q_norm_cubed = norm_q * norm_q * norm_q;  // (x^2 + y^2 + z^2 + w^2)^(3/2)
 
   quaternions_grad_in[i * 4 + 0] =
       (1.0 / norm_q - qw * qw / q_norm_cubed) * grad_q_norm[0] -
@@ -308,9 +329,9 @@ void compute_sigma_world_backward_cuda(torch::Tensor quaternions,
                   sigma_world_grad_out.size(1) == 3 &&
                   sigma_world_grad_out.size(2) == 3,
               "sigma_world_grad_out must be of shape Nx3x3");
-  TORCH_CHECK(quaternions_grad_in.size(0) == N &&
-                  quaternions_grad_in.size(1) == 4,
-              "quaternions_grad_in must be of shape Nx4");
+  TORCH_CHECK(
+      quaternions_grad_in.size(0) == N && quaternions_grad_in.size(1) == 4,
+      "quaternions_grad_in must be of shape Nx4");
   TORCH_CHECK(scales_grad_in.size(0) == N && scales_grad_in.size(1) == 3,
               "scales_grad_in must be of shape Nx3");
 
@@ -325,21 +346,25 @@ void compute_sigma_world_backward_cuda(torch::Tensor quaternions,
     CHECK_FLOAT_TENSOR(sigma_world_grad_out);
     CHECK_FLOAT_TENSOR(quaternions_grad_in);
     CHECK_FLOAT_TENSOR(scales_grad_in);
-    compute_sigma_world_backward_kernel<float><<<gridsize, blocksize>>>(
-        quaternions.data_ptr<float>(), scales.data_ptr<float>(),
-        sigma_world_grad_out.data_ptr<float>(), N,
-        quaternions_grad_in.data_ptr<float>(),
-        scales_grad_in.data_ptr<float>());
+    compute_sigma_world_backward_kernel<float>
+        <<<gridsize, blocksize>>>(quaternions.data_ptr<float>(),
+                                  scales.data_ptr<float>(),
+                                  sigma_world_grad_out.data_ptr<float>(),
+                                  N,
+                                  quaternions_grad_in.data_ptr<float>(),
+                                  scales_grad_in.data_ptr<float>());
   } else if (quaternions.dtype() == torch::kFloat64) {
     CHECK_DOUBLE_TENSOR(scales);
     CHECK_DOUBLE_TENSOR(sigma_world_grad_out);
     CHECK_DOUBLE_TENSOR(quaternions_grad_in);
     CHECK_DOUBLE_TENSOR(scales_grad_in);
-    compute_sigma_world_backward_kernel<double><<<gridsize, blocksize>>>(
-        quaternions.data_ptr<double>(), scales.data_ptr<double>(),
-        sigma_world_grad_out.data_ptr<double>(), N,
-        quaternions_grad_in.data_ptr<double>(),
-        scales_grad_in.data_ptr<double>());
+    compute_sigma_world_backward_kernel<double>
+        <<<gridsize, blocksize>>>(quaternions.data_ptr<double>(),
+                                  scales.data_ptr<double>(),
+                                  sigma_world_grad_out.data_ptr<double>(),
+                                  N,
+                                  quaternions_grad_in.data_ptr<double>(),
+                                  scales_grad_in.data_ptr<double>());
   } else {
     AT_ERROR("Inputs must be float32 or float64");
   }
@@ -348,10 +373,13 @@ void compute_sigma_world_backward_cuda(torch::Tensor quaternions,
 
 template <typename T>
 __launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
-    const T *__restrict__ sigma_world, const T *__restrict__ J,
-    const T *__restrict__ world_T_image,
-    const T *__restrict__ sigma_image_grad_out, const int N,
-    T *sigma_world_grad_in, T *J_grad_in) {
+    const T* __restrict__ sigma_world,
+    const T* __restrict__ J,
+    const T* __restrict__ world_T_image,
+    const T* __restrict__ sigma_image_grad_out,
+    const int N,
+    T* sigma_world_grad_in,
+    T* J_grad_in) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= N) {
     return;
@@ -369,45 +397,49 @@ __launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
   W[8] = world_T_image[10];
 
   // compute JW = J @ W)
-  T JW[6]; // 2x3
+  T JW[6];  // 2x3
   matrix_multiply<T>(J + i * 6, W, JW, 2, 3, 3);
 
-  T JW_t[6]; // 3x2
+  T JW_t[6];  // 3x2
   transpose<T>(JW, JW_t, 2, 3);
 
-  T JW_t_grad_sigma_image[6]; // 3x2
-  matrix_multiply<T>(JW_t, sigma_image_grad_out + i * 4, JW_t_grad_sigma_image,
-                     3, 2, 2);
+  T JW_t_grad_sigma_image[6];  // 3x2
+  matrix_multiply<T>(
+      JW_t, sigma_image_grad_out + i * 4, JW_t_grad_sigma_image, 3, 2, 2);
 
   // Write sigma_world_grad to output
   // compute sigma_world_grad_in (3x3) = JW_t_grad_sigma_image (3x2) @ JW (2x3)
-  matrix_multiply<T>(JW_t_grad_sigma_image, JW, sigma_world_grad_in + i * 9, 3,
-                     2, 3);
+  matrix_multiply<T>(
+      JW_t_grad_sigma_image, JW, sigma_world_grad_in + i * 9, 3, 2, 3);
 
-  T sigma_world_JW_t[6]; // (3x2) = sigma_world (3x3) @ JW_t (3x2)
+  T sigma_world_JW_t[6];  // (3x2) = sigma_world (3x3) @ JW_t (3x2)
   matrix_multiply<T>(sigma_world + i * 9, JW_t, sigma_world_JW_t, 3, 3, 2);
 
-  T grad_sigma_image_t[4]; // 2x2
+  T grad_sigma_image_t[4];  // 2x2
   transpose<T>(sigma_image_grad_out + i * 4, grad_sigma_image_t, 2, 2);
 
-  T grad_JW_t_left[6]; // (3x2) = sigma_world_JW_t (3x2) @ grad_sigma_image_t
-                       // (2x2)
-  matrix_multiply<T>(sigma_world_JW_t, grad_sigma_image_t, grad_JW_t_left, 3, 2,
-                     2);
+  T grad_JW_t_left[6];  // (3x2) = sigma_world_JW_t (3x2) @ grad_sigma_image_t
+                        // (2x2)
+  matrix_multiply<T>(
+      sigma_world_JW_t, grad_sigma_image_t, grad_JW_t_left, 3, 2, 2);
 
-  T sigma_world_t[9]; // 3x3
+  T sigma_world_t[9];  // 3x3
   transpose<T>(sigma_world + i * 9, sigma_world_t, 3, 3);
 
-  T sigma_world_tJW_t[6]; // (3x2) = sigma_world_t (3x3) @ JW_t (3x2)
+  T sigma_world_tJW_t[6];  // (3x2) = sigma_world_t (3x3) @ JW_t (3x2)
   matrix_multiply<T>(sigma_world_t, JW_t, sigma_world_tJW_t, 3, 3, 2);
 
-  T grad_JW_t_right[6]; // (3x2) = sigma_world_tJW_t (3x2) @ grad_sigma_image
-                        // (2x2)
-  matrix_multiply<T>(sigma_world_tJW_t, sigma_image_grad_out + i * 4,
-                     grad_JW_t_right, 3, 2, 2);
+  T grad_JW_t_right[6];  // (3x2) = sigma_world_tJW_t (3x2) @ grad_sigma_image
+                         // (2x2)
+  matrix_multiply<T>(sigma_world_tJW_t,
+                     sigma_image_grad_out + i * 4,
+                     grad_JW_t_right,
+                     3,
+                     2,
+                     2);
 
   // add grad_JW_t_left and grad_JW_t_right
-  T grad_JW_t[6]; // 3x2
+  T grad_JW_t[6];  // 3x2
   grad_JW_t[0] = grad_JW_t_left[0] + grad_JW_t_right[0];
   grad_JW_t[1] = grad_JW_t_left[1] + grad_JW_t_right[1];
   grad_JW_t[2] = grad_JW_t_left[2] + grad_JW_t_right[2];
@@ -420,7 +452,7 @@ __launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
   // T grad_W_t[9]; // 3x3 = grad_JW_t (3x2) @ J (2x3)
   // matrix_multiply<T>(grad_JW_t, J + i * 6, grad_W_t, 3, 2, 3);
 
-  T grad_J_t[6]; // 3x2 = W (3x3) @ grad_JW_t (3x2)
+  T grad_J_t[6];  // 3x2 = W (3x3) @ grad_JW_t (3x2)
   matrix_multiply<T>(W, grad_JW_t, grad_J_t, 3, 3, 2);
 
   // write out grad_J
@@ -471,21 +503,28 @@ void compute_sigma_image_backward_cuda(torch::Tensor sigma_world,
     CHECK_FLOAT_TENSOR(sigma_image_grad_out);
     CHECK_FLOAT_TENSOR(sigma_world_grad_in);
     CHECK_FLOAT_TENSOR(J_grad_in);
-    compute_sigma_image_backward_kernel<float><<<gridsize, blocksize>>>(
-        sigma_world.data_ptr<float>(), J.data_ptr<float>(),
-        world_T_image.data_ptr<float>(), sigma_image_grad_out.data_ptr<float>(),
-        N, sigma_world_grad_in.data_ptr<float>(), J_grad_in.data_ptr<float>());
+    compute_sigma_image_backward_kernel<float>
+        <<<gridsize, blocksize>>>(sigma_world.data_ptr<float>(),
+                                  J.data_ptr<float>(),
+                                  world_T_image.data_ptr<float>(),
+                                  sigma_image_grad_out.data_ptr<float>(),
+                                  N,
+                                  sigma_world_grad_in.data_ptr<float>(),
+                                  J_grad_in.data_ptr<float>());
   } else if (sigma_world.dtype() == torch::kFloat64) {
     CHECK_DOUBLE_TENSOR(J);
     CHECK_DOUBLE_TENSOR(world_T_image);
     CHECK_DOUBLE_TENSOR(sigma_image_grad_out);
     CHECK_DOUBLE_TENSOR(sigma_world_grad_in);
     CHECK_DOUBLE_TENSOR(J_grad_in);
-    compute_sigma_image_backward_kernel<double><<<gridsize, blocksize>>>(
-        sigma_world.data_ptr<double>(), J.data_ptr<double>(),
-        world_T_image.data_ptr<double>(),
-        sigma_image_grad_out.data_ptr<double>(), N,
-        sigma_world_grad_in.data_ptr<double>(), J_grad_in.data_ptr<double>());
+    compute_sigma_image_backward_kernel<double>
+        <<<gridsize, blocksize>>>(sigma_world.data_ptr<double>(),
+                                  J.data_ptr<double>(),
+                                  world_T_image.data_ptr<double>(),
+                                  sigma_image_grad_out.data_ptr<double>(),
+                                  N,
+                                  sigma_world_grad_in.data_ptr<double>(),
+                                  J_grad_in.data_ptr<double>());
   } else {
     AT_ERROR("Inputs must be float32 or float64");
   }

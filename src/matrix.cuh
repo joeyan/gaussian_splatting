@@ -2,7 +2,9 @@
 #include <cuda.h>
 
 template <typename T>
-__device__ void transpose(const T *A, T *A_T, int num_rows_input,
+__device__ void transpose(const T* A,
+                          T* A_T,
+                          int num_rows_input,
                           int num_cols_input) {
 #pragma unroll
   for (int row = 0; row < num_rows_input; row++) {
@@ -14,9 +16,12 @@ __device__ void transpose(const T *A, T *A_T, int num_rows_input,
 }
 
 template <typename T>
-__device__ void matrix_multiply(const T *A, const T *B, T *C, int num_rows_A,
-                                int num_cols_A, int num_cols_B) {
-
+__device__ void matrix_multiply(const T* A,
+                                const T* B,
+                                T* C,
+                                int num_rows_A,
+                                int num_cols_A,
+                                int num_cols_B) {
 #pragma unroll
   for (int row_a = 0; row_a < num_rows_A; row_a++) {
 #pragma unroll

@@ -4,13 +4,15 @@
 
 #include "checks.cuh"
 
-__global__ void compute_tiles_kernel(const float *__restrict__ uvs,
-                                     const float *__restrict__ sigma_image,
-                                     const int n_tiles_x, const int n_tiles_y,
-                                     const float mh_dist, const int N,
+__global__ void compute_tiles_kernel(const float* __restrict__ uvs,
+                                     const float* __restrict__ sigma_image,
+                                     const int n_tiles_x,
+                                     const int n_tiles_y,
+                                     const float mh_dist,
+                                     const int N,
                                      const int max_gaussians_per_tile,
-                                     int *gaussian_indices_per_tile,
-                                     int *num_gaussians_per_tile) {
+                                     int* gaussian_indices_per_tile,
+                                     int* num_gaussians_per_tile) {
   int gaussian_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (gaussian_idx >= N) {
     return;
@@ -169,22 +171,22 @@ __global__ void compute_tiles_kernel(const float *__restrict__ uvs,
         float obb_major_axis_x = obb_tr_x - obb_tl_x;
         float obb_major_axis_y = obb_tr_y - obb_tl_y;
         float tl_ax2 =
-            obb_major_axis_x * tile_left + obb_major_axis_y * tile_top; // tl
+            obb_major_axis_x * tile_left + obb_major_axis_y * tile_top;  // tl
         float tr_ax2 =
-            obb_major_axis_x * tile_right + obb_major_axis_y * tile_top; // tr
-        float bl_ax2 =
-            obb_major_axis_x * tile_left + obb_major_axis_y * tile_bottom; // bl
+            obb_major_axis_x * tile_right + obb_major_axis_y * tile_top;  // tr
+        float bl_ax2 = obb_major_axis_x * tile_left +
+                       obb_major_axis_y * tile_bottom;  // bl
         float br_ax2 = obb_major_axis_x * tile_right +
-                       obb_major_axis_y * tile_bottom; // br
+                       obb_major_axis_y * tile_bottom;  // br
 
         float min_tile = fminf(fminf(tl_ax2, tr_ax2), fminf(bl_ax2, br_ax2));
         float max_tile = fmaxf(fmaxf(tl_ax2, tr_ax2), fmaxf(bl_ax2, br_ax2));
 
         // top and bottom corners of obb project to same points on ax2
         float obb_r_ax2 = obb_major_axis_x * obb_tr_x +
-                          obb_major_axis_y * obb_tr_y; // obb top right
+                          obb_major_axis_y * obb_tr_y;  // obb top right
         float obb_l_ax2 = obb_major_axis_x * obb_tl_x +
-                          obb_major_axis_y * obb_tl_y; // obb top left
+                          obb_major_axis_y * obb_tl_y;  // obb top left
         float min_obb = fminf(obb_r_ax2, obb_l_ax2);
         float max_obb = fmaxf(obb_r_ax2, obb_l_ax2);
 
@@ -195,22 +197,22 @@ __global__ void compute_tiles_kernel(const float *__restrict__ uvs,
         float obb_minor_axis_x = obb_tr_x - obb_br_x;
         float obb_minor_axis_y = obb_tr_y - obb_br_y;
         tl_ax2 =
-            obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_top; // tl
+            obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_top;  // tl
         tr_ax2 =
-            obb_minor_axis_x * tile_right + obb_minor_axis_y * tile_top; // tr
-        bl_ax2 =
-            obb_minor_axis_x * tile_left + obb_minor_axis_y * tile_bottom; // bl
+            obb_minor_axis_x * tile_right + obb_minor_axis_y * tile_top;  // tr
+        bl_ax2 = obb_minor_axis_x * tile_left +
+                 obb_minor_axis_y * tile_bottom;  // bl
         br_ax2 = obb_minor_axis_x * tile_right +
-                 obb_minor_axis_y * tile_bottom; // br
+                 obb_minor_axis_y * tile_bottom;  // br
 
         min_tile = fminf(fminf(tl_ax2, tr_ax2), fminf(bl_ax2, br_ax2));
         max_tile = fmaxf(fmaxf(tl_ax2, tr_ax2), fmaxf(bl_ax2, br_ax2));
 
         // top and bottom corners of obb project to same points on ax2
         float obb_t_ax2 = obb_minor_axis_x * obb_tr_x +
-                          obb_minor_axis_y * obb_tr_y; // obb top right
+                          obb_minor_axis_y * obb_tr_y;  // obb top right
         float obb_b_ax2 = obb_minor_axis_x * obb_br_x +
-                          obb_minor_axis_y * obb_br_y; // obb bottom right
+                          obb_minor_axis_y * obb_br_y;  // obb bottom right
         min_obb = fminf(obb_t_ax2, obb_b_ax2);
         max_obb = fmaxf(obb_t_ax2, obb_b_ax2);
         if (min_tile > max_obb || max_tile < min_obb) {
@@ -229,8 +231,11 @@ __global__ void compute_tiles_kernel(const float *__restrict__ uvs,
   }
 }
 
-void compute_tiles_cuda(torch::Tensor uvs, torch::Tensor sigma_image,
-                        int n_tiles_x, int n_tiles_y, float mh_dist,
+void compute_tiles_cuda(torch::Tensor uvs,
+                        torch::Tensor sigma_image,
+                        int n_tiles_x,
+                        int n_tiles_y,
+                        float mh_dist,
                         torch::Tensor gaussian_indices_per_tile,
                         torch::Tensor num_gaussians_per_tile) {
   CHECK_VALID_INPUT(uvs);
@@ -264,19 +269,26 @@ void compute_tiles_cuda(torch::Tensor uvs, torch::Tensor sigma_image,
   dim3 blocksize(max_threads_per_block, 1, 1);
 
   compute_tiles_kernel<<<gridsize, blocksize>>>(
-      uvs.data_ptr<float>(), sigma_image.data_ptr<float>(), n_tiles_x,
-      n_tiles_y, mh_dist, N, max_gaussians_per_tile,
+      uvs.data_ptr<float>(),
+      sigma_image.data_ptr<float>(),
+      n_tiles_x,
+      n_tiles_y,
+      mh_dist,
+      N,
+      max_gaussians_per_tile,
       gaussian_indices_per_tile.data_ptr<int>(),
       num_gaussians_per_tile.data_ptr<int>());
   cudaDeviceSynchronize();
 }
 
 __global__ void compute_splat_to_gaussian_id_vector_kernel(
-    const int *__restrict__ gaussian_indices_per_tile,
-    const int *__restrict__ num_gaussians_per_tile,
-    const int *__restrict__ splat_to_gaussian_id_vector_offsets,
-    const int n_tiles, const int max_gaussians_per_tile,
-    int *splat_to_gaussian_id_vector, int *tile_idx_by_splat_idx) {
+    const int* __restrict__ gaussian_indices_per_tile,
+    const int* __restrict__ num_gaussians_per_tile,
+    const int* __restrict__ splat_to_gaussian_id_vector_offsets,
+    const int n_tiles,
+    const int max_gaussians_per_tile,
+    int* splat_to_gaussian_id_vector,
+    int* tile_idx_by_splat_idx) {
   int tile_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (tile_idx >= n_tiles) {
     return;
@@ -326,8 +338,10 @@ void compute_splat_to_gaussian_id_vector_cuda(
   compute_splat_to_gaussian_id_vector_kernel<<<gridsize, blocksize>>>(
       gaussian_indices_per_tile.data_ptr<int>(),
       num_gaussians_per_tile.data_ptr<int>(),
-      splat_to_gaussian_id_vector_offsets.data_ptr<int>(), n_tiles,
-      max_gaussians_per_tile, splat_to_gaussian_id_vector.data_ptr<int>(),
+      splat_to_gaussian_id_vector_offsets.data_ptr<int>(),
+      n_tiles,
+      max_gaussians_per_tile,
+      splat_to_gaussian_id_vector.data_ptr<int>(),
       tile_idx_by_splat_idx.data_ptr<int>());
   cudaDeviceSynchronize();
 }
