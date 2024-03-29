@@ -61,6 +61,9 @@ trainer = GSTrainer(gaussians, images, cameras)
 trainer.train()
 end = time.time()
 
+# save gaussians
+torch.save(gaussians, os.path.join(OUTPUT_DIR, "gaussians.pt"))
+
 # training time
 seconds = end - start
 minutes, seconds = divmod(seconds, 60)

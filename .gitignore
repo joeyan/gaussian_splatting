@@ -1,5 +1,6 @@
 *.png
 *.so
+*.pt
 build/
 .vscode/
 __pycache__/
