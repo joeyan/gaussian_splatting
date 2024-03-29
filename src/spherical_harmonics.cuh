@@ -15,6 +15,15 @@ __device__ __constant__ const float SH_2[5] = {
     -1.0925484305920792,
     0.5462742152960396
 };
+__device __constant__ const float SH_3[7] = {
+    -0.5900435899266435,
+    2.890611442640554,
+    -0.4570457994644658,
+    0.263875515352797,
+    0.4570457994644658,
+    1.445305721320277,
+    0.5900435899266435
+};
 
 template <typename T, unsigned int N_SH>
 __device__ __inline__ void sh_to_rgb(

@@ -359,7 +359,10 @@ class GSTrainer:
 
         uv_grad_avg_norm = torch.norm(uv_grad_avg, dim=1)
 
-        uv_split_val = torch.quantile(uv_grad_avg_norm, UV_GRAD_PERCENTILE).item()
+        if USE_FRACTIONAL_DENSIFICATION:
+            uv_split_val = torch.quantile(uv_grad_avg_norm, UV_GRAD_PERCENTILE).item()
+        else: 
+            uv_split_val = UV_GRAD_TRHRESHOLD
         densify_mask = uv_grad_avg_norm > uv_split_val
         print(
             "Densify mask: ",
