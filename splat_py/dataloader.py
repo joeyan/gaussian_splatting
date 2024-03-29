@@ -124,9 +124,7 @@ class ColmapData(GaussianSplattingDataset):
             row += 1
 
         # load images
-        image_info_path = os.path.join(
-            colmap_directory_path, "sparse", "0", "images.bin"
-        )
+        image_info_path = os.path.join(colmap_directory_path, "sparse", "0", "images.bin")
         self.image_info = read_images_binary(image_info_path)
 
         self.images = []
@@ -142,9 +140,7 @@ class ColmapData(GaussianSplattingDataset):
 
             # load transform
             world_T_image = torch.eye(4)
-            world_T_image[:3, :3] = torch.tensor(
-                qvec2rotmat(image_info.qvec), dtype=torch.float32
-            )
+            world_T_image[:3, :3] = torch.tensor(qvec2rotmat(image_info.qvec), dtype=torch.float32)
             world_T_image[:3, 3] = torch.tensor(image_info.tvec, dtype=torch.float32)
 
             self.images.append(
@@ -177,9 +173,7 @@ class ColmapData(GaussianSplattingDataset):
                 K[1, 2] = camera.params[3] / float(self.downsample_factor)
                 K[2, 2] = 1.0
             else:
-                raise NotImplementedError(
-                    "Only Pinhole and Simple Pinhole cameras are supported"
-                )
+                raise NotImplementedError("Only Pinhole and Simple Pinhole cameras are supported")
 
             self.cameras[camera_id] = Camera(
                 width=self.images[0].image.shape[1],

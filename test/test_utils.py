@@ -13,9 +13,7 @@ from gaussian_test_data import get_test_camera, get_test_world_T_image
 
 class TestUtils(unittest.TestCase):
     def test_quaternion_to_rotation_torch(self):
-        q = torch.tensor(
-            [1.0, 0.0, 0.0, 0.0, 0.0, math.sqrt(2) / 2, 0.0, math.sqrt(2) / 2]
-        )
+        q = torch.tensor([1.0, 0.0, 0.0, 0.0, 0.0, math.sqrt(2) / 2, 0.0, math.sqrt(2) / 2])
         q = q.reshape(-1, 4)
         R = quaternion_to_rotation_torch(q)
 
@@ -32,9 +30,7 @@ class TestUtils(unittest.TestCase):
         expected_pts = torch.tensor([4.0, 0.0, 4.0, 7.0, -3.0, 7.0, 10.0, -6.0, 10.0])
         expected_pts = expected_pts.reshape(-1, 3)
 
-        q = torch.tensor([0.0, math.sqrt(2) / 2, 0.0, math.sqrt(2) / 2]).unsqueeze(
-            dim=0
-        )
+        q = torch.tensor([0.0, math.sqrt(2) / 2, 0.0, math.sqrt(2) / 2]).unsqueeze(dim=0)
         transform = torch.eye(4)
         transform[:3, :3] = quaternion_to_rotation_torch(q)
         transform[:3, 3] = torch.tensor([1.0, 2.0, 3.0])
@@ -45,9 +41,7 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(transformed_pts.allclose(expected_pts, atol=1e-6))
 
         transform_inv = torch.inverse(transform.unsqueeze(dim=0))
-        transformed_back_original_pts = transform_points_torch(
-            transformed_pts, transform_inv
-        )
+        transformed_back_original_pts = transform_points_torch(transformed_pts, transform_inv)
         self.assertTrue(transformed_back_original_pts.allclose(pts, atol=1e-6))
 
     def test_compute_rays_camera_frame(self):

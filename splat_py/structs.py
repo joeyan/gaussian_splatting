@@ -105,18 +105,12 @@ class Gaussians(torch.nn.Module):
         self.verify_sizes()
 
     def append(self, xyz, rgb, opacities, scales, quaternions):
-        self.xyz = torch.nn.Parameter(
-            torch.cat((self.xyz.detach(), xyz.detach()), dim=0)
-        )
-        self.rgb = torch.nn.Parameter(
-            torch.cat((self.rgb.detach(), rgb.detach()), dim=0)
-        )
+        self.xyz = torch.nn.Parameter(torch.cat((self.xyz.detach(), xyz.detach()), dim=0))
+        self.rgb = torch.nn.Parameter(torch.cat((self.rgb.detach(), rgb.detach()), dim=0))
         self.opacities = torch.nn.Parameter(
             torch.cat((self.opacities.detach(), opacities.detach()), dim=0)
         )
-        self.scales = torch.nn.Parameter(
-            torch.cat((self.scales.detach(), scales.detach()), dim=0)
-        )
+        self.scales = torch.nn.Parameter(torch.cat((self.scales.detach(), scales.detach()), dim=0))
         self.quaternions = torch.nn.Parameter(
             torch.cat((self.quaternions.detach(), quaternions.detach()), dim=0)
         )

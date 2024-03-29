@@ -31,9 +31,7 @@ class GSTrainer:
         self.images = images
         self.cameras = cameras
 
-        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(
-            self.gaussians.xyz.device
-        )
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.gaussians.xyz.device)
 
         self.update_optimizer()
         self.reset_grad_accum()
@@ -155,12 +153,8 @@ class GSTrainer:
         optimizer_param_state = self.optimizer.state[old_optimizer_param]
         del self.optimizer.state[old_optimizer_param]
 
-        optimizer_param_state["exp_avg"] = optimizer_param_state["exp_avg"][
-            keep_mask, :
-        ]
-        optimizer_param_state["exp_avg_sq"] = optimizer_param_state["exp_avg_sq"][
-            keep_mask, :
-        ]
+        optimizer_param_state["exp_avg"] = optimizer_param_state["exp_avg"][keep_mask, :]
+        optimizer_param_state["exp_avg_sq"] = optimizer_param_state["exp_avg_sq"][keep_mask, :]
 
         del self.optimizer.param_groups[param_index]["params"][0]
         del self.optimizer.param_groups[param_index]["params"]
@@ -285,45 +279,26 @@ class GSTrainer:
         samples = NUM_SPLIT_SAMPLES
         # create split gaussians
         split_quaternions = (
-            self.gaussians.quaternions[split_mask, :]
-            .clone()
-            .detach()
-            .repeat(samples, 1)
+            self.gaussians.quaternions[split_mask, :].clone().detach().repeat(samples, 1)
         )
-        split_scales = (
-            self.gaussians.scales[split_mask, :].clone().detach().repeat(samples, 1)
-        )
-        split_opacities = (
-            self.gaussians.opacities[split_mask].clone().detach().repeat(samples, 1)
-        )
+        split_scales = self.gaussians.scales[split_mask, :].clone().detach().repeat(samples, 1)
+        split_opacities = self.gaussians.opacities[split_mask].clone().detach().repeat(samples, 1)
         if self.gaussians.rgb.dim() == 3:
-            split_rgb = (
-                self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1, 1)
-            )
+            split_rgb = self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1, 1)
         else:
-            split_rgb = (
-                self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1)
-            )
-        split_xyz = (
-            self.gaussians.xyz[split_mask, :].clone().detach().repeat(samples, 1)
-        )
+            split_rgb = self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1)
+        split_xyz = self.gaussians.xyz[split_mask, :].clone().detach().repeat(samples, 1)
 
         # centered random samples
-        random_samples = torch.rand(
-            split_mask.sum() * samples, 3, device=self.gaussians.xyz.device
-        )
+        random_samples = torch.rand(split_mask.sum() * samples, 3, device=self.gaussians.xyz.device)
         # scale by scale factors
         scale_factors = torch.exp(split_scales)
         random_samples = random_samples * scale_factors
         # rotate by quaternions
-        split_quaternions = split_quaternions / torch.norm(
-            split_quaternions, dim=1, keepdim=True
-        )
+        split_quaternions = split_quaternions / torch.norm(split_quaternions, dim=1, keepdim=True)
         split_rotations = quaternion_to_rotation_torch(split_quaternions)
 
-        random_samples = torch.bmm(
-            split_rotations, random_samples.unsqueeze(-1)
-        ).squeeze(-1)
+        random_samples = torch.bmm(split_rotations, random_samples.unsqueeze(-1)).squeeze(-1)
         # translate by original mean locations
         split_xyz += random_samples
 
@@ -337,9 +312,7 @@ class GSTrainer:
         self.gaussians.append(
             split_xyz, split_rgb, split_opacities, split_scales, split_quaternions
         )
-        self.add_gaussians_to_optimizer(
-            torch.sum(split_mask).detach().cpu().numpy() * samples
-        )
+        self.add_gaussians_to_optimizer(torch.sum(split_mask).detach().cpu().numpy() * samples)
 
     def adaptive_density_control(self):
         if not (USE_DELETE or USE_CLONE or USE_SPLIT):
@@ -416,10 +389,7 @@ class GSTrainer:
                 test_camera = self.cameras[self.images[test_img_idx].camera_id]
 
                 test_image, _ = splat(self.gaussians, test_world_T_image, test_camera)
-                gt_image = (
-                    self.images[test_img_idx].image.to(torch.float32)
-                    / SATURATED_PIXEL_VALUE
-                )
+                gt_image = self.images[test_img_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
                 gt_image = gt_image.to(torch.device("cuda"))
                 l2_loss = torch.nn.functional.mse_loss(test_image, gt_image)
                 psnr = -10 * torch.log10(l2_loss).item()
@@ -428,12 +398,8 @@ class GSTrainer:
                 if save_test_images:
                     debug_image = test_image.clip(0, 1).detach().cpu().numpy()
                     cv2.imwrite(
-                        "{}/iter{}_test_image_{}.png".format(
-                            OUTPUT_DIR, iter, test_img_idx
-                        ),
-                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[
-                            ..., ::-1
-                        ],
+                        "{}/iter{}_test_image_{}.png".format(OUTPUT_DIR, iter, test_img_idx),
+                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
                     )
 
         return torch.tensor(test_psnrs)
@@ -484,9 +450,7 @@ class GSTrainer:
                 gaussian_idx_by_splat_idx,
                 splat_start_end_idx_by_tile_idx,
                 tile_idx_by_splat_idx,
-            ) = match_gaussians_to_tiles_gpu(
-                culled_uv, tiles, sigma_image, mh_dist=MH_DIST
-            )
+            ) = match_gaussians_to_tiles_gpu(culled_uv, tiles, sigma_image, mh_dist=MH_DIST)
 
             sorted_gaussian_idx_by_splat_idx = sort_gaussians(
                 culled_xyz_camera_frame,
@@ -504,9 +468,7 @@ class GSTrainer:
                 sorted_gaussian_idx_by_splat_idx,
                 torch.tensor([camera.height, camera.width], device=culled_uv.device),
             )
-        gt_image = (
-            self.images[image_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
-        )
+        gt_image = self.images[image_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
         gt_image = gt_image.to(torch.device("cuda"))
 
         l1_loss = torch.nn.functional.l1_loss(image, gt_image)
@@ -580,9 +542,7 @@ class GSTrainer:
                     debug_image = image.clip(0, 1).detach().cpu().numpy()
                     cv2.imwrite(
                         "{}/iter{}_image_{}.png".format(OUTPUT_DIR, i, image_idx),
-                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[
-                            ..., ::-1
-                        ],
+                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
                     )
         final_psnrs = self.compute_test_psnr(save_test_images=True, iter=i)
         print("Final PSNR: ", final_psnrs.mean().item())

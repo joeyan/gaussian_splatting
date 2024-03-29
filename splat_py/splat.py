@@ -49,9 +49,7 @@ def splat(gaussians, world_T_image, camera):
         rgb=gaussians.rgb[~culling_mask, :],
     )
 
-    sigma_world = ComputeSigmaWorld.apply(
-        culled_gaussians.quaternions, culled_gaussians.scales
-    )
+    sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternions, culled_gaussians.scales)
     J = ComputeProjectionJacobian.apply(xyz_camera_frame, camera.K)
     sigma_image = ComputeSigmaImage.apply(sigma_world, J, world_T_image)
 

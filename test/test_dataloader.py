@@ -11,15 +11,11 @@ class TestColmapData(unittest.TestCase):
     def setUp(self):
         self.colmap_directory_path = DATASET_PATH
         self.device = torch.device("cpu")
-        self.colmap_data = ColmapData(
-            self.colmap_directory_path, self.device, downsample_factor=8
-        )
+        self.colmap_data = ColmapData(self.colmap_directory_path, self.device, downsample_factor=8)
 
     def test_init(self):
         """Test Data Loading"""
-        self.assertEqual(
-            self.colmap_data.colmap_directory_path, self.colmap_directory_path
-        )
+        self.assertEqual(self.colmap_data.colmap_directory_path, self.colmap_directory_path)
 
         # values for garden dataset
         self.assertEqual(len(self.colmap_data.image_info), 185)
@@ -87,9 +83,7 @@ class TestColmapData(unittest.TestCase):
             dtype=torch.float32,
         )
 
-        self.assertTrue(
-            torch.allclose(images[0].world_T_image, expected_world_T_image, atol=1e-4)
-        )
+        self.assertTrue(torch.allclose(images[0].world_T_image, expected_world_T_image, atol=1e-4))
 
         cameras = self.colmap_data.get_cameras()
         self.assertEqual(len(cameras), 1)

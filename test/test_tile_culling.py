@@ -11,39 +11,21 @@ from splat_py.structs import Tiles
 
 def get_tile_corners(tiles):
     # compute top left, top right, bottom left, bottom right of each tile [x, y]
-    tile_corners = torch.zeros(
-        tiles.tile_count, 4, 2, dtype=torch.int32, device=tiles.device
-    )
+    tile_corners = torch.zeros(tiles.tile_count, 4, 2, dtype=torch.int32, device=tiles.device)
     for row in range(tiles.y_tiles_count):
         for col in range(tiles.x_tiles_count):
             # top left
-            tile_corners[row * tiles.x_tiles_count + col, 0, 0] = (
-                col * tiles.tile_edge_size
-            )
-            tile_corners[row * tiles.x_tiles_count + col, 0, 1] = (
-                row * tiles.tile_edge_size
-            )
+            tile_corners[row * tiles.x_tiles_count + col, 0, 0] = col * tiles.tile_edge_size
+            tile_corners[row * tiles.x_tiles_count + col, 0, 1] = row * tiles.tile_edge_size
             # top right
-            tile_corners[row * tiles.x_tiles_count + col, 1, 0] = (
-                col + 1
-            ) * tiles.tile_edge_size
-            tile_corners[row * tiles.x_tiles_count + col, 1, 1] = (
-                row * tiles.tile_edge_size
-            )
+            tile_corners[row * tiles.x_tiles_count + col, 1, 0] = (col + 1) * tiles.tile_edge_size
+            tile_corners[row * tiles.x_tiles_count + col, 1, 1] = row * tiles.tile_edge_size
             # bottom left
-            tile_corners[row * tiles.x_tiles_count + col, 2, 0] = (
-                col * tiles.tile_edge_size
-            )
-            tile_corners[row * tiles.x_tiles_count + col, 2, 1] = (
-                row + 1
-            ) * tiles.tile_edge_size
+            tile_corners[row * tiles.x_tiles_count + col, 2, 0] = col * tiles.tile_edge_size
+            tile_corners[row * tiles.x_tiles_count + col, 2, 1] = (row + 1) * tiles.tile_edge_size
             # bottom right
-            tile_corners[row * tiles.x_tiles_count + col, 3, 0] = (
-                col + 1
-            ) * tiles.tile_edge_size
-            tile_corners[row * tiles.x_tiles_count + col, 3, 1] = (
-                row + 1
-            ) * tiles.tile_edge_size
+            tile_corners[row * tiles.x_tiles_count + col, 3, 0] = (col + 1) * tiles.tile_edge_size
+            tile_corners[row * tiles.x_tiles_count + col, 3, 1] = (row + 1) * tiles.tile_edge_size
     return tile_corners
 
 
@@ -159,12 +141,8 @@ def compute_bbox_tile_intersection(
 
         for i in range(1, 4):
             projected_gaussian_pt = torch.dot(axis, bbox_gaussian[i, :])
-            min_projected_gaussian = torch.min(
-                min_projected_gaussian, projected_gaussian_pt
-            )
-            max_projected_gaussian = torch.max(
-                max_projected_gaussian, projected_gaussian_pt
-            )
+            min_projected_gaussian = torch.min(min_projected_gaussian, projected_gaussian_pt)
+            max_projected_gaussian = torch.max(max_projected_gaussian, projected_gaussian_pt)
 
             projected_tile_pt = torch.dot(axis, bbox_tile[i, :])
             min_projected_tile = torch.min(min_projected_tile, projected_tile_pt)
@@ -182,12 +160,8 @@ def compute_bbox_tile_intersection(
 def plot_bbox(bbox, image, color=(0, 255, 0), thickness=1):
     bbox = bbox.cpu().numpy().astype(int)
     cv2.line(image, bbox[0, :], bbox[1, :], color, thickness)  # top left to top right
-    cv2.line(
-        image, bbox[1, :], bbox[3, :], color, thickness
-    )  # top right to bottom right
-    cv2.line(
-        image, bbox[3, :], bbox[2, :], color, thickness
-    )  # bottom right to bottom left
+    cv2.line(image, bbox[1, :], bbox[3, :], color, thickness)  # top right to bottom right
+    cv2.line(image, bbox[3, :], bbox[2, :], color, thickness)  # bottom right to bottom left
     cv2.line(image, bbox[2, :], bbox[0, :], color, thickness)  # bottom left to top left
 
 
@@ -201,9 +175,7 @@ def save_bboxes_to_image(bboxes, filename="culling_test_0.png"):
 
 
 def draw_intersect_mask(intersect_mask, tiles, bboxes, filename="culling_test_1.png"):
-    image = torch.zeros(
-        (tiles.image_height, tiles.image_width, 3), dtype=torch.uint8
-    ).numpy()
+    image = torch.zeros((tiles.image_height, tiles.image_width, 3), dtype=torch.uint8).numpy()
 
     tile_corners = get_tile_corners(tiles)
     for tile in range(tiles.tile_count):
@@ -370,15 +342,11 @@ class TestCulling(unittest.TestCase):
         tiles = Tiles(128, 128, self.device)
 
         intersecting_tiles = []
-        intersect_mask = torch.zeros(
-            tiles.tile_count, dtype=torch.bool, device=self.device
-        )
+        intersect_mask = torch.zeros(tiles.tile_count, dtype=torch.bool, device=self.device)
 
         tile_corners = get_tile_corners(tiles)
         for tile in range(tiles.tile_count):
-            intersect_mask[tile] = compute_bbox_tile_intersection(
-                obb, tile_corners[tile].float()
-            )
+            intersect_mask[tile] = compute_bbox_tile_intersection(obb, tile_corners[tile].float())
             if intersect_mask[tile]:
                 intersecting_tiles.append(tile)
 
@@ -423,21 +391,15 @@ class TestCulling(unittest.TestCase):
         tiles = Tiles(480, 640, self.device)
 
         intersecting_tiles = []
-        intersect_mask = torch.zeros(
-            tiles.tile_count, dtype=torch.bool, device=self.device
-        )
+        intersect_mask = torch.zeros(tiles.tile_count, dtype=torch.bool, device=self.device)
         tile_corners = get_tile_corners(tiles)
 
         for tile in range(tiles.tile_count):
-            intersect_mask[tile] = compute_bbox_tile_intersection(
-                obb, tile_corners[tile].float()
-            )
+            intersect_mask[tile] = compute_bbox_tile_intersection(obb, tile_corners[tile].float())
             if intersect_mask[tile]:
                 intersecting_tiles.append(tile)
 
-        draw_intersect_mask(
-            intersect_mask, tiles, [obb], filename="test_obb_intersection_2.png"
-        )
+        draw_intersect_mask(intersect_mask, tiles, [obb], filename="test_obb_intersection_2.png")
 
     def test_compute_tiles_cuda(self):
         cuda_device = torch.device("cuda")
@@ -471,13 +433,10 @@ class TestCulling(unittest.TestCase):
             _,
         ) = match_gaussians_to_tiles_gpu(uv, tiles, sigma_image, mh_dist=1.0)
 
-        intersect_mask = torch.zeros(
-            tiles.tile_count, dtype=torch.bool, device=cuda_device
-        )
+        intersect_mask = torch.zeros(tiles.tile_count, dtype=torch.bool, device=cuda_device)
         for tile in range(tiles.tile_count):
             intersect_mask[tile] = (
-                splat_start_end_idx_by_tile_idx[tile]
-                != splat_start_end_idx_by_tile_idx[tile + 1]
+                splat_start_end_idx_by_tile_idx[tile] != splat_start_end_idx_by_tile_idx[tile + 1]
             )
 
         draw_intersect_mask(

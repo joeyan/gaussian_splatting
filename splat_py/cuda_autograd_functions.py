@@ -17,9 +17,7 @@ from splat_cuda import (
 class CameraPointProjection(torch.autograd.Function):
     @staticmethod
     def forward(ctx, xyz_camera, K):
-        uv = torch.zeros(
-            xyz_camera.shape[0], 2, dtype=xyz_camera.dtype, device=xyz_camera.device
-        )
+        uv = torch.zeros(xyz_camera.shape[0], 2, dtype=xyz_camera.dtype, device=xyz_camera.device)
         camera_projection_cuda(xyz_camera, K, uv)
         ctx.save_for_backward(xyz_camera, K)
         return uv
@@ -54,9 +52,7 @@ class ComputeSigmaWorld(torch.autograd.Function):
         grad_quaternions = torch.zeros(
             quaternions.shape, dtype=quaternions.dtype, device=quaternions.device
         )
-        grad_scales = torch.zeros(
-            scales.shape, dtype=scales.dtype, device=scales.device
-        )
+        grad_scales = torch.zeros(scales.shape, dtype=scales.dtype, device=scales.device)
         compute_sigma_world_backward_cuda(
             quaternions, scales, grad_sigma_world, grad_quaternions, grad_scales
         )
@@ -79,9 +75,7 @@ class ComputeProjectionJacobian(torch.autograd.Function):
         grad_xyz_camera = torch.zeros(
             xyz_camera.shape, dtype=xyz_camera.dtype, device=xyz_camera.device
         )
-        compute_projection_jacobian_backward_cuda(
-            xyz_camera, K, grad_jacobian, grad_xyz_camera
-        )
+        compute_projection_jacobian_backward_cuda(xyz_camera, K, grad_jacobian, grad_xyz_camera)
         return grad_xyz_camera, None
 
 
