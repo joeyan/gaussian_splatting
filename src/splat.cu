@@ -43,7 +43,7 @@ __global__ void render_tiles_kernel(
     T view_dir[3];
     T sh_at_view_dir[N_SH];
     if (valid_pixel) {
-#pragma unroll
+        #pragma unroll
         for (int axis = 0; axis < 3; axis++) {
             view_dir[axis] = view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + axis];
         }
@@ -60,7 +60,7 @@ __global__ void render_tiles_kernel(
     const int shared_image_size = 16 * 16 * 3;
     __shared__ T _image[shared_image_size];
 
-#pragma unroll
+    #pragma unroll
     for (int i = thread_id; i < shared_image_size; i += block_size) {
         _image[i] = 0.0;
     }
@@ -82,9 +82,9 @@ __global__ void render_tiles_kernel(
             _uvs[i * 2 + 1] = uvs[gaussian_idx * 2 + 1];
             _opacity[i] = opacity[gaussian_idx];
 
-#pragma unroll
+            #pragma unroll
             for (int sh = 0; sh < N_SH; sh++) {
-#pragma unroll
+                #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
                     _rgb[(i * 3 + channel) * N_SH + sh] =
@@ -149,7 +149,7 @@ __global__ void render_tiles_kernel(
                 T computed_rgb[3];
                 sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
 
-#pragma unroll
+                #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] +=
                         computed_rgb[channel] * weight;
@@ -167,7 +167,7 @@ __global__ void render_tiles_kernel(
         num_splats_per_pixel[v_splat * image_width + u_splat] = num_splats;
         final_weight_per_pixel[v_splat * image_width + u_splat] = alpha_weight;
 
-#pragma unroll
+        #pragma unroll
         for (int channel = 0; channel < 3; channel++) {
             image[(v_splat * image_width + u_splat) * 3 + channel] =
                 _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel];

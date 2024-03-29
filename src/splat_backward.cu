@@ -56,7 +56,7 @@ __global__ void render_tiles_backward_kernel(
     if (valid_pixel) {
         num_splats_this_pixel = num_splats_per_pixel[v_splat * image_width + u_splat];
 
-#pragma unroll
+        #pragma unroll
         for (int channel = 0; channel < 3; channel++) {
             grad_image_local[channel] = grad_image[(v_splat * image_width + u_splat) * 3 + channel];
             view_dir[channel] = view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + channel];
@@ -92,9 +92,9 @@ __global__ void render_tiles_backward_kernel(
             _uvs[i * 2 + 1] = uvs[gaussian_idx * 2 + 1];
             _opacity[i] = opacity[gaussian_idx];
 
-#pragma unroll
+            #pragma unroll
             for (int channel = 0; channel < 3; channel++) {
-#pragma unroll
+                #pragma unroll
                 for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
                     // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
                     _rgb[(i * 3 * N_SH) + (channel * N_SH) + sh_idx] =
@@ -172,7 +172,7 @@ __global__ void render_tiles_backward_kernel(
                 }
 
                 T grad_rgb[3];
-#pragma unroll
+                #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     grad_rgb[channel] = alpha * weight * grad_image_local[channel];
                 }
@@ -185,7 +185,7 @@ __global__ void render_tiles_backward_kernel(
                 compute_sh_grad<T, N_SH>(grad_rgb, sh_at_view_dir, grad_sh);
 
                 T grad_alpha = 0.0;
-#pragma unroll
+                #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     grad_alpha += (computed_rgb[channel] * weight -
                                    color_accum[channel] * reciprocal_one_minus_alpha) *
@@ -222,9 +222,9 @@ __global__ void render_tiles_backward_kernel(
             grad_u = cg::reduce(warp_cg, grad_u, cg::plus<T>());
             grad_v = cg::reduce(warp_cg, grad_v, cg::plus<T>());
 
-#pragma unroll
+            #pragma unroll
             for (int channel = 0; channel < 3; channel++) {
-#pragma unroll
+                #pragma unroll
                 for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
                     grad_sh[(channel * N_SH) + sh_idx] =
                         cg::reduce(warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<T>());
@@ -240,9 +240,9 @@ __global__ void render_tiles_backward_kernel(
                 const int global_splat_idx = splat_idx_start + tile_splat_idx;
                 const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
 
-#pragma unroll
+                #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
-#pragma unroll
+                    #pragma unroll
                     for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
                         // indexing: (gaussian_idx offset) + (channel offset) +
                         // (sh_offset)
