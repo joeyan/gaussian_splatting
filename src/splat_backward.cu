@@ -3,18 +3,20 @@
 #include <cuda_runtime.h>
 
 #include "checks.cuh"
+#include "spherical_harmonics.cuh"
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
 
 namespace cg = cooperative_groups;
 
-template<typename T, unsigned int CHUNK_SIZE>
+template<typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
 __global__ void render_tiles_backward_kernel(
         const T* __restrict__ uvs,
         const T* __restrict__ opacity,
         const T* __restrict__ rgb,
         const T* __restrict__ sigma_image,
+        const T* __restrict__ view_dir_by_pixel,
         const int* __restrict__ splat_start_end_idx_by_tile_idx,
         const int* __restrict__ gaussian_idx_by_splat_idx,
         const int* __restrict__ num_splats_per_pixel,
@@ -42,26 +44,35 @@ __global__ void render_tiles_backward_kernel(
     int num_splats_this_tile = splat_idx_end - splat_idx_start;
 
     int num_splats_this_pixel;
-    T grad_image_r;
-    T grad_image_g;
-    T grad_image_b;
     T weight;
+    // make local copy for faster access
+    T grad_image_local[3];
     T color_accum[3] = {0.0, 0.0, 0.0};
+    T view_dir[3];
+    T sh_at_view_dir[N_SH];
 
     // keep threads around even if pixel is not valid for copying data
     bool valid_pixel = u_splat < image_width && v_splat < image_height;
 
     if (valid_pixel) {
         num_splats_this_pixel = num_splats_per_pixel[v_splat * image_width + u_splat];
-        grad_image_r = grad_image[(v_splat * image_width + u_splat) * 3 + 0];
-        grad_image_g = grad_image[(v_splat * image_width + u_splat) * 3 + 1];
-        grad_image_b = grad_image[(v_splat * image_width + u_splat) * 3 + 2];
+
+        #pragma unroll
+        for (int channel = 0; channel < 3; channel++){
+            grad_image_local[channel] = grad_image[(v_splat * image_width + u_splat) * 3 + channel];
+            view_dir[channel] = view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + channel];
+        }
+        compute_sh_coeffs_for_view_dir<T, N_SH>(
+            view_dir,
+            sh_at_view_dir
+        );
         weight = final_weight_per_pixel[u_splat + v_splat * image_width];
     }
+
     // shared memory copies of inputs
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
-    __shared__ T _rgb[CHUNK_SIZE * 3];
+    __shared__ T _rgb[CHUNK_SIZE * 3 * N_SH];
     __shared__ T _sigma_image[CHUNK_SIZE * 4];
 
     const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
@@ -83,9 +94,16 @@ __global__ void render_tiles_backward_kernel(
             _uvs[i * 2 + 0] = uvs[gaussian_idx * 2 + 0];
             _uvs[i * 2 + 1] = uvs[gaussian_idx * 2 + 1];
             _opacity[i] = opacity[gaussian_idx];
-            _rgb[i * 3 + 0] = rgb[gaussian_idx * 3 + 0];
-            _rgb[i * 3 + 1] = rgb[gaussian_idx * 3 + 1];
-            _rgb[i * 3 + 2] = rgb[gaussian_idx * 3 + 2];
+
+            #pragma unroll
+            for (int channel = 0; channel < 3; channel++) {
+                #pragma unroll
+                for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
+                    // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
+                    _rgb[(i * 3 * N_SH) + (channel * N_SH) + sh_idx] = rgb[(gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx];
+                }
+            }
+
             _sigma_image[i * 4 + 0] = sigma_image[gaussian_idx * 4 + 0];
             _sigma_image[i * 4 + 1] = sigma_image[gaussian_idx * 4 + 1];
             _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
@@ -98,9 +116,7 @@ __global__ void render_tiles_backward_kernel(
         int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
         for (int i = chunk_end - chunk_start - 1; i >= 0; i--) {
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
-            T grad_red = 0;
-            T grad_green = 0;
-            T grad_blue = 0;
+            T grad_sh[3 * N_SH] = {0.0};
             T grad_opa = 0;
             T grad_u = 0;
             T grad_v = 0;
@@ -152,17 +168,37 @@ __global__ void render_tiles_backward_kernel(
                 if (i < num_splats_this_pixel - 1) {
                     weight = weight * reciprocal_one_minus_alpha;
                 }
-                grad_red = alpha * weight * grad_image_r;
-                grad_green = alpha * weight * grad_image_g;
-                grad_blue = alpha * weight * grad_image_b;
 
-                T grad_alpha_r = (_rgb[i * 3 + 0] * weight - color_accum[0] * reciprocal_one_minus_alpha) * grad_image_r;
-                T grad_alpha_g = (_rgb[i * 3 + 1] * weight - color_accum[1] * reciprocal_one_minus_alpha) * grad_image_g;
-                T grad_alpha_b = (_rgb[i * 3 + 2] * weight - color_accum[2] * reciprocal_one_minus_alpha) * grad_image_b;
-                T grad_alpha = grad_alpha_r + grad_alpha_g + grad_alpha_b;
-        
+                T grad_rgb[3];
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    grad_rgb[channel] = alpha * weight * grad_image_local[channel];
+                }
+
+
+                // compute rgb from sh
+                T computed_rgb[3];
+                sh_to_rgb<T, N_SH>(
+                    _rgb + i * 3 * N_SH,
+                    sh_at_view_dir,
+                    computed_rgb
+                );
+                
+                // compute grad wrt spherical harmonic coeff
+                compute_sh_grad<T, N_SH>(
+                    grad_rgb,
+                    sh_at_view_dir,
+                    grad_sh
+                );
+
+                T grad_alpha = 0.0;
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    grad_alpha += (computed_rgb[channel] * weight - color_accum[channel] * reciprocal_one_minus_alpha) * grad_image_local[channel];
+                }
                 grad_opa = norm_prob * grad_alpha;
-        
+
+
                 // compute gradient for probability
                 T grad_prob = _opacity[i] * grad_alpha;
                 T grad_mh_sq = -0.5 * norm_prob * grad_prob;
@@ -178,9 +214,9 @@ __global__ void render_tiles_backward_kernel(
                 grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
         
                 // update color_accum for next splat
-                color_accum[0] += _rgb[i * 3 + 0] * alpha * weight;
-                color_accum[1] += _rgb[i * 3 + 1] * alpha * weight;
-                color_accum[2] += _rgb[i * 3 + 2] * alpha * weight;
+                for (int channel = 0; channel < 3; channel++) {
+                    color_accum[channel] += computed_rgb[channel] * alpha * weight;
+                }
             }
 
             // reduce gradients across warp_cg
@@ -189,9 +225,14 @@ __global__ void render_tiles_backward_kernel(
             grad_opa = cg::reduce(warp_cg, grad_opa, cg::plus<T>());
             grad_u = cg::reduce(warp_cg, grad_u, cg::plus<T>());
             grad_v = cg::reduce(warp_cg, grad_v, cg::plus<T>());
-            grad_red = cg::reduce(warp_cg, grad_red, cg::plus<T>());
-            grad_green = cg::reduce(warp_cg, grad_green, cg::plus<T>());
-            grad_blue = cg::reduce(warp_cg, grad_blue, cg::plus<T>());
+            
+            #pragma unroll
+            for (int channel = 0; channel < 3; channel++) {
+                #pragma unroll
+                for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
+                    grad_sh[(channel * N_SH) + sh_idx] = cg::reduce(warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<T>());
+                }
+            }
             grad_a = cg::reduce(warp_cg, grad_a, cg::plus<T>());
             grad_b = cg::reduce(warp_cg, grad_b, cg::plus<T>());
             grad_c = cg::reduce(warp_cg, grad_c, cg::plus<T>());
@@ -201,9 +242,15 @@ __global__ void render_tiles_backward_kernel(
             if (warp_cg.thread_rank() == 0) {
                 const int global_splat_idx = splat_idx_start + tile_splat_idx;
                 const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
-                atomicAdd(grad_rgb + gaussian_idx * 3 + 0, grad_red);
-                atomicAdd(grad_rgb + gaussian_idx * 3 + 1, grad_green);
-                atomicAdd(grad_rgb + gaussian_idx * 3 + 2, grad_blue);
+
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    #pragma unroll
+                    for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
+                        // indexing: (gaussian_idx offset) + (channel offset) + (sh_offset)
+                        atomicAdd(grad_rgb + (gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx, grad_sh[(channel * N_SH) + sh_idx]);
+                    }
+                }
                 atomicAdd(grad_opacity + gaussian_idx, grad_opa);
                 atomicAdd(grad_uv + gaussian_idx * 2 + 0, grad_u);
                 atomicAdd(grad_uv + gaussian_idx * 2 + 1, grad_v);
@@ -222,6 +269,7 @@ void render_tiles_backward_cuda(
     torch::Tensor opacity,
     torch::Tensor rgb,
     torch::Tensor sigma_image,
+    torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
     torch::Tensor num_splats_per_pixel,
@@ -236,6 +284,7 @@ void render_tiles_backward_cuda(
     CHECK_VALID_INPUT(opacity);
     CHECK_VALID_INPUT(rgb);
     CHECK_VALID_INPUT(sigma_image);
+    CHECK_VALID_INPUT(view_dir_by_pixel);
     CHECK_VALID_INPUT(splat_start_end_idx_by_tile_idx);
     CHECK_VALID_INPUT(gaussian_idx_by_splat_idx);
     CHECK_VALID_INPUT(num_splats_per_pixel);
@@ -257,6 +306,9 @@ void render_tiles_backward_cuda(
     
     int image_height = num_splats_per_pixel.size(0);
     int image_width = num_splats_per_pixel.size(1);
+    TORCH_CHECK(view_dir_by_pixel.size(0) == image_height, "view_dir_by_pixel must have the same size as the image");
+    TORCH_CHECK(view_dir_by_pixel.size(1) == image_width, "view_dir_by_pixel must have the same size as the image");
+    TORCH_CHECK(view_dir_by_pixel.size(2) == 3, "view_dir_by_pixel must have 3 channels");
 
     int num_tiles_x = (image_width + 16 - 1) / 16;
     int num_tiles_y = (image_height + 16 - 1) / 16;
@@ -266,6 +318,7 @@ void render_tiles_backward_cuda(
     TORCH_CHECK(num_splats_per_pixel.size(1) == image_width, "num_splats_per_pixel must have the same size as the image");
     TORCH_CHECK(final_weight_per_pixel.size(0) == image_height, "final_weight_per_pixel must have the same size as the image");
     TORCH_CHECK(final_weight_per_pixel.size(1) == image_width, "final_weight_per_pixel must have the same size as the image");
+    
     TORCH_CHECK(grad_image.size(0) == image_height, "grad_image must have the same size as the image");
     TORCH_CHECK(grad_image.size(1) == image_width, "grad_image must have the same size as the image");
     TORCH_CHECK(grad_image.size(2) == 3, "grad_image must have 3 channels");
@@ -273,10 +326,17 @@ void render_tiles_backward_cuda(
     dim3 block_size(16, 16, 1);
     dim3 grid_size(num_tiles_x, num_tiles_y, 1);
 
+    int num_sh_coeff;
+    if (rgb.dim() == 3) {
+        num_sh_coeff = rgb.size(2);
+    } else {
+        num_sh_coeff = 1;
+    }
     if (uvs.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(opacity);
         CHECK_FLOAT_TENSOR(rgb);
         CHECK_FLOAT_TENSOR(sigma_image);
+        CHECK_FLOAT_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
         CHECK_INT_TENSOR(num_splats_per_pixel);
@@ -286,29 +346,95 @@ void render_tiles_backward_cuda(
         CHECK_FLOAT_TENSOR(grad_opacity);
         CHECK_FLOAT_TENSOR(grad_uv);
         CHECK_FLOAT_TENSOR(grad_sigma_image);
-        // chunksize of 640 for single precision
-        render_tiles_backward_kernel<float, 960><<<grid_size, block_size>>>(
-            uvs.data_ptr<float>(),
-            opacity.data_ptr<float>(),
-            rgb.data_ptr<float>(),
-            sigma_image.data_ptr<float>(),
-            splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-            gaussian_idx_by_splat_idx.data_ptr<int>(),
-            num_splats_per_pixel.data_ptr<int>(),
-            final_weight_per_pixel.data_ptr<float>(),
-            grad_image.data_ptr<float>(),
-            image_width,
-            image_height,
-            true,
-            grad_rgb.data_ptr<float>(),
-            grad_opacity.data_ptr<float>(),
-            grad_uv.data_ptr<float>(),
-            grad_sigma_image.data_ptr<float>()
-        );
+        if (num_sh_coeff == 1) {
+            render_tiles_backward_kernel<float, 960, 1><<<grid_size, block_size>>>(
+                uvs.data_ptr<float>(),
+                opacity.data_ptr<float>(),
+                rgb.data_ptr<float>(),
+                sigma_image.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<float>(),
+                grad_image.data_ptr<float>(),
+                image_width,
+                image_height,
+                true,
+                grad_rgb.data_ptr<float>(),
+                grad_opacity.data_ptr<float>(),
+                grad_uv.data_ptr<float>(),
+                grad_sigma_image.data_ptr<float>()
+            );
+        } else if (num_sh_coeff == 4) {
+            render_tiles_backward_kernel<float, 576, 4><<<grid_size, block_size>>>(
+                uvs.data_ptr<float>(),
+                opacity.data_ptr<float>(),
+                rgb.data_ptr<float>(),
+                sigma_image.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<float>(),
+                grad_image.data_ptr<float>(),
+                image_width,
+                image_height,
+                true,
+                grad_rgb.data_ptr<float>(),
+                grad_opacity.data_ptr<float>(),
+                grad_uv.data_ptr<float>(),
+                grad_sigma_image.data_ptr<float>()
+            );
+
+        } else if (num_sh_coeff == 9) {
+            render_tiles_backward_kernel<float, 320, 9><<<grid_size, block_size>>>(
+                uvs.data_ptr<float>(),
+                opacity.data_ptr<float>(),
+                rgb.data_ptr<float>(),
+                sigma_image.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<float>(),
+                grad_image.data_ptr<float>(),
+                image_width,
+                image_height,
+                true,
+                grad_rgb.data_ptr<float>(),
+                grad_opacity.data_ptr<float>(),
+                grad_uv.data_ptr<float>(),
+                grad_sigma_image.data_ptr<float>()
+            );
+        } else if (num_sh_coeff == 16) {
+            render_tiles_backward_kernel<float, 160, 16><<<grid_size, block_size>>>(
+                uvs.data_ptr<float>(),
+                opacity.data_ptr<float>(),
+                rgb.data_ptr<float>(),
+                sigma_image.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<float>(),
+                grad_image.data_ptr<float>(),
+                image_width,
+                image_height,
+                true,
+                grad_rgb.data_ptr<float>(),
+                grad_opacity.data_ptr<float>(),
+                grad_uv.data_ptr<float>(),
+                grad_sigma_image.data_ptr<float>()
+            );
+        } else {
+            AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
+        }
     } else if (uvs.dtype() == torch::kFloat64) {
         CHECK_DOUBLE_TENSOR(opacity);
         CHECK_DOUBLE_TENSOR(rgb);
         CHECK_DOUBLE_TENSOR(sigma_image);
+        CHECK_DOUBLE_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
         CHECK_INT_TENSOR(num_splats_per_pixel);
@@ -318,25 +444,89 @@ void render_tiles_backward_cuda(
         CHECK_DOUBLE_TENSOR(grad_opacity);
         CHECK_DOUBLE_TENSOR(grad_uv);
         CHECK_DOUBLE_TENSOR(grad_sigma_image);
-        // chunksize of 320 for double precision
-        render_tiles_backward_kernel<double, 320><<<grid_size, block_size>>>(
-            uvs.data_ptr<double>(),
-            opacity.data_ptr<double>(),
-            rgb.data_ptr<double>(),
-            sigma_image.data_ptr<double>(),
-            splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-            gaussian_idx_by_splat_idx.data_ptr<int>(),
-            num_splats_per_pixel.data_ptr<int>(),
-            final_weight_per_pixel.data_ptr<double>(),
-            grad_image.data_ptr<double>(),
-            image_width,
-            image_height,
-            false,
-            grad_rgb.data_ptr<double>(),
-            grad_opacity.data_ptr<double>(),
-            grad_uv.data_ptr<double>(),
-            grad_sigma_image.data_ptr<double>()
-        );
+        if (num_sh_coeff == 1) {
+            render_tiles_backward_kernel<double, 320, 1><<<grid_size, block_size>>>(
+                uvs.data_ptr<double>(),
+                opacity.data_ptr<double>(),
+                rgb.data_ptr<double>(),
+                sigma_image.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<double>(),
+                grad_image.data_ptr<double>(),
+                image_width,
+                image_height,
+                false,
+                grad_rgb.data_ptr<double>(),
+                grad_opacity.data_ptr<double>(),
+                grad_uv.data_ptr<double>(),
+                grad_sigma_image.data_ptr<double>()
+            );
+        } else if (num_sh_coeff == 4) {
+            render_tiles_backward_kernel<double, 160, 4><<<grid_size, block_size>>>(
+                uvs.data_ptr<double>(),
+                opacity.data_ptr<double>(),
+                rgb.data_ptr<double>(),
+                sigma_image.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<double>(),
+                grad_image.data_ptr<double>(),
+                image_width,
+                image_height,
+                false,
+                grad_rgb.data_ptr<double>(),
+                grad_opacity.data_ptr<double>(),
+                grad_uv.data_ptr<double>(),
+                grad_sigma_image.data_ptr<double>()
+            );
+        } else if (num_sh_coeff == 9) {
+            render_tiles_backward_kernel<double, 128, 9><<<grid_size, block_size>>>(
+                uvs.data_ptr<double>(),
+                opacity.data_ptr<double>(),
+                rgb.data_ptr<double>(),
+                sigma_image.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<double>(),
+                grad_image.data_ptr<double>(),
+                image_width,
+                image_height,
+                false,
+                grad_rgb.data_ptr<double>(),
+                grad_opacity.data_ptr<double>(),
+                grad_uv.data_ptr<double>(),
+                grad_sigma_image.data_ptr<double>()
+            );      
+        } else if (num_sh_coeff == 16) {
+            render_tiles_backward_kernel<double, 64, 16><<<grid_size, block_size>>>(
+                uvs.data_ptr<double>(),
+                opacity.data_ptr<double>(),
+                rgb.data_ptr<double>(),
+                sigma_image.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<double>(),
+                grad_image.data_ptr<double>(),
+                image_width,
+                image_height,
+                false,
+                grad_rgb.data_ptr<double>(),
+                grad_opacity.data_ptr<double>(),
+                grad_uv.data_ptr<double>(),
+                grad_sigma_image.data_ptr<double>()
+            );       
+        } else {
+            AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
+        }
     } else {
         AT_ERROR("Inputs must be float32 or float64");
     }

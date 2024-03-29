@@ -2,7 +2,13 @@ import math
 import unittest
 import torch
 
-from splat_py.utils import quaternion_to_rotation_torch, transform_points_torch
+from splat_py.utils import (
+    quaternion_to_rotation_torch,
+    transform_points_torch,
+    compute_rays,
+    compute_rays_in_world_frame,
+)
+from gaussian_test_data import get_test_camera, get_test_world_T_image
 
 
 class TestUtils(unittest.TestCase):
@@ -43,6 +49,51 @@ class TestUtils(unittest.TestCase):
             transformed_pts, transform_inv
         )
         self.assertTrue(transformed_back_original_pts.allclose(pts, atol=1e-6))
+
+    def test_compute_rays_camera_frame(self):
+        # get test data
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        camera = get_test_camera(device)
+
+        # compute rays
+        rays = compute_rays(camera)
+        self.assertEqual(rays.shape, (640 * 480, 3))
+        rays = rays.reshape(camera.height, camera.width, 3)
+        self.assertEqual(rays.shape, (480, 640, 3))
+
+        # check some values
+        self.assertAlmostEqual(rays[0, 0, 0].item(), -0.5403921008110046)
+        self.assertAlmostEqual(rays[0, 0, 1].item(), -0.4250645041465759)
+        self.assertAlmostEqual(rays[0, 0, 2].item(), 0.7261518836021423)
+
+        self.assertAlmostEqual(rays[240, 320, 0].item(), 0.0)
+        self.assertAlmostEqual(rays[240, 320, 1].item(), 0.0)
+        self.assertAlmostEqual(rays[240, 320, 2].item(), 1.0)
+
+        self.assertAlmostEqual(rays[0, 639, 0].item(), 0.5391948819160461)
+        self.assertAlmostEqual(rays[0, 639, 1].item(), -0.425452321767807)
+        self.assertAlmostEqual(rays[0, 639, 2].item(), 0.7268144488334656)
+
+    def test_compute_rays_world_frame(self):
+        # get test data
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        camera = get_test_camera(device)
+        world_T_image = get_test_world_T_image(device)
+        rays = compute_rays_in_world_frame(camera, world_T_image)
+        self.assertEqual(rays.shape, (480, 640, 3))
+
+        # check some values
+        self.assertAlmostEqual(rays[0, 0, 0].item(), -0.5390445590019226)
+        self.assertAlmostEqual(rays[0, 0, 1].item(), -0.6224945187568665)
+        self.assertAlmostEqual(rays[0, 0, 2].item(), 0.5673900842666626)
+
+        self.assertAlmostEqual(rays[240, 320, 0].item(), -0.004399406723678112)
+        self.assertAlmostEqual(rays[240, 320, 1].item(), -0.2905626893043518)
+        self.assertAlmostEqual(rays[240, 320, 2].item(), 0.9568459391593933)
+
+        self.assertAlmostEqual(rays[0, 639, 0].item(), 0.540492832660675)
+        self.assertAlmostEqual(rays[0, 639, 1].item(), -0.6134769916534424)
+        self.assertAlmostEqual(rays[0, 639, 2].item(), 0.5757721662521362)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,13 @@ class SimpleTimer:
             print(f"{self.name}: {(end - self.start) * 1000} ms")
 
 
+class GSMetrics:
+    def __init__(self):
+        self.train_psnr = []
+        self.test_psnr = []
+        self.num_gaussians = []
+
+
 class Image:
     """
     Image and Pose information

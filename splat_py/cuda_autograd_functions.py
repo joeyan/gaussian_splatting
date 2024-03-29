@@ -116,6 +116,7 @@ class RenderImage(torch.autograd.Function):
         opacity,
         uvs,
         sigma_image,
+        rays,
         splat_start_end_idx_by_tile_idx,
         sorted_gaussian_idx_by_splat_idx,
         image_size,
@@ -134,6 +135,7 @@ class RenderImage(torch.autograd.Function):
             opacity,
             rgb,
             sigma_image,
+            rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
@@ -145,6 +147,7 @@ class RenderImage(torch.autograd.Function):
             opacity,
             rgb,
             sigma_image,
+            rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
@@ -159,6 +162,7 @@ class RenderImage(torch.autograd.Function):
             opacity,
             rgb,
             sigma_image,
+            rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
@@ -176,6 +180,7 @@ class RenderImage(torch.autograd.Function):
             opacity,
             rgb,
             sigma_image,
+            rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
             num_splats_per_pixel,
@@ -186,4 +191,4 @@ class RenderImage(torch.autograd.Function):
             grad_uv,
             grad_sigma_image,
         )
-        return grad_rgb, grad_opacity, grad_uv, grad_sigma_image, None, None, None
+        return grad_rgb, grad_opacity, grad_uv, grad_sigma_image, None, None, None, None

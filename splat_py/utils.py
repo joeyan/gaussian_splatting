@@ -84,3 +84,54 @@ def transform_points_torch(pts, transform):  # N x 3  # N x 4 x 4
         print(filtered_tensor.detach().cpu().numpy())
 
     return transformed_pts.contiguous()
+
+
+def compute_rays(camera):
+    """
+    Compute rays in camera space
+    """
+    # grid of uv coordinates
+    u = torch.linspace(
+        0, camera.width - 1, camera.width, dtype=camera.K.dtype, device=camera.K.device
+    )
+    v = torch.linspace(
+        0,
+        camera.height - 1,
+        camera.height,
+        dtype=camera.K.dtype,
+        device=camera.K.device,
+    )
+
+    # use (v, u) order to preserve row-major order
+    v, u = torch.meshgrid(v, u, indexing="ij")
+    v = v.flatten()
+    u = u.flatten()
+
+    K = camera.K
+    # Inverse pinhole projection
+    # fx * x/z + cx = u => x/z = (u - cx) / fx, z = 1
+    # fy * y/z + cy = v => y/z = (v - cy) / fy, z = 1
+    ray_dir = torch.stack(
+        [
+            (u - K[0, 2]) / K[0, 0],
+            (v - K[1, 2]) / K[1, 1],
+            torch.ones_like(u),
+        ],
+        dim=-1,
+    )
+    ray_dir = ray_dir / torch.norm(ray_dir, dim=1, keepdim=True)
+    return ray_dir
+
+
+def compute_rays_in_world_frame(camera, camera_T_world):
+    """
+    Compute rays in world space
+    """
+    rays = compute_rays(camera)
+    # transform rays to world space
+    world_T_camera = torch.inverse(camera_T_world)
+    rays = (world_T_camera[:3, :3] @ rays.T).T
+    rays = rays / torch.norm(rays, dim=1, keepdim=True)
+    rays = rays.reshape(camera.height, camera.width, 3)
+    rays = rays.contiguous()
+    return rays
