@@ -41,10 +41,16 @@ __global__ void render_tiles_kernel(
     int num_splats = 0;
 
     T view_dir[3];
+    T sh_at_view_dir[N_SH];
     if (valid_pixel) {
         view_dir[0] = rays[(v_splat * image_width + u_splat) * 3 + 0];
         view_dir[1] = rays[(v_splat * image_width + u_splat) * 3 + 1];
         view_dir[2] = rays[(v_splat * image_width + u_splat) * 3 + 2];
+
+        compute_sh_coeffs_for_view_dir<T, N_SH>(
+            view_dir,
+            sh_at_view_dir
+        );
     }
 
     // shared memory copies of inputs
@@ -135,11 +141,11 @@ __global__ void render_tiles_kernel(
                 alpha_weight = 1.0 - alpha_accum;
                 const T weight = alpha * (1.0 - alpha_accum);
     
-                // compute rgb from sh_coeff
+                // compute rgb
                 T computed_rgb[3];
                 sh_to_rgb<T, N_SH>(
                     _rgb + i * 3 * N_SH,
-                    view_dir,
+                    sh_at_view_dir,
                     computed_rgb
                 );
 

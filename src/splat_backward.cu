@@ -50,6 +50,7 @@ __global__ void render_tiles_backward_kernel(
     T weight;
     T color_accum[3] = {0.0, 0.0, 0.0};
     T view_dir[3];
+    T sh_at_view_dir[N_SH];
 
     // keep threads around even if pixel is not valid for copying data
     bool valid_pixel = u_splat < image_width && v_splat < image_height;
@@ -59,9 +60,16 @@ __global__ void render_tiles_backward_kernel(
         grad_image_r = grad_image[(v_splat * image_width + u_splat) * 3 + 0];
         grad_image_g = grad_image[(v_splat * image_width + u_splat) * 3 + 1];
         grad_image_b = grad_image[(v_splat * image_width + u_splat) * 3 + 2];
+        
         view_dir[0] = rays[(v_splat * image_width + u_splat) * 3 + 0];
         view_dir[1] = rays[(v_splat * image_width + u_splat) * 3 + 1];
         view_dir[2] = rays[(v_splat * image_width + u_splat) * 3 + 2];
+        
+        compute_sh_coeffs_for_view_dir<T, N_SH>(
+            view_dir,
+            sh_at_view_dir
+        );
+        
         weight = final_weight_per_pixel[u_splat + v_splat * image_width];
     }
     // shared memory copies of inputs
@@ -176,14 +184,14 @@ __global__ void render_tiles_backward_kernel(
                 T computed_rgb[3];
                 sh_to_rgb<T, N_SH>(
                     _rgb + i * 3 * N_SH,
-                    view_dir,
+                    sh_at_view_dir,
                     computed_rgb
                 );
                 
                 // compute grad wrt spherical harmonic coeff
                 compute_sh_grad<T, N_SH>(
                     grad_rgb,
-                    view_dir,
+                    sh_at_view_dir,
                     grad_sh
                 );
 

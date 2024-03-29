@@ -20,6 +20,8 @@ def get_test_gaussians(device):
     rgb[3, :] = torch.tensor([0.5, 0.0, 0.0], dtype=torch.float32, device=device)
     rgb[4, :] = torch.tensor([0.0, 0.5, 0.0], dtype=torch.float32, device=device)
     rgb[5, :] = torch.tensor([0.0, 0.0, 0.5], dtype=torch.float32, device=device)
+    rgb = rgb / 0.28209479177387814
+
     opacities = torch.ones(xyz.shape[0], 1, dtype=torch.float32, device=device)
     scales = torch.tensor(
         [

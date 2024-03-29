@@ -52,9 +52,9 @@ class TestColmapData(unittest.TestCase):
         self.assertAlmostEqual(gaussians.xyz[0, 1].item(), 1.673997640)
         self.assertAlmostEqual(gaussians.xyz[0, 2].item(), -1.014126658)
 
-        self.assertAlmostEqual(gaussians.rgb[0, 0].item(), -2.463853120803833)
-        self.assertAlmostEqual(gaussians.rgb[0, 1].item(), -1.838279366493225)
-        self.assertAlmostEqual(gaussians.rgb[0, 2].item(), -3.9120230674743652)
+        self.assertAlmostEqual(gaussians.rgb[0, 0].item(), 0.27803197503089905)
+        self.assertAlmostEqual(gaussians.rgb[0, 1].item(), 0.48655596375465393)
+        self.assertAlmostEqual(gaussians.rgb[0, 2].item(), 0.06950799375772476)
 
         self.assertAlmostEqual(gaussians.opacities[0, 0].item(), -1.3862943649)
 

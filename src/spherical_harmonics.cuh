@@ -26,51 +26,71 @@ __device__ __constant__ const float SH_3[7] = {
 };
 
 template <typename T, unsigned int N_SH>
+__device__ __inline__ void compute_sh_coeffs_for_view_dir(
+    const T* __restrict__ view_dir,
+    T* __restrict__ sh_at_view_dir
+) {
+    // Band 0
+    sh_at_view_dir[0] = T(SH_0);
+
+    if (N_SH < 4) return;
+
+    const T x = view_dir[0];
+    const T y = view_dir[1];
+    const T z = view_dir[2];
+
+    // Band 1
+    sh_at_view_dir[1] = T(SH_1[0]) * x;
+    sh_at_view_dir[2] = T(SH_1[1]) * y;
+    sh_at_view_dir[3] = T(SH_1[2]) * z;
+
+    if (N_SH < 9) return;
+
+    const T xy = x * y;
+    const T yz = y * z;
+    const T xz = x * z;
+    const T xx = x * x;
+    const T yy = y * y;
+    const T zz = z * z;
+
+    // Band 2
+    sh_at_view_dir[4] = T(SH_2[0]) * xy; // xy
+    sh_at_view_dir[5] = T(SH_2[1]) * yz; // yz
+    sh_at_view_dir[6] = T(SH_2[2]) * (3 * zz - 1.0); // 3z^2 - 1
+    sh_at_view_dir[7] = T(SH_2[3]) * xz; // xz
+    sh_at_view_dir[8] = T(SH_2[4]) * (xx - yy); // x^2 - y^2
+
+    if (N_SH < 16) return;
+
+    // Band 3
+    sh_at_view_dir[9] = T(SH_3[0]) * y * (3 * xx - yy); // y * (3x^2 - y^2)
+    sh_at_view_dir[10] = T(SH_3[1]) * xy * z; // xyz
+    sh_at_view_dir[11] = T(SH_3[2]) * y * (5 * zz - 1.0); // y(5z^2 - 1)
+    sh_at_view_dir[12] = T(SH_3[3]) * z * (5 * zz - 3.0); // z(5z^2 - 3)
+    sh_at_view_dir[13] = T(SH_3[4]) * x * (5 * zz - 1.0); // x(5z^2 - 1)
+    sh_at_view_dir[14] = T(SH_3[5]) * z * (xx - yy); // z(x^2 - y^2)
+    sh_at_view_dir[15] = T(SH_3[6]) * x * (xx - 3 * yy); // x(x^2 - 3y^2)
+}
+
+template <typename T, unsigned int N_SH>
 __device__ __inline__ void sh_to_rgb(
     const T* __restrict__ sh_coeff,
-    const T* __restrict__ view_dir,
+    const T* __restrict__ sh_at_view_dir,
     T* __restrict__ rgb
 ){
-    T x = view_dir[0];
-    T y = view_dir[1];
-    T z = view_dir[2];
-
-    // Band 0
+    // set rgb to zero order value
     #pragma unroll
-    for (int i = 0; i < 3; i++){
-        rgb[i] = T(SH_0) * sh_coeff[N_SH * i];
+    for (int channel_idx = 0; channel_idx < 3; channel_idx++){
+        rgb[channel_idx] = sh_at_view_dir[0] * sh_coeff[N_SH * channel_idx];
     }
-    // Band 1
-    if (N_SH >= 4){
+
+    // add higher order values if needed
+    if (N_SH < 4) return;
+    #pragma unroll
+    for (int sh_idx = 1; sh_idx < N_SH; sh_idx++){
         #pragma unroll
-        for (int i = 0; i < 3; i++){
-            rgb[i] += T(SH_1[0]) * x * sh_coeff[N_SH * i + 1]; // x
-            rgb[i] += T(SH_1[1]) * y * sh_coeff[N_SH * i + 2]; // y
-            rgb[i] += T(SH_1[2]) * z * sh_coeff[N_SH * i + 3]; // z
-        }
-    }
-    // Band 2
-    if (N_SH >= 9) {
-        #pragma unroll
-        for (int i = 0; i < 3; i++){
-            rgb[i] += T(SH_2[0]) * x * y * sh_coeff[N_SH * i + 4]; // xy
-            rgb[i] += T(SH_2[1]) * y * z * sh_coeff[N_SH * i + 5]; // yz
-            rgb[i] += T(SH_2[2]) * (3 * z * z - 1.0) * sh_coeff[N_SH * i + 6]; // 3z^2 - 1
-            rgb[i] += T(SH_2[3]) * x * z * sh_coeff[N_SH * i + 7]; // xz
-            rgb[i] += T(SH_2[4]) * (x * x - y * y) * sh_coeff[N_SH * i + 8]; // x^2 - y^2
-        }
-    }
-    // Band 3
-    if (N_SH >= 16) {
-        #pragma unroll
-        for (int i = 0; i <3; i++) {
-            rgb[i] += T(SH_3[0]) * y * (3 * x * x - y * y) * sh_coeff[N_SH * i + 9]; // y * (3x^2 - y^2)
-            rgb[i] += T(SH_3[1]) * x * y * z * sh_coeff[N_SH * i + 10]; // xyz
-            rgb[i] += T(SH_3[2]) * y * (5 * z * z - 1.0) * sh_coeff[N_SH * i + 11]; // y(5z^2 - 1)
-            rgb[i] += T(SH_3[3]) * z * (5 * z * z - 3.0) * sh_coeff[N_SH * i + 12]; // z(5z^2 - 3)
-            rgb[i] += T(SH_3[4]) * x * (5 * z * z - 1.0) * sh_coeff[N_SH * i + 13]; // x(5z^2 - 1)
-            rgb[i] += T(SH_3[5]) * z * (x * x - y * y) * sh_coeff[N_SH * i + 14]; // z(x^2 - y^2)
-            rgb[i] += T(SH_3[6]) * x * (x * x - 3 * y * y) * sh_coeff[N_SH * i + 15]; // x(x^2 - 3y^2)
+        for (int channel_idx = 0; channel_idx < 3; channel_idx++){
+            rgb[channel_idx] += sh_at_view_dir[sh_idx] * sh_coeff[N_SH * channel_idx + sh_idx];
         }
     }
 }
@@ -78,47 +98,14 @@ __device__ __inline__ void sh_to_rgb(
 template <typename T, unsigned int N_SH>
 __device__ __inline__ void compute_sh_grad(
     const T* __restrict__ grad_rgb,
-    const T* __restrict__ view_dir,
+    const T* __restrict__ sh_at_view_dir,
     T* __restrict__ grad_sh
 ) {
-    T x = view_dir[0];
-    T y = view_dir[1];
-    T z = view_dir[2];
-
-    // Band 0 grad
     #pragma unroll
-    for (int i = 0; i < 3; i++) {
-        grad_sh[N_SH * i] = T(SH_0) * grad_rgb[i];
-    }
-    // Band 1 grad
-    if (N_SH >= 4){
+    for (int sh_idx = 0; sh_idx < N_SH; sh_idx++){
         #pragma unroll
-        for (int i = 0; i < 3; i++){
-            grad_sh[N_SH * i + 1] = T(SH_1[0]) * x * grad_rgb[i]; // x
-            grad_sh[N_SH * i + 2] = T(SH_1[1]) * y * grad_rgb[i]; // y
-            grad_sh[N_SH * i + 3] = T(SH_1[2]) * z * grad_rgb[i]; // z
-        }
-    } 
-    if (N_SH >= 9) {
-        #pragma unroll
-        for (int i = 0; i < 3; i++) {
-            grad_sh[N_SH * i + 4] = T(SH_2[0]) * x * y * grad_rgb[i]; // xy
-            grad_sh[N_SH * i + 5] = T(SH_2[1]) * y * z * grad_rgb[i]; // yz
-            grad_sh[N_SH * i + 6] = T(SH_2[2]) * (3 * z * z - 1.0) * grad_rgb[i]; // 3z^2 - 1
-            grad_sh[N_SH * i + 7] = T(SH_2[3]) * x * z * grad_rgb[i]; // xz
-            grad_sh[N_SH * i + 8] = T(SH_2[4]) * (x * x - y * y) * grad_rgb[i]; // x^2 - y^2
-        }
-    }
-    if (N_SH >= 16) {
-        #pragma unroll
-        for (int i = 0; i <3; i++) {
-            grad_sh[N_SH * i + 9]= T(SH_3[0]) * y * (3 * x * x - y * y) * grad_rgb[i]; // y * (3x^2 - y^2)
-            grad_sh[N_SH * i + 10]= T(SH_3[1]) * x * y * z * grad_rgb[i]; // xyz
-            grad_sh[N_SH * i + 11]= T(SH_3[2]) * y * (5 * z * z - 1.0) * grad_rgb[i]; // y(5z^2 - 1)
-            grad_sh[N_SH * i + 12]= T(SH_3[3]) * z * (5 * z * z - 3.0) * grad_rgb[i]; // z(5z^2 - 3)
-            grad_sh[N_SH * i + 13]= T(SH_3[4]) * x * (5 * z * z - 1.0) * grad_rgb[i]; // x(5z^2 - 1)
-            grad_sh[N_SH * i + 14]= T(SH_3[5]) * z * (x * x - y * y) * grad_rgb[i]; // z(x^2 - y^2)
-            grad_sh[N_SH * i + 15]= T(SH_3[6]) * x * (x * x - 3 * y * y) * grad_rgb[i]; // x(x^2 - 3y^2)
+        for (int channel_idx = 0; channel_idx < 3; channel_idx++){
+            grad_sh[N_SH * channel_idx + sh_idx] = sh_at_view_dir[sh_idx] * grad_rgb[channel_idx];
         }
     }
 }
