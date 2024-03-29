@@ -16,7 +16,7 @@ __global__ void render_tiles_backward_kernel(
         const T* __restrict__ opacity,
         const T* __restrict__ rgb,
         const T* __restrict__ sigma_image,
-        const T* __restrict__ rays,
+        const T* __restrict__ view_dir_by_pixel,
         const int* __restrict__ splat_start_end_idx_by_tile_idx,
         const int* __restrict__ gaussian_idx_by_splat_idx,
         const int* __restrict__ num_splats_per_pixel,
@@ -60,7 +60,7 @@ __global__ void render_tiles_backward_kernel(
         #pragma unroll
         for (int channel = 0; channel < 3; channel++){
             grad_image_local[channel] = grad_image[(v_splat * image_width + u_splat) * 3 + channel];
-            view_dir[channel] = rays[(v_splat * image_width + u_splat) * 3 + channel];
+            view_dir[channel] = view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + channel];
         }
         compute_sh_coeffs_for_view_dir<T, N_SH>(
             view_dir,
@@ -269,7 +269,7 @@ void render_tiles_backward_cuda(
     torch::Tensor opacity,
     torch::Tensor rgb,
     torch::Tensor sigma_image,
-    torch::Tensor rays,
+    torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
     torch::Tensor num_splats_per_pixel,
@@ -284,7 +284,7 @@ void render_tiles_backward_cuda(
     CHECK_VALID_INPUT(opacity);
     CHECK_VALID_INPUT(rgb);
     CHECK_VALID_INPUT(sigma_image);
-    CHECK_VALID_INPUT(rays);
+    CHECK_VALID_INPUT(view_dir_by_pixel);
     CHECK_VALID_INPUT(splat_start_end_idx_by_tile_idx);
     CHECK_VALID_INPUT(gaussian_idx_by_splat_idx);
     CHECK_VALID_INPUT(num_splats_per_pixel);
@@ -306,9 +306,9 @@ void render_tiles_backward_cuda(
     
     int image_height = num_splats_per_pixel.size(0);
     int image_width = num_splats_per_pixel.size(1);
-    TORCH_CHECK(rays.size(0) == image_height, "rays must have the same size as the image");
-    TORCH_CHECK(rays.size(1) == image_width, "rays must have the same size as the image");
-    TORCH_CHECK(rays.size(2) == 3, "rays must have 3 channels");
+    TORCH_CHECK(view_dir_by_pixel.size(0) == image_height, "view_dir_by_pixel must have the same size as the image");
+    TORCH_CHECK(view_dir_by_pixel.size(1) == image_width, "view_dir_by_pixel must have the same size as the image");
+    TORCH_CHECK(view_dir_by_pixel.size(2) == 3, "view_dir_by_pixel must have 3 channels");
 
     int num_tiles_x = (image_width + 16 - 1) / 16;
     int num_tiles_y = (image_height + 16 - 1) / 16;
@@ -336,7 +336,7 @@ void render_tiles_backward_cuda(
         CHECK_FLOAT_TENSOR(opacity);
         CHECK_FLOAT_TENSOR(rgb);
         CHECK_FLOAT_TENSOR(sigma_image);
-        CHECK_FLOAT_TENSOR(rays);
+        CHECK_FLOAT_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
         CHECK_INT_TENSOR(num_splats_per_pixel);
@@ -352,7 +352,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
                 sigma_image.data_ptr<float>(),
-                rays.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
@@ -372,7 +372,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
                 sigma_image.data_ptr<float>(),
-                rays.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
@@ -393,7 +393,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
                 sigma_image.data_ptr<float>(),
-                rays.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
@@ -413,7 +413,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
                 sigma_image.data_ptr<float>(),
-                rays.data_ptr<float>(),
+                view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
@@ -434,7 +434,7 @@ void render_tiles_backward_cuda(
         CHECK_DOUBLE_TENSOR(opacity);
         CHECK_DOUBLE_TENSOR(rgb);
         CHECK_DOUBLE_TENSOR(sigma_image);
-        CHECK_DOUBLE_TENSOR(rays);
+        CHECK_DOUBLE_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
         CHECK_INT_TENSOR(num_splats_per_pixel);
@@ -450,7 +450,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
                 sigma_image.data_ptr<double>(),
-                rays.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
@@ -470,7 +470,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
                 sigma_image.data_ptr<double>(),
-                rays.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
@@ -490,7 +490,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
                 sigma_image.data_ptr<double>(),
-                rays.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
@@ -510,7 +510,7 @@ void render_tiles_backward_cuda(
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
                 sigma_image.data_ptr<double>(),
-                rays.data_ptr<double>(),
+                view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
                 num_splats_per_pixel.data_ptr<int>(),
