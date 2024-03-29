@@ -4,15 +4,16 @@
 # Following this block post:
 # https://medicineyeh.wordpress.com/2017/07/13/clang-format-with-pragma/
 
+set -eo pipefail
+
 # get git root dir
 gitroot=$(git rev-parse --show-toplevel)
 
 # run python formatter in the git root directory
 (cd $gitroot && black .)
 
-
-srcdir = $gitroot/src
 # get all c/c++/cuda files in the git src directory
+srcdir = $gitroot/src
 files=$(find $srcdir -type f -name "*.c" -o -name "*.cpp" -o -name "*.cu" -o -name "*.h" -o -name "*.hpp" -o -name "*.cuh")
 
 for file in $files; do
