@@ -2,7 +2,8 @@
 A "from scratch" re-implementation of [3D Gaussian Splatting
 for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) by Kerbl and Kopanas et al.
 
-<img width="1181" alt="image" src="https://github.com/joeyan/gaussian_splatting/assets/17635504/26254109-e507-4765-b48e-88da00ffff77">
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/e6305685-621a-43c1-91ad-abd876f8fbe9)
+
 
 ## Installation
 This package requires CUDA and PyTorch.
