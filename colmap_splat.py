@@ -10,6 +10,7 @@ from splat_py.dataloader import ColmapData
 from splat_py.structs import SimpleTimer
 from splat_py.trainer import GSTrainer
 
+
 def plot_metrics(metrics):
     train_psnr = np.array(metrics.train_psnr)
     num_gaussians = np.array(metrics.num_gaussians)
@@ -48,10 +49,9 @@ with SimpleTimer("Load Colmap Data"):
     gaussians.opacities = torch.nn.Parameter(gaussians.opacities)
     gaussians.rgb = torch.nn.Parameter(gaussians.rgb)
 
-start = time.time() 
+start = time.time()
 trainer = GSTrainer(gaussians, images, cameras)
 trainer.train()
 end = time.time()
 print("Total training time: ", end - start)
 plot_metrics(trainer.metrics)
-

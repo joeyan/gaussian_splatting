@@ -276,6 +276,22 @@ void render_tiles_cuda(
                 final_weight_per_pixel.data_ptr<float>(),
                 rendered_image.data_ptr<float>()
             );
+        } else if (num_sh_coeff == 16) {
+            render_tiles_kernel<float, 160, 16><<<grid_size, block_size>>>(
+                uvs.data_ptr<float>(),
+                opacity.data_ptr<float>(),
+                rgb.data_ptr<float>(),
+                sigma_image.data_ptr<float>(),
+                rays.data_ptr<float>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                image_width,
+                image_height,
+                true,
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<float>(),
+                rendered_image.data_ptr<float>()
+            );
         } else {
             AT_ERROR("Unsupported number of SH coefficients: ", num_sh_coeff);
         }
@@ -322,6 +338,22 @@ void render_tiles_cuda(
             );
         } else if (num_sh_coeff == 9){
             render_tiles_kernel<double, 128, 9><<<grid_size, block_size>>>(
+                uvs.data_ptr<double>(),
+                opacity.data_ptr<double>(),
+                rgb.data_ptr<double>(),
+                sigma_image.data_ptr<double>(),
+                rays.data_ptr<double>(),
+                splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+                gaussian_idx_by_splat_idx.data_ptr<int>(),
+                image_width,
+                image_height,
+                false,
+                num_splats_per_pixel.data_ptr<int>(),
+                final_weight_per_pixel.data_ptr<double>(),
+                rendered_image.data_ptr<double>()
+            );
+        } else if (num_sh_coeff == 16){
+            render_tiles_kernel<double, 64, 16><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),

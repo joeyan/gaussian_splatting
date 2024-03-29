@@ -138,6 +138,18 @@ class GSTrainer:
             self.gaussians.rgb = torch.nn.Parameter(new_rgb)
             self.update_optimizer()
 
+        if current_sh_band == 9:
+            new_rgb = torch.zeros(
+                num_gaussians,
+                3,
+                16,
+                dtype=self.gaussians.rgb.dtype,
+                device=self.gaussians.rgb.device,
+            )
+            new_rgb[:, :, :9] = self.gaussians.rgb
+            self.gaussians.rgb = torch.nn.Parameter(new_rgb)
+            self.update_optimizer()
+
     def delete_param_from_optimizer(self, new_param, keep_mask, param_index):
         old_optimizer_param = self.optimizer.param_groups[param_index]["params"][0]
         optimizer_param_state = self.optimizer.state[old_optimizer_param]
@@ -361,7 +373,7 @@ class GSTrainer:
 
         if USE_FRACTIONAL_DENSIFICATION:
             uv_split_val = torch.quantile(uv_grad_avg_norm, UV_GRAD_PERCENTILE).item()
-        else: 
+        else:
             uv_split_val = UV_GRAD_TRHRESHOLD
         densify_mask = uv_grad_avg_norm > uv_split_val
         print(

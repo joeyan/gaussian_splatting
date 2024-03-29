@@ -151,6 +151,35 @@ class TestSplatAutograd(unittest.TestCase):
         )
         self.assertTrue(test)
 
+    def test_render_image_grad_SH_9(self):
+        test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
+        sh_coeff_16 = (
+            torch.ones(
+                self.uv.shape[0],
+                3,
+                16,
+                dtype=torch.float64,
+                device=self.device,
+                requires_grad=True,
+            )
+            * 0.5
+        )
+        test = torch.autograd.gradcheck(
+            RenderImage.apply,
+            (
+                sh_coeff_16,
+                self.opacities,
+                self.uv,
+                self.sigma_image,
+                self.rays,
+                self.splat_start_end_idx_by_tile_idx,
+                self.gaussian_indices_per_tile,
+                test_size,
+            ),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
 
 if __name__ == "__main__":
     unittest.main()
