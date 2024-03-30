@@ -1,14 +1,14 @@
 import cv2
 import numpy as np
 import torch
-from torchmetrics.image import StructuralSimilarityIndexMeasure
+from pytorch_msssim import SSIM
 
 from splat_py.constants import *
 from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeSigmaWorld,
     ComputeProjectionJacobian,
-    ComputeSigmaImage,
+    ComputeConic,
     RenderImage,
 )
 from splat_py.structs import Gaussians, Tiles, SimpleTimer, GSMetrics
@@ -31,7 +31,8 @@ class GSTrainer:
         self.images = images
         self.cameras = cameras
 
-        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.gaussians.xyz.device)
+        # slightly higher PSNR than torchmetric's SSIM
+        self.ssim = SSIM(data_range=1.0, size_average=True, channel=3)
 
         self.update_optimizer()
         self.reset_grad_accum()
@@ -442,7 +443,7 @@ class GSTrainer:
                 culled_gaussians.quaternions, culled_gaussians.scales
             )
             J = ComputeProjectionJacobian.apply(culled_xyz_camera_frame, camera.K)
-            sigma_image = ComputeSigmaImage.apply(sigma_world, J, world_T_image)
+            conic = ComputeConic.apply(sigma_world, J, world_T_image)
 
             # perform tile culling
             tiles = Tiles(camera.height, camera.width, culled_uv.device)
@@ -450,7 +451,7 @@ class GSTrainer:
                 gaussian_idx_by_splat_idx,
                 splat_start_end_idx_by_tile_idx,
                 tile_idx_by_splat_idx,
-            ) = match_gaussians_to_tiles_gpu(culled_uv, tiles, sigma_image, mh_dist=MH_DIST)
+            ) = match_gaussians_to_tiles_gpu(culled_uv, tiles, conic, mh_dist=MH_DIST)
 
             sorted_gaussian_idx_by_splat_idx = sort_gaussians(
                 culled_xyz_camera_frame,
@@ -462,7 +463,7 @@ class GSTrainer:
                 culled_gaussians.rgb,
                 culled_gaussians.opacities,
                 culled_uv,
-                sigma_image,
+                conic,
                 rays,
                 splat_start_end_idx_by_tile_idx,
                 sorted_gaussian_idx_by_splat_idx,

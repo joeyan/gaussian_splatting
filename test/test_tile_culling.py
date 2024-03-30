@@ -31,7 +31,7 @@ def get_tile_corners(tiles):
 
 def compute_obb(
     uv,
-    sigma_image,
+    conic,
     mh_dist,
 ):
     """
@@ -39,14 +39,13 @@ def compute_obb(
 
     Compute the oriented bounding box of a 2D gaussian at a specific confidence level
     """
-    a = sigma_image[0, 0]
-    b = sigma_image[0, 1]
-    c = sigma_image[1, 0]
-    d = sigma_image[1, 1]
+    a = conic[0]
+    b = conic[1]
+    d = conic[2]
 
     # compute the two radii of the 2d gaussian
     left = (a + d) / 2
-    right = torch.sqrt(torch.square(a - d) / 4 + b * c)
+    right = torch.sqrt(torch.square(a - d) / 4 + b * b)
     lambda_1 = left + right
     r1 = mh_dist * torch.sqrt(lambda_1)  # major axis
     r2 = mh_dist * torch.sqrt(left - right)  # minor axis
@@ -252,15 +251,16 @@ class TestCulling(unittest.TestCase):
             dtype=torch.float32,
             device=self.device,
         )
-        sigma_image = torch.tensor(
+        conic = torch.tensor(
             [
-                [9.0, 5.0],
-                [5.0, 4.0],
+                9.0,
+                5.0,
+                4.0,
             ],
             dtype=torch.float32,
             device=self.device,
         )
-        obb = compute_obb(uv, sigma_image, mh_dist=1.0)
+        obb = compute_obb(uv, conic, mh_dist=1.0)
 
         self.assertAlmostEqual(obb[0, 0].item(), 12.5437, places=4)
         self.assertAlmostEqual(obb[0, 1].item(), 12.3606, places=4)
@@ -329,15 +329,16 @@ class TestCulling(unittest.TestCase):
             dtype=torch.float32,
             device=self.device,
         )
-        sigma_image = torch.tensor(
+        conic = torch.tensor(
             [
-                [900.0, 500.0],
-                [500.0, 400.0],
+                900.0,
+                500.0,
+                400.0,
             ],
             dtype=torch.float32,
             device=self.device,
         )
-        obb = compute_obb(uv, sigma_image, mh_dist=1.0)
+        obb = compute_obb(uv, conic, mh_dist=1.0)
 
         tiles = Tiles(128, 128, self.device)
 
@@ -378,15 +379,16 @@ class TestCulling(unittest.TestCase):
             dtype=torch.float32,
             device=self.device,
         )
-        sigma_image = torch.tensor(
+        conic = torch.tensor(
             [
-                [1.3287e04, 9.7362e03],
-                [9.7362e03, 7.3605e03],
+                1.3287e04,
+                9.7362e03,
+                7.3605e03,
             ],
             dtype=torch.float32,
             device=self.device,
         )
-        obb = compute_obb(uv, sigma_image, mh_dist=3.0)
+        obb = compute_obb(uv, conic, mh_dist=3.0)
 
         tiles = Tiles(480, 640, self.device)
 
@@ -412,26 +414,26 @@ class TestCulling(unittest.TestCase):
             dtype=torch.float32,
             device=cuda_device,
         )
-        sigma_image = torch.tensor(
+        conic = torch.tensor(
             [
-                [[1.3287e04, 9.7362e03], [9.7362e03, 7.3605e03]],
-                [[900.0, 500.0], [500.0, 400.0]],
-                [[776.215, -2464.463], [-2464.463, 8276.755]],
+                [1.3287e04, 9.7362e03, 7.3605e03],
+                [900.0, 500.0, 400.0],
+                [776.215, -2464.463, 8276.755],
             ],
             dtype=torch.float32,
             device=cuda_device,
         )
 
-        obb_0 = compute_obb(uv[0], sigma_image[0], mh_dist=1.0)
-        obb_1 = compute_obb(uv[1], sigma_image[1], mh_dist=1.0)
-        obb_2 = compute_obb(uv[2], sigma_image[2], mh_dist=1.0)
+        obb_0 = compute_obb(uv[0], conic[0], mh_dist=1.0)
+        obb_1 = compute_obb(uv[1], conic[1], mh_dist=1.0)
+        obb_2 = compute_obb(uv[2], conic[2], mh_dist=1.0)
 
         tiles = Tiles(480, 640, cuda_device)
         (
             _,
             splat_start_end_idx_by_tile_idx,
             _,
-        ) = match_gaussians_to_tiles_gpu(uv, tiles, sigma_image, mh_dist=1.0)
+        ) = match_gaussians_to_tiles_gpu(uv, tiles, conic, mh_dist=1.0)
 
         intersect_mask = torch.zeros(tiles.tile_count, dtype=torch.bool, device=cuda_device)
         for tile in range(tiles.tile_count):

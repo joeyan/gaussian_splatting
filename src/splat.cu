@@ -10,7 +10,7 @@ __global__ void render_tiles_kernel(
     const T* __restrict__ uvs,
     const T* __restrict__ opacity,
     const T* __restrict__ rgb,
-    const T* __restrict__ sigma_image,
+    const T* __restrict__ conic,
     const T* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
     const int* __restrict__ gaussian_idx_by_splat_idx,
@@ -55,7 +55,7 @@ __global__ void render_tiles_kernel(
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
     __shared__ T _rgb[CHUNK_SIZE * 3 * N_SH];
-    __shared__ T _sigma_image[CHUNK_SIZE * 3];
+    __shared__ T _conic[CHUNK_SIZE * 3];
 
     const int shared_image_size = 16 * 16 * 3;
     __shared__ T _image[shared_image_size];
@@ -92,9 +92,10 @@ __global__ void render_tiles_kernel(
                 }
             }
 
-            _sigma_image[i * 3 + 0] = sigma_image[gaussian_idx * 4 + 0];
-            _sigma_image[i * 3 + 1] = sigma_image[gaussian_idx * 4 + 1];
-            _sigma_image[i * 3 + 2] = sigma_image[gaussian_idx * 4 + 3];
+            #pragma unroll
+            for (int j = 0; j < 3; j++) {
+                _conic[i * 3 + j] = conic[gaussian_idx * 3 + j];
+            }
         }
         __syncthreads(); // wait for copying to complete before attempting to
                          // use data
@@ -113,9 +114,9 @@ __global__ void render_tiles_kernel(
                 const T v_diff = T(v_splat) - v_mean;
 
                 // 2d covariance matrix
-                const T a = _sigma_image[i * 3 + 0];
-                const T b = _sigma_image[i * 3 + 1];
-                const T d = _sigma_image[i * 3 + 2];
+                const T a = _conic[i * 3 + 0];
+                const T b = _conic[i * 3 + 1];
+                const T d = _conic[i * 3 + 2];
                 T det = a * d - b * b;
 
                 T alpha = 0.0;
@@ -177,7 +178,7 @@ void render_tiles_cuda(
     torch::Tensor uvs,
     torch::Tensor opacity,
     torch::Tensor rgb,
-    torch::Tensor sigma_image,
+    torch::Tensor conic,
     torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
@@ -188,7 +189,7 @@ void render_tiles_cuda(
     CHECK_VALID_INPUT(uvs);
     CHECK_VALID_INPUT(opacity);
     CHECK_VALID_INPUT(rgb);
-    CHECK_VALID_INPUT(sigma_image);
+    CHECK_VALID_INPUT(conic);
     CHECK_VALID_INPUT(view_dir_by_pixel);
     CHECK_VALID_INPUT(splat_start_end_idx_by_tile_idx);
     CHECK_VALID_INPUT(gaussian_idx_by_splat_idx);
@@ -202,11 +203,8 @@ void render_tiles_cuda(
     TORCH_CHECK(opacity.size(1) == 1, "Opacity must be Nx1");
     TORCH_CHECK(rgb.size(0) == N, "RGB must have the same number of elements as uvs");
     TORCH_CHECK(rgb.size(1) == 3, "RGB must be Nx3");
-    TORCH_CHECK(
-        sigma_image.size(0) == N, "Sigma image must have the same number of elements as uvs"
-    );
-    TORCH_CHECK(sigma_image.size(1) == 2, "Sigma image must be Nx2x2");
-    TORCH_CHECK(sigma_image.size(1) == 2, "Sigma image must be Nx2x2");
+    TORCH_CHECK(conic.size(0) == N, "Conic must have the same number of elements as uvs");
+    TORCH_CHECK(conic.size(1) == 3, "Conic must be Nx3");
     TORCH_CHECK(rendered_image.size(2) == 3, "Image must be HxWx3");
 
     int image_height = rendered_image.size(0);
@@ -236,7 +234,7 @@ void render_tiles_cuda(
     if (uvs.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(opacity);
         CHECK_FLOAT_TENSOR(rgb);
-        CHECK_FLOAT_TENSOR(sigma_image);
+        CHECK_FLOAT_TENSOR(conic);
         CHECK_FLOAT_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
@@ -249,7 +247,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -265,7 +263,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -281,7 +279,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -297,7 +295,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -314,7 +312,7 @@ void render_tiles_cuda(
     } else if (uvs.dtype() == torch::kFloat64) {
         CHECK_DOUBLE_TENSOR(opacity);
         CHECK_DOUBLE_TENSOR(rgb);
-        CHECK_DOUBLE_TENSOR(sigma_image);
+        CHECK_DOUBLE_TENSOR(conic);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
         CHECK_INT_TENSOR(num_splats_per_pixel);
@@ -325,7 +323,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -341,7 +339,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -357,7 +355,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -373,7 +371,7 @@ void render_tiles_cuda(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),

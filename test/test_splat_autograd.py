@@ -35,11 +35,11 @@ class TestSplatAutograd(unittest.TestCase):
             device=self.device,
             requires_grad=True,
         )
-        self.sigma_image = torch.tensor(
+        self.conic = torch.tensor(
             [
-                [[1.3287e03, 9.7362e02], [9.7362e02, 7.3605e02]],
-                [[90.0, 20.0], [20.0, 60.0]],
-                [[776.215, -2464.463], [-2464.463, 8276.755]],
+                [1.3287e03, 9.7362e02, 7.3605e02],
+                [90.0, 20.0, 60.0],
+                [776.215, -2464.463, 8276.755],
             ],
             dtype=torch.float64,
             device=self.device,
@@ -52,7 +52,7 @@ class TestSplatAutograd(unittest.TestCase):
             self.splat_start_end_idx_by_tile_idx,
             self.tile_idx_by_splat_idx,
         ) = match_gaussians_to_tiles_gpu(
-            self.uv.float(), self.tiles, self.sigma_image.float(), mh_dist=3.0
+            self.uv.float(), self.tiles, self.conic.float(), mh_dist=3.0
         )
         self.opacities = torch.ones(
             self.uv.shape[0],
@@ -83,7 +83,7 @@ class TestSplatAutograd(unittest.TestCase):
                 rgb,
                 self.opacities,
                 self.uv,
-                self.sigma_image,
+                self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,
@@ -112,7 +112,7 @@ class TestSplatAutograd(unittest.TestCase):
                 sh_coeff_4,
                 self.opacities,
                 self.uv,
-                self.sigma_image,
+                self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,
@@ -141,7 +141,7 @@ class TestSplatAutograd(unittest.TestCase):
                 sh_coeff_9,
                 self.opacities,
                 self.uv,
-                self.sigma_image,
+                self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,
@@ -170,7 +170,7 @@ class TestSplatAutograd(unittest.TestCase):
                 sh_coeff_16,
                 self.opacities,
                 self.uv,
-                self.sigma_image,
+                self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,

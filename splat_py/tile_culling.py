@@ -10,7 +10,7 @@ from splat_py.structs import SimpleTimer
 def match_gaussians_to_tiles_gpu(
     uvs,
     tiles,
-    sigma_image,
+    conic,
     mh_dist,
 ):
     max_gaussians = max(uvs.shape[0] // 10, 1024)
@@ -22,7 +22,7 @@ def match_gaussians_to_tiles_gpu(
     with SimpleTimer("\t\tGPU compute tiles"):
         compute_tiles_cuda(
             uvs,
-            sigma_image,
+            conic,
             tiles.x_tiles_count,
             tiles.y_tiles_count,
             mh_dist,
