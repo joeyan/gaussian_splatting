@@ -55,7 +55,7 @@ __global__ void render_tiles_kernel(
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
     __shared__ T _rgb[CHUNK_SIZE * 3 * N_SH];
-    __shared__ T _sigma_image[CHUNK_SIZE * 4];
+    __shared__ T _sigma_image[CHUNK_SIZE * 3];
 
     const int shared_image_size = 16 * 16 * 3;
     __shared__ T _image[shared_image_size];
@@ -92,10 +92,9 @@ __global__ void render_tiles_kernel(
                 }
             }
 
-            _sigma_image[i * 4 + 0] = sigma_image[gaussian_idx * 4 + 0];
-            _sigma_image[i * 4 + 1] = sigma_image[gaussian_idx * 4 + 1];
-            _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
-            _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
+            _sigma_image[i * 3 + 0] = sigma_image[gaussian_idx * 4 + 0];
+            _sigma_image[i * 3 + 1] = sigma_image[gaussian_idx * 4 + 1];
+            _sigma_image[i * 3 + 2] = sigma_image[gaussian_idx * 4 + 3];
         }
         __syncthreads(); // wait for copying to complete before attempting to
                          // use data
@@ -114,11 +113,10 @@ __global__ void render_tiles_kernel(
                 const T v_diff = T(v_splat) - v_mean;
 
                 // 2d covariance matrix
-                const T a = _sigma_image[i * 4 + 0];
-                const T b = _sigma_image[i * 4 + 1];
-                const T c = _sigma_image[i * 4 + 2];
-                const T d = _sigma_image[i * 4 + 3];
-                T det = a * d - b * c;
+                const T a = _sigma_image[i * 3 + 0];
+                const T b = _sigma_image[i * 3 + 1];
+                const T d = _sigma_image[i * 3 + 2];
+                T det = a * d - b * b;
 
                 T alpha = 0.0;
                 // skip any covariance matrices that are not positive definite
@@ -128,7 +126,7 @@ __global__ void render_tiles_kernel(
                     }
                     // compute mahalanobis distance
                     const T mh_sq =
-                        (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) /
+                        (d * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) /
                         det;
                     if (mh_sq > 0.0) {
                         // probablity at this pixel normalized to have

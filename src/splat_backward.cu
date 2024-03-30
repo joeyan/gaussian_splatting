@@ -69,7 +69,7 @@ __global__ void render_tiles_backward_kernel(
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
     __shared__ T _rgb[CHUNK_SIZE * 3 * N_SH];
-    __shared__ T _sigma_image[CHUNK_SIZE * 4];
+    __shared__ T _sigma_image[CHUNK_SIZE * 3];
 
     const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
     const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
@@ -102,10 +102,9 @@ __global__ void render_tiles_backward_kernel(
                 }
             }
 
-            _sigma_image[i * 4 + 0] = sigma_image[gaussian_idx * 4 + 0];
-            _sigma_image[i * 4 + 1] = sigma_image[gaussian_idx * 4 + 1];
-            _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
-            _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
+            _sigma_image[i * 3 + 0] = sigma_image[gaussian_idx * 4 + 0];
+            _sigma_image[i * 3 + 1] = sigma_image[gaussian_idx * 4 + 1];
+            _sigma_image[i * 3 + 2] = sigma_image[gaussian_idx * 4 + 3];
         }
         __syncthreads(); // wait for copying to complete before attempting to
                          // use data
@@ -121,7 +120,6 @@ __global__ void render_tiles_backward_kernel(
             T grad_v = 0;
             T grad_a = 0;
             T grad_b = 0;
-            T grad_c = 0;
             T grad_d = 0;
 
             // don't compute grad if pixel is out of bounds or this splat is
@@ -133,12 +131,11 @@ __global__ void render_tiles_backward_kernel(
                 const T u_diff = T(u_splat) - u_mean;
                 const T v_diff = T(v_splat) - v_mean;
 
-                // 2d covariance matrix
-                const T a = _sigma_image[i * 4 + 0];
-                const T b = _sigma_image[i * 4 + 1];
-                const T c = _sigma_image[i * 4 + 2];
-                const T d = _sigma_image[i * 4 + 3];
-                T det = a * d - b * c;
+                // 2d covariance matrix b == c so we don't need to duplicate
+                const T a = _sigma_image[i * 3 + 0];
+                const T b = _sigma_image[i * 3 + 1];
+                const T d = _sigma_image[i * 3 + 2];
+                T det = a * d - b * b;
 
                 T norm_prob = 0.0;
                 T reciprocal_det = 1.0 / det;
@@ -149,7 +146,7 @@ __global__ void render_tiles_backward_kernel(
                     }
                     // compute mahalanobis distance
                     const T mh_sq =
-                        (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) *
+                        (d * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) *
                         reciprocal_det;
                     if (mh_sq > 0.0) {
                         if (use_fast_exp) {
@@ -198,15 +195,14 @@ __global__ void render_tiles_backward_kernel(
                 T grad_mh_sq = -0.5 * norm_prob * grad_prob;
 
                 // compute gradient for projected mean
-                grad_u = -(-b * v_diff - c * v_diff + 2 * d * u_diff) * reciprocal_det * grad_mh_sq;
-                grad_v = -(2 * a * v_diff - b * u_diff - c * u_diff) * reciprocal_det * grad_mh_sq;
+                grad_u = -(-b * v_diff - b * v_diff + 2 * d * u_diff) * reciprocal_det * grad_mh_sq;
+                grad_v = -(2 * a * v_diff - b * u_diff - b * u_diff) * reciprocal_det * grad_mh_sq;
 
                 const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
-                                       c * u_diff * v_diff + d * u_diff * u_diff) *
+                                       b * u_diff * v_diff + d * u_diff * u_diff) *
                                       reciprocal_det * reciprocal_det;
                 grad_a = (-d * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_b = (c * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_c = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_b = 2.0 * (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
 
                 // update color_accum for next splat
@@ -232,7 +228,6 @@ __global__ void render_tiles_backward_kernel(
             }
             grad_a = cg::reduce(warp_cg, grad_a, cg::plus<T>());
             grad_b = cg::reduce(warp_cg, grad_b, cg::plus<T>());
-            grad_c = cg::reduce(warp_cg, grad_c, cg::plus<T>());
             grad_d = cg::reduce(warp_cg, grad_d, cg::plus<T>());
 
             // write gradients to global memory
@@ -257,7 +252,6 @@ __global__ void render_tiles_backward_kernel(
                 atomicAdd(grad_uv + gaussian_idx * 2 + 1, grad_v);
                 atomicAdd(grad_sigma_image + gaussian_idx * 4 + 0, grad_a);
                 atomicAdd(grad_sigma_image + gaussian_idx * 4 + 1, grad_b);
-                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 2, grad_c);
                 atomicAdd(grad_sigma_image + gaussian_idx * 4 + 3, grad_d);
             }
         } // compute chunk grad
