@@ -14,7 +14,7 @@ __global__ void render_tiles_backward_kernel(
     const T* __restrict__ uvs,
     const T* __restrict__ opacity,
     const T* __restrict__ rgb,
-    const T* __restrict__ sigma_image,
+    const T* __restrict__ conic,
     const T* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
     const int* __restrict__ gaussian_idx_by_splat_idx,
@@ -24,10 +24,10 @@ __global__ void render_tiles_backward_kernel(
     const int image_width,
     const int image_height,
     bool use_fast_exp,
-    T* __restrict__ grad_rgb,        // N_gaussians x 3
-    T* __restrict__ grad_opacity,    // N_gaussians x 1
-    T* __restrict__ grad_uv,         // N_gaussians x 2
-    T* __restrict__ grad_sigma_image // N_gaussians x 4
+    T* __restrict__ grad_rgb,     // N_gaussians x 3
+    T* __restrict__ grad_opacity, // N_gaussians x 1
+    T* __restrict__ grad_uv,      // N_gaussians x 2
+    T* __restrict__ grad_conic    // N_gaussians x 3
 ) {
     auto block = cg::this_thread_block();
     cg::thread_block_tile<32> warp_cg = cg::tiled_partition<32>(block);
@@ -69,7 +69,7 @@ __global__ void render_tiles_backward_kernel(
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
     __shared__ T _rgb[CHUNK_SIZE * 3 * N_SH];
-    __shared__ T _sigma_image[CHUNK_SIZE * 4];
+    __shared__ T _conic[CHUNK_SIZE * 3];
 
     const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
     const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
@@ -102,10 +102,10 @@ __global__ void render_tiles_backward_kernel(
                 }
             }
 
-            _sigma_image[i * 4 + 0] = sigma_image[gaussian_idx * 4 + 0];
-            _sigma_image[i * 4 + 1] = sigma_image[gaussian_idx * 4 + 1];
-            _sigma_image[i * 4 + 2] = sigma_image[gaussian_idx * 4 + 2];
-            _sigma_image[i * 4 + 3] = sigma_image[gaussian_idx * 4 + 3];
+            #pragma unroll
+            for (int j = 0; j < 3; j++) {
+                _conic[i * 3 + j] = conic[gaussian_idx * 3 + j];
+            }
         }
         __syncthreads(); // wait for copying to complete before attempting to
                          // use data
@@ -119,10 +119,8 @@ __global__ void render_tiles_backward_kernel(
             T grad_opa = 0;
             T grad_u = 0;
             T grad_v = 0;
-            T grad_a = 0;
-            T grad_b = 0;
-            T grad_c = 0;
-            T grad_d = 0;
+
+            T grad_conic_splat[3] = {0.0, 0.0, 0.0};
 
             // don't compute grad if pixel is out of bounds or this splat is
             // after saturation during forward pass
@@ -133,12 +131,11 @@ __global__ void render_tiles_backward_kernel(
                 const T u_diff = T(u_splat) - u_mean;
                 const T v_diff = T(v_splat) - v_mean;
 
-                // 2d covariance matrix
-                const T a = _sigma_image[i * 4 + 0];
-                const T b = _sigma_image[i * 4 + 1];
-                const T c = _sigma_image[i * 4 + 2];
-                const T d = _sigma_image[i * 4 + 3];
-                T det = a * d - b * c;
+                // 2d covariance matrix b == c so we don't need to duplicate
+                const T a = _conic[i * 3 + 0];
+                const T b = _conic[i * 3 + 1] / 2.0;
+                const T c = _conic[i * 3 + 2];
+                T det = a * c - b * b;
 
                 T norm_prob = 0.0;
                 T reciprocal_det = 1.0 / det;
@@ -149,7 +146,7 @@ __global__ void render_tiles_backward_kernel(
                     }
                     // compute mahalanobis distance
                     const T mh_sq =
-                        (d * u_diff * u_diff - (b + c) * u_diff * v_diff + a * v_diff * v_diff) *
+                        (c * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) *
                         reciprocal_det;
                     if (mh_sq > 0.0) {
                         if (use_fast_exp) {
@@ -198,16 +195,17 @@ __global__ void render_tiles_backward_kernel(
                 T grad_mh_sq = -0.5 * norm_prob * grad_prob;
 
                 // compute gradient for projected mean
-                grad_u = -(-b * v_diff - c * v_diff + 2 * d * u_diff) * reciprocal_det * grad_mh_sq;
-                grad_v = -(2 * a * v_diff - b * u_diff - c * u_diff) * reciprocal_det * grad_mh_sq;
+                grad_u = -(-b * v_diff - b * v_diff + 2 * c * u_diff) * reciprocal_det * grad_mh_sq;
+                grad_v = -(2 * a * v_diff - b * u_diff - b * u_diff) * reciprocal_det * grad_mh_sq;
 
                 const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
-                                       c * u_diff * v_diff + d * u_diff * u_diff) *
+                                       b * u_diff * v_diff + c * u_diff * u_diff) *
                                       reciprocal_det * reciprocal_det;
-                grad_a = (-d * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_b = (c * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_c = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_d = (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
+                grad_conic_splat[0] =
+                    (-c * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_conic_splat[1] = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_conic_splat[2] =
+                    (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
 
                 // update color_accum for next splat
                 for (int channel = 0; channel < 3; channel++) {
@@ -230,10 +228,11 @@ __global__ void render_tiles_backward_kernel(
                         cg::reduce(warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<T>());
                 }
             }
-            grad_a = cg::reduce(warp_cg, grad_a, cg::plus<T>());
-            grad_b = cg::reduce(warp_cg, grad_b, cg::plus<T>());
-            grad_c = cg::reduce(warp_cg, grad_c, cg::plus<T>());
-            grad_d = cg::reduce(warp_cg, grad_d, cg::plus<T>());
+
+            #pragma unroll
+            for (int j = 0; j < 3; j++) {
+                grad_conic_splat[j] = cg::reduce(warp_cg, grad_conic_splat[j], cg::plus<T>());
+            }
 
             // write gradients to global memory
             if (warp_cg.thread_rank() == 0) {
@@ -255,10 +254,10 @@ __global__ void render_tiles_backward_kernel(
                 atomicAdd(grad_opacity + gaussian_idx, grad_opa);
                 atomicAdd(grad_uv + gaussian_idx * 2 + 0, grad_u);
                 atomicAdd(grad_uv + gaussian_idx * 2 + 1, grad_v);
-                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 0, grad_a);
-                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 1, grad_b);
-                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 2, grad_c);
-                atomicAdd(grad_sigma_image + gaussian_idx * 4 + 3, grad_d);
+
+                for (int j = 0; j < 3; j++) {
+                    atomicAdd(grad_conic + gaussian_idx * 3 + j, grad_conic_splat[j]);
+                }
             }
         } // compute chunk grad
     }     // loop over chunks
@@ -268,7 +267,7 @@ void render_tiles_backward_cuda(
     torch::Tensor uvs,
     torch::Tensor opacity,
     torch::Tensor rgb,
-    torch::Tensor sigma_image,
+    torch::Tensor conic,
     torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
@@ -278,12 +277,12 @@ void render_tiles_backward_cuda(
     torch::Tensor grad_rgb,
     torch::Tensor grad_opacity,
     torch::Tensor grad_uv,
-    torch::Tensor grad_sigma_image
+    torch::Tensor grad_conic
 ) {
     CHECK_VALID_INPUT(uvs);
     CHECK_VALID_INPUT(opacity);
     CHECK_VALID_INPUT(rgb);
-    CHECK_VALID_INPUT(sigma_image);
+    CHECK_VALID_INPUT(conic);
     CHECK_VALID_INPUT(view_dir_by_pixel);
     CHECK_VALID_INPUT(splat_start_end_idx_by_tile_idx);
     CHECK_VALID_INPUT(gaussian_idx_by_splat_idx);
@@ -293,16 +292,15 @@ void render_tiles_backward_cuda(
     CHECK_VALID_INPUT(grad_rgb);
     CHECK_VALID_INPUT(grad_opacity);
     CHECK_VALID_INPUT(grad_uv);
-    CHECK_VALID_INPUT(grad_sigma_image);
+    CHECK_VALID_INPUT(grad_conic);
 
     int N = uvs.size(0);
     TORCH_CHECK(uvs.size(1) == 2, "uvs must have 2 channels");
     TORCH_CHECK(opacity.size(0) == N, "opacity must have the same size as uvs");
     TORCH_CHECK(rgb.size(0) == N, "rgb must have the same size as uvs");
     TORCH_CHECK(rgb.size(1) == 3, "rgb must have 3 channels");
-    TORCH_CHECK(sigma_image.size(0) == N, "sigma_image must have the same size as uvs");
-    TORCH_CHECK(sigma_image.size(1) == 2, "sigma_image must have 2x2 channels");
-    TORCH_CHECK(sigma_image.size(2) == 2, "sigma_image must have 2x2 channels");
+    TORCH_CHECK(conic.size(0) == N, "conic must have the same size as uvs");
+    TORCH_CHECK(conic.size(1) == 3, "conic must have 3 channels");
 
     int image_height = num_splats_per_pixel.size(0);
     int image_width = num_splats_per_pixel.size(1);
@@ -360,7 +358,7 @@ void render_tiles_backward_cuda(
     if (uvs.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(opacity);
         CHECK_FLOAT_TENSOR(rgb);
-        CHECK_FLOAT_TENSOR(sigma_image);
+        CHECK_FLOAT_TENSOR(conic);
         CHECK_FLOAT_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
@@ -370,13 +368,13 @@ void render_tiles_backward_cuda(
         CHECK_FLOAT_TENSOR(grad_rgb);
         CHECK_FLOAT_TENSOR(grad_opacity);
         CHECK_FLOAT_TENSOR(grad_uv);
-        CHECK_FLOAT_TENSOR(grad_sigma_image);
+        CHECK_FLOAT_TENSOR(grad_conic);
         if (num_sh_coeff == 1) {
             render_tiles_backward_kernel<float, 960, 1><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -389,14 +387,14 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<float>(),
                 grad_opacity.data_ptr<float>(),
                 grad_uv.data_ptr<float>(),
-                grad_sigma_image.data_ptr<float>()
+                grad_conic.data_ptr<float>()
             );
         } else if (num_sh_coeff == 4) {
             render_tiles_backward_kernel<float, 576, 4><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -409,7 +407,7 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<float>(),
                 grad_opacity.data_ptr<float>(),
                 grad_uv.data_ptr<float>(),
-                grad_sigma_image.data_ptr<float>()
+                grad_conic.data_ptr<float>()
             );
 
         } else if (num_sh_coeff == 9) {
@@ -417,7 +415,7 @@ void render_tiles_backward_cuda(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -430,14 +428,14 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<float>(),
                 grad_opacity.data_ptr<float>(),
                 grad_uv.data_ptr<float>(),
-                grad_sigma_image.data_ptr<float>()
+                grad_conic.data_ptr<float>()
             );
         } else if (num_sh_coeff == 16) {
             render_tiles_backward_kernel<float, 160, 16><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb.data_ptr<float>(),
-                sigma_image.data_ptr<float>(),
+                conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -450,7 +448,7 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<float>(),
                 grad_opacity.data_ptr<float>(),
                 grad_uv.data_ptr<float>(),
-                grad_sigma_image.data_ptr<float>()
+                grad_conic.data_ptr<float>()
             );
         } else {
             AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
@@ -458,7 +456,7 @@ void render_tiles_backward_cuda(
     } else if (uvs.dtype() == torch::kFloat64) {
         CHECK_DOUBLE_TENSOR(opacity);
         CHECK_DOUBLE_TENSOR(rgb);
-        CHECK_DOUBLE_TENSOR(sigma_image);
+        CHECK_DOUBLE_TENSOR(conic);
         CHECK_DOUBLE_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
@@ -468,13 +466,13 @@ void render_tiles_backward_cuda(
         CHECK_DOUBLE_TENSOR(grad_rgb);
         CHECK_DOUBLE_TENSOR(grad_opacity);
         CHECK_DOUBLE_TENSOR(grad_uv);
-        CHECK_DOUBLE_TENSOR(grad_sigma_image);
+        CHECK_DOUBLE_TENSOR(grad_conic);
         if (num_sh_coeff == 1) {
             render_tiles_backward_kernel<double, 320, 1><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -487,14 +485,14 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<double>(),
                 grad_opacity.data_ptr<double>(),
                 grad_uv.data_ptr<double>(),
-                grad_sigma_image.data_ptr<double>()
+                grad_conic.data_ptr<double>()
             );
         } else if (num_sh_coeff == 4) {
             render_tiles_backward_kernel<double, 160, 4><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -507,14 +505,14 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<double>(),
                 grad_opacity.data_ptr<double>(),
                 grad_uv.data_ptr<double>(),
-                grad_sigma_image.data_ptr<double>()
+                grad_conic.data_ptr<double>()
             );
         } else if (num_sh_coeff == 9) {
             render_tiles_backward_kernel<double, 128, 9><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -527,14 +525,14 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<double>(),
                 grad_opacity.data_ptr<double>(),
                 grad_uv.data_ptr<double>(),
-                grad_sigma_image.data_ptr<double>()
+                grad_conic.data_ptr<double>()
             );
         } else if (num_sh_coeff == 16) {
             render_tiles_backward_kernel<double, 64, 16><<<grid_size, block_size>>>(
                 uvs.data_ptr<double>(),
                 opacity.data_ptr<double>(),
                 rgb.data_ptr<double>(),
-                sigma_image.data_ptr<double>(),
+                conic.data_ptr<double>(),
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -547,7 +545,7 @@ void render_tiles_backward_cuda(
                 grad_rgb.data_ptr<double>(),
                 grad_opacity.data_ptr<double>(),
                 grad_uv.data_ptr<double>(),
-                grad_sigma_image.data_ptr<double>()
+                grad_conic.data_ptr<double>()
             );
         } else {
             AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);

@@ -382,11 +382,11 @@ void compute_sigma_world_backward_cuda(
 }
 
 template <typename T>
-__launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
+__launch_bounds__(1024) __global__ void compute_conic_backward_kernel(
     const T* __restrict__ sigma_world,
     const T* __restrict__ J,
     const T* __restrict__ world_T_image,
-    const T* __restrict__ sigma_image_grad_out,
+    const T* __restrict__ conic_grad_out,
     const int N,
     T* sigma_world_grad_in,
     T* J_grad_in
@@ -414,8 +414,15 @@ __launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
     T JW_t[6]; // 3x2
     transpose<T>(JW, JW_t, 2, 3);
 
+    // convert conic to sigma image
+    T sigma_image_grad_out[4];
+    sigma_image_grad_out[0] = conic_grad_out[i * 3 + 0];
+    sigma_image_grad_out[1] = conic_grad_out[i * 3 + 1];
+    sigma_image_grad_out[2] = conic_grad_out[i * 3 + 1];
+    sigma_image_grad_out[3] = conic_grad_out[i * 3 + 2];
+
     T JW_t_grad_sigma_image[6]; // 3x2
-    matrix_multiply<T>(JW_t, sigma_image_grad_out + i * 4, JW_t_grad_sigma_image, 3, 2, 2);
+    matrix_multiply<T>(JW_t, sigma_image_grad_out, JW_t_grad_sigma_image, 3, 2, 2);
 
     // Write sigma_world_grad to output
     // compute sigma_world_grad_in (3x3) = JW_t_grad_sigma_image (3x2) @ JW
@@ -426,7 +433,7 @@ __launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
     matrix_multiply<T>(sigma_world + i * 9, JW_t, sigma_world_JW_t, 3, 3, 2);
 
     T grad_sigma_image_t[4]; // 2x2
-    transpose<T>(sigma_image_grad_out + i * 4, grad_sigma_image_t, 2, 2);
+    transpose<T>(sigma_image_grad_out, grad_sigma_image_t, 2, 2);
 
     T grad_JW_t_left[6]; // (3x2) = sigma_world_JW_t (3x2) @ grad_sigma_image_t
                          // (2x2)
@@ -440,7 +447,7 @@ __launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
 
     T grad_JW_t_right[6]; // (3x2) = sigma_world_tJW_t (3x2) @ grad_sigma_image
                           // (2x2)
-    matrix_multiply<T>(sigma_world_tJW_t, sigma_image_grad_out + i * 4, grad_JW_t_right, 3, 2, 2);
+    matrix_multiply<T>(sigma_world_tJW_t, sigma_image_grad_out, grad_JW_t_right, 3, 2, 2);
 
     // add grad_JW_t_left and grad_JW_t_right
     T grad_JW_t[6]; // 3x2
@@ -463,18 +470,18 @@ __launch_bounds__(1024) __global__ void compute_sigma_image_backward_kernel(
     transpose<T>(grad_J_t, J_grad_in + i * 6, 3, 2);
 }
 
-void compute_sigma_image_backward_cuda(
+void compute_conic_backward_cuda(
     torch::Tensor sigma_world,
     torch::Tensor J,
     torch::Tensor world_T_image,
-    torch::Tensor sigma_image_grad_out,
+    torch::Tensor conic_grad_out,
     torch::Tensor sigma_world_grad_in,
     torch::Tensor J_grad_in
 ) {
     CHECK_VALID_INPUT(sigma_world);
     CHECK_VALID_INPUT(J);
     CHECK_VALID_INPUT(world_T_image);
-    CHECK_VALID_INPUT(sigma_image_grad_out);
+    CHECK_VALID_INPUT(conic_grad_out);
     CHECK_VALID_INPUT(sigma_world_grad_in);
     CHECK_VALID_INPUT(J_grad_in);
 
@@ -488,9 +495,8 @@ void compute_sigma_image_backward_cuda(
         "world_T_image must be of shape 4x4"
     );
     TORCH_CHECK(
-        sigma_image_grad_out.size(0) == N && sigma_image_grad_out.size(1) == 2 &&
-            sigma_image_grad_out.size(2) == 2,
-        "sigma_image_grad_out must be of shape Nx2x2"
+        conic_grad_out.size(0) == N && conic_grad_out.size(1) == 3,
+        "conic_grad_out must be of shape Nx3"
     );
     TORCH_CHECK(
         sigma_world_grad_in.size(0) == N && sigma_world_grad_in.size(1) == 3 &&
@@ -510,14 +516,14 @@ void compute_sigma_image_backward_cuda(
     if (sigma_world.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(J);
         CHECK_FLOAT_TENSOR(world_T_image);
-        CHECK_FLOAT_TENSOR(sigma_image_grad_out);
+        CHECK_FLOAT_TENSOR(conic_grad_out);
         CHECK_FLOAT_TENSOR(sigma_world_grad_in);
         CHECK_FLOAT_TENSOR(J_grad_in);
-        compute_sigma_image_backward_kernel<float><<<gridsize, blocksize>>>(
+        compute_conic_backward_kernel<float><<<gridsize, blocksize>>>(
             sigma_world.data_ptr<float>(),
             J.data_ptr<float>(),
             world_T_image.data_ptr<float>(),
-            sigma_image_grad_out.data_ptr<float>(),
+            conic_grad_out.data_ptr<float>(),
             N,
             sigma_world_grad_in.data_ptr<float>(),
             J_grad_in.data_ptr<float>()
@@ -525,14 +531,14 @@ void compute_sigma_image_backward_cuda(
     } else if (sigma_world.dtype() == torch::kFloat64) {
         CHECK_DOUBLE_TENSOR(J);
         CHECK_DOUBLE_TENSOR(world_T_image);
-        CHECK_DOUBLE_TENSOR(sigma_image_grad_out);
+        CHECK_DOUBLE_TENSOR(conic_grad_out);
         CHECK_DOUBLE_TENSOR(sigma_world_grad_in);
         CHECK_DOUBLE_TENSOR(J_grad_in);
-        compute_sigma_image_backward_kernel<double><<<gridsize, blocksize>>>(
+        compute_conic_backward_kernel<double><<<gridsize, blocksize>>>(
             sigma_world.data_ptr<double>(),
             J.data_ptr<double>(),
             world_T_image.data_ptr<double>(),
-            sigma_image_grad_out.data_ptr<double>(),
+            conic_grad_out.data_ptr<double>(),
             N,
             sigma_world_grad_in.data_ptr<double>(),
             J_grad_in.data_ptr<double>()

@@ -6,7 +6,7 @@ from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeSigmaWorld,
     ComputeProjectionJacobian,
-    ComputeSigmaImage,
+    ComputeConic,
     RenderImage,
 )
 from splat_py.structs import Gaussians, Tiles
@@ -51,7 +51,7 @@ def splat(gaussians, world_T_image, camera):
 
     sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternions, culled_gaussians.scales)
     J = ComputeProjectionJacobian.apply(xyz_camera_frame, camera.K)
-    sigma_image = ComputeSigmaImage.apply(sigma_world, J, world_T_image)
+    conic = ComputeConic.apply(sigma_world, J, world_T_image)
 
     # perform tile culling
     tiles = Tiles(camera.height, camera.width, uv.device)
@@ -59,7 +59,7 @@ def splat(gaussians, world_T_image, camera):
         gaussian_idx_by_splat_idx,
         splat_start_end_idx_by_tile_idx,
         tile_idx_by_splat_idx,
-    ) = match_gaussians_to_tiles_gpu(uv, tiles, sigma_image, mh_dist=MH_DIST)
+    ) = match_gaussians_to_tiles_gpu(uv, tiles, conic, mh_dist=MH_DIST)
 
     sorted_gaussian_idx_by_splat_idx = sort_gaussians(
         xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
@@ -69,7 +69,7 @@ def splat(gaussians, world_T_image, camera):
         culled_gaussians.rgb,
         culled_gaussians.opacities,
         uv,
-        sigma_image,
+        conic,
         rays,
         splat_start_end_idx_by_tile_idx,
         sorted_gaussian_idx_by_splat_idx,

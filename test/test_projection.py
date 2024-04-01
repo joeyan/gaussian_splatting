@@ -5,7 +5,7 @@ from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeSigmaWorld,
     ComputeProjectionJacobian,
-    ComputeSigmaImage,
+    ComputeConic,
 )
 from splat_py.utils import transform_points_torch
 
@@ -105,20 +105,19 @@ class ProjectionTest(unittest.TestCase):
         self.assertAlmostEqual(jacobian[0, 1, 1].item(), -281.8451, places=4)
         self.assertAlmostEqual(jacobian[0, 1, 2].item(), 229.5912, places=4)
 
-    def test_compute_sigma_image(self):
+    def test_compute_conic(self):
         # compute inputs (tested in previous tests)
         sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternions, self.gaussians.scales)
         xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
         jacobian = ComputeProjectionJacobian.apply(xyz_camera_frame, self.camera.K)
 
-        # compute sigma_image
-        sigma_image = ComputeSigmaImage.apply(sigma_world, jacobian, self.world_T_image)
+        # compute conic
+        conic = ComputeConic.apply(sigma_world, jacobian, self.world_T_image)
 
-        self.assertEqual(sigma_image.shape, (6, 2, 2))
-        self.assertAlmostEqual(sigma_image[3, 0, 0].item(), 664.28760, places=4)
-        self.assertAlmostEqual(sigma_image[3, 0, 1].item(), 127.40891, places=4)
-        self.assertAlmostEqual(sigma_image[3, 1, 0].item(), 127.40890, places=4)
-        self.assertAlmostEqual(sigma_image[3, 1, 1].item(), 5761.8906, places=4)
+        self.assertEqual(conic.shape, (6, 3))
+        self.assertAlmostEqual(conic[3, 0].item(), 664.28760, places=4)
+        self.assertAlmostEqual(conic[3, 1].item(), 254.81781, places=4)
+        self.assertAlmostEqual(conic[3, 2].item(), 5761.8906, places=4)
 
 
 if __name__ == "__main__":

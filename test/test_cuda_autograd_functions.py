@@ -4,7 +4,7 @@ from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
     ComputeProjectionJacobian,
     ComputeSigmaWorld,
-    ComputeSigmaImage,
+    ComputeConic,
 )
 
 
@@ -86,7 +86,7 @@ class TestAutogradFunctions(unittest.TestCase):
         )
         self.assertTrue(test)
 
-    def test_compute_sigma_image(self):
+    def test_compute_conic(self):
         sigma_world = torch.rand(
             1,
             3,
@@ -104,7 +104,7 @@ class TestAutogradFunctions(unittest.TestCase):
             requires_grad=True,
         )
         test = torch.autograd.gradcheck(
-            ComputeSigmaImage.apply,
+            ComputeConic.apply,
             (sigma_world, projection_jacobian, self.world_T_image),
             raise_exception=True,
         )

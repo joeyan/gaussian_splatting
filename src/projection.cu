@@ -214,12 +214,12 @@ void compute_projection_jacobian_cuda(torch::Tensor xyz, torch::Tensor K, torch:
 }
 
 template <typename T>
-__global__ void compute_sigma_image_kernel(
+__global__ void compute_conic_kernel(
     const T* __restrict__ sigma_world,
     const T* __restrict__ J,
     const T* __restrict__ world_T_image,
     const int N,
-    T* sigma_image
+    T* conic
 ) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= N) {
@@ -249,19 +249,26 @@ __global__ void compute_sigma_image_kernel(
     transpose<T>(JW, JW_t, 2, 3);
 
     // compute sigma_image = JWSigma @ JW_t
-    matrix_multiply<T>(JWSigma, JW_t, sigma_image + i * 4, 2, 3, 2);
+    T sigma_image[4];
+    matrix_multiply<T>(JWSigma, JW_t, sigma_image, 2, 3, 2);
+
+    // write to conic
+    conic[i * 3 + 0] = sigma_image[0];
+    // they are also equal but this keeps the pytorch autograd check happy
+    conic[i * 3 + 1] = sigma_image[1] + sigma_image[2];
+    conic[i * 3 + 2] = sigma_image[3];
 }
 
-void compute_sigma_image_cuda(
+void compute_conic_cuda(
     torch::Tensor sigma_world,
     torch::Tensor J,
     torch::Tensor world_T_image,
-    torch::Tensor sigma_image
+    torch::Tensor conic
 ) {
     CHECK_VALID_INPUT(sigma_world);
     CHECK_VALID_INPUT(J);
     CHECK_VALID_INPUT(world_T_image);
-    CHECK_VALID_INPUT(sigma_image);
+    CHECK_VALID_INPUT(conic);
 
     const int N = sigma_world.size(0);
     TORCH_CHECK(sigma_world.size(1) == 3, "sigma_world must have shape Nx3x3");
@@ -271,9 +278,8 @@ void compute_sigma_image_cuda(
     TORCH_CHECK(J.size(2) == 3, "J must have shape Nx2x3");
     TORCH_CHECK(world_T_image.size(0) == 4, "world_T_image must have shape 4x4");
     TORCH_CHECK(world_T_image.size(1) == 4, "world_T_image must have shape 4x4");
-    TORCH_CHECK(sigma_image.size(0) == N, "sigma_image must have shape Nx2x2");
-    TORCH_CHECK(sigma_image.size(1) == 2, "sigma_image must have shape Nx2x2");
-    TORCH_CHECK(sigma_image.size(2) == 2, "sigma_image must have shape Nx2x2");
+    TORCH_CHECK(conic.size(0) == N, "conic must have shape Nx3");
+    TORCH_CHECK(conic.size(1) == 3, "conic must have shape Nx3");
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
@@ -283,24 +289,24 @@ void compute_sigma_image_cuda(
     if (sigma_world.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(J);
         CHECK_FLOAT_TENSOR(world_T_image);
-        CHECK_FLOAT_TENSOR(sigma_image);
-        compute_sigma_image_kernel<float><<<gridsize, blocksize>>>(
+        CHECK_FLOAT_TENSOR(conic);
+        compute_conic_kernel<float><<<gridsize, blocksize>>>(
             sigma_world.data_ptr<float>(),
             J.data_ptr<float>(),
             world_T_image.data_ptr<float>(),
             N,
-            sigma_image.data_ptr<float>()
+            conic.data_ptr<float>()
         );
     } else if (sigma_world.dtype() == torch::kFloat64) {
         CHECK_DOUBLE_TENSOR(J);
         CHECK_DOUBLE_TENSOR(world_T_image);
-        CHECK_DOUBLE_TENSOR(sigma_image);
-        compute_sigma_image_kernel<double><<<gridsize, blocksize>>>(
+        CHECK_DOUBLE_TENSOR(conic);
+        compute_conic_kernel<double><<<gridsize, blocksize>>>(
             sigma_world.data_ptr<double>(),
             J.data_ptr<double>(),
             world_T_image.data_ptr<double>(),
             N,
-            sigma_image.data_ptr<double>()
+            conic.data_ptr<double>()
         );
     } else {
         AT_ERROR("Inputs must be float32 or float64");

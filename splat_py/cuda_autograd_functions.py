@@ -7,8 +7,8 @@ from splat_cuda import (
     compute_sigma_world_backward_cuda,
     compute_projection_jacobian_cuda,
     compute_projection_jacobian_backward_cuda,
-    compute_sigma_image_cuda,
-    compute_sigma_image_backward_cuda,
+    compute_conic_cuda,
+    compute_conic_backward_cuda,
     render_tiles_cuda,
     render_tiles_backward_cuda,
 )
@@ -79,25 +79,23 @@ class ComputeProjectionJacobian(torch.autograd.Function):
         return grad_xyz_camera, None
 
 
-class ComputeSigmaImage(torch.autograd.Function):
+class ComputeConic(torch.autograd.Function):
     @staticmethod
     def forward(ctx, sigma_world, J, world_T_image):
-        sigma_image = torch.zeros(
-            J.shape[0], 2, 2, dtype=sigma_world.dtype, device=sigma_world.device
-        )
-        compute_sigma_image_cuda(sigma_world, J, world_T_image, sigma_image)
+        conic = torch.zeros(J.shape[0], 3, dtype=sigma_world.dtype, device=sigma_world.device)
+        compute_conic_cuda(sigma_world, J, world_T_image, conic)
         ctx.save_for_backward(sigma_world, world_T_image, J)
-        return sigma_image
+        return conic
 
     @staticmethod
-    def backward(ctx, grad_sigma_image):
+    def backward(ctx, grad_conic):
         sigma_world, world_T_image, J = ctx.saved_tensors
         grad_sigma_world = torch.zeros(
             sigma_world.shape, dtype=sigma_world.dtype, device=sigma_world.device
         )
         grad_J = torch.zeros(J.shape, dtype=J.dtype, device=J.device)
-        compute_sigma_image_backward_cuda(
-            sigma_world, J, world_T_image, grad_sigma_image, grad_sigma_world, grad_J
+        compute_conic_backward_cuda(
+            sigma_world, J, world_T_image, grad_conic, grad_sigma_world, grad_J
         )
         return grad_sigma_world, grad_J, None
 
@@ -109,7 +107,7 @@ class RenderImage(torch.autograd.Function):
         rgb,
         opacity,
         uvs,
-        sigma_image,
+        conic,
         rays,
         splat_start_end_idx_by_tile_idx,
         sorted_gaussian_idx_by_splat_idx,
@@ -128,7 +126,7 @@ class RenderImage(torch.autograd.Function):
             uvs,
             opacity,
             rgb,
-            sigma_image,
+            conic,
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
@@ -140,7 +138,7 @@ class RenderImage(torch.autograd.Function):
             uvs,
             opacity,
             rgb,
-            sigma_image,
+            conic,
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
@@ -155,7 +153,7 @@ class RenderImage(torch.autograd.Function):
             uvs,
             opacity,
             rgb,
-            sigma_image,
+            conic,
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
@@ -165,7 +163,7 @@ class RenderImage(torch.autograd.Function):
         grad_rgb = torch.zeros_like(rgb)
         grad_opacity = torch.zeros_like(opacity)
         grad_uv = torch.zeros_like(uvs)
-        grad_sigma_image = torch.zeros_like(sigma_image)
+        grad_conic = torch.zeros_like(conic)
 
         # ensure input is contiguous
         grad_rendered_image = grad_rendered_image.contiguous()
@@ -173,7 +171,7 @@ class RenderImage(torch.autograd.Function):
             uvs,
             opacity,
             rgb,
-            sigma_image,
+            conic,
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
@@ -183,6 +181,6 @@ class RenderImage(torch.autograd.Function):
             grad_rgb,
             grad_opacity,
             grad_uv,
-            grad_sigma_image,
+            grad_conic,
         )
-        return grad_rgb, grad_opacity, grad_uv, grad_sigma_image, None, None, None, None
+        return grad_rgb, grad_opacity, grad_uv, grad_conic, None, None, None, None

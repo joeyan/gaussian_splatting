@@ -6,7 +6,7 @@
 
 __global__ void compute_tiles_kernel(
     const float* __restrict__ uvs,
-    const float* __restrict__ sigma_image,
+    const float* __restrict__ conic,
     const int n_tiles_x,
     const int n_tiles_y,
     const float mh_dist,
@@ -20,14 +20,13 @@ __global__ void compute_tiles_kernel(
         return;
     }
 
-    float a = sigma_image[gaussian_idx * 4];
-    float b = sigma_image[gaussian_idx * 4 + 1];
-    float c = sigma_image[gaussian_idx * 4 + 2];
-    float d = sigma_image[gaussian_idx * 4 + 3];
+    float a = conic[gaussian_idx * 3];
+    float b = conic[gaussian_idx * 3 + 1] / 2.0;
+    float c = conic[gaussian_idx * 3 + 2];
 
     // compute major axis radius of ellipse
-    float left = (a + d) / 2;
-    float right = sqrtf((a - d) * (a - d) / 4 + b * c);
+    float left = (a + c) / 2;
+    float right = sqrtf((a - c) * (a - c) / 4 + b * b);
     float lambda1 = left + right;
     float lambda2 = left - right;
 
@@ -91,7 +90,7 @@ __global__ void compute_tiles_kernel(
         // compute theta
         float theta;
         if (fabsf(b) < 1e-16) {
-            if (a >= d) {
+            if (a >= c) {
                 theta = 0.0f;
             } else {
                 theta = M_PI / 2;
@@ -217,7 +216,7 @@ __global__ void compute_tiles_kernel(
 
 void compute_tiles_cuda(
     torch::Tensor uvs,
-    torch::Tensor sigma_image,
+    torch::Tensor conic,
     int n_tiles_x,
     int n_tiles_y,
     float mh_dist,
@@ -225,20 +224,19 @@ void compute_tiles_cuda(
     torch::Tensor num_gaussians_per_tile
 ) {
     CHECK_VALID_INPUT(uvs);
-    CHECK_VALID_INPUT(sigma_image);
+    CHECK_VALID_INPUT(conic);
     CHECK_VALID_INPUT(gaussian_indices_per_tile);
     CHECK_VALID_INPUT(num_gaussians_per_tile);
 
     CHECK_FLOAT_TENSOR(uvs);
-    CHECK_FLOAT_TENSOR(sigma_image);
+    CHECK_FLOAT_TENSOR(conic);
     CHECK_INT_TENSOR(gaussian_indices_per_tile);
     CHECK_INT_TENSOR(num_gaussians_per_tile);
 
     const int N = uvs.size(0);
     TORCH_CHECK(uvs.size(1) == 2, "uvs must have shape Nx2");
-    TORCH_CHECK(sigma_image.size(0) == N, "sigma_image must have shape Nx2x2");
-    TORCH_CHECK(sigma_image.size(1) == 2, "sigma_image must have shape Nx2x2");
-    TORCH_CHECK(sigma_image.size(2) == 2, "sigma_image must have shape Nx2x2");
+    TORCH_CHECK(conic.size(0) == N, "conic must have shape Nx3");
+    TORCH_CHECK(conic.size(1) == 3, "conic must have shape Nx3");
     TORCH_CHECK(
         gaussian_indices_per_tile.size(0) == n_tiles_x * n_tiles_y,
         "gaussian_indices_per_tile must have shape n_tiles x "
@@ -260,7 +258,7 @@ void compute_tiles_cuda(
 
     compute_tiles_kernel<<<gridsize, blocksize>>>(
         uvs.data_ptr<float>(),
-        sigma_image.data_ptr<float>(),
+        conic.data_ptr<float>(),
         n_tiles_x,
         n_tiles_y,
         mh_dist,
