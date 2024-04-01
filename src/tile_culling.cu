@@ -21,12 +21,12 @@ __global__ void compute_tiles_kernel(
     }
 
     float a = conic[gaussian_idx * 3];
-    float b = conic[gaussian_idx * 3 + 1];
-    float d = conic[gaussian_idx * 3 + 2];
+    float b = conic[gaussian_idx * 3 + 1] / 2.0;
+    float c = conic[gaussian_idx * 3 + 2];
 
     // compute major axis radius of ellipse
-    float left = (a + d) / 2;
-    float right = sqrtf((a - d) * (a - d) / 4 + b * b);
+    float left = (a + c) / 2;
+    float right = sqrtf((a - c) * (a - c) / 4 + b * b);
     float lambda1 = left + right;
     float lambda2 = left - right;
 
@@ -90,7 +90,7 @@ __global__ void compute_tiles_kernel(
         // compute theta
         float theta;
         if (fabsf(b) < 1e-16) {
-            if (a >= d) {
+            if (a >= c) {
                 theta = 0.0f;
             } else {
                 theta = M_PI / 2;

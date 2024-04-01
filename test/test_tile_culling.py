@@ -40,12 +40,12 @@ def compute_obb(
     Compute the oriented bounding box of a 2D gaussian at a specific confidence level
     """
     a = conic[0]
-    b = conic[1]
-    d = conic[2]
+    b = conic[1] / 2.0
+    c = conic[2]
 
     # compute the two radii of the 2d gaussian
-    left = (a + d) / 2
-    right = torch.sqrt(torch.square(a - d) / 4 + b * b)
+    left = (a + c) / 2
+    right = torch.sqrt(torch.square(a - c) / 4 + b * b)
     lambda_1 = left + right
     r1 = mh_dist * torch.sqrt(lambda_1)  # major axis
     r2 = mh_dist * torch.sqrt(left - right)  # minor axis
@@ -53,7 +53,7 @@ def compute_obb(
     # compute angle of major axis
     # theta is ccw from +x axis
     if abs(b) < 1e-16:
-        if a >= d:
+        if a >= c:
             theta = 0
         else:
             theta = math.pi / 2
@@ -254,7 +254,7 @@ class TestCulling(unittest.TestCase):
         conic = torch.tensor(
             [
                 9.0,
-                5.0,
+                5.0 * 2.0,
                 4.0,
             ],
             dtype=torch.float32,
@@ -332,7 +332,7 @@ class TestCulling(unittest.TestCase):
         conic = torch.tensor(
             [
                 900.0,
-                500.0,
+                500.0 * 2.0,
                 400.0,
             ],
             dtype=torch.float32,
@@ -382,7 +382,7 @@ class TestCulling(unittest.TestCase):
         conic = torch.tensor(
             [
                 1.3287e04,
-                9.7362e03,
+                9.7362e03 * 2.0,
                 7.3605e03,
             ],
             dtype=torch.float32,
@@ -416,9 +416,9 @@ class TestCulling(unittest.TestCase):
         )
         conic = torch.tensor(
             [
-                [1.3287e04, 9.7362e03, 7.3605e03],
-                [900.0, 500.0, 400.0],
-                [776.215, -2464.463, 8276.755],
+                [1.3287e04, 9.7362e03 * 2.0, 7.3605e03],
+                [900.0, 500.0 * 2.0, 400.0],
+                [776.215, -2464.463 * 2.0, 8276.755],
             ],
             dtype=torch.float32,
             device=cuda_device,

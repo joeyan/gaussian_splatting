@@ -31,7 +31,6 @@ class GSTrainer:
         self.images = images
         self.cameras = cameras
 
-        # slightly higher PSNR than torchmetric's SSIM
         self.ssim = SSIM(data_range=1.0, size_average=True, channel=3)
 
         self.update_optimizer()

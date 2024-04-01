@@ -115,9 +115,9 @@ __global__ void render_tiles_kernel(
 
                 // 2d covariance matrix
                 const T a = _conic[i * 3 + 0];
-                const T b = _conic[i * 3 + 1];
-                const T d = _conic[i * 3 + 2];
-                T det = a * d - b * b;
+                const T b = _conic[i * 3 + 1] / 2.0;
+                const T c = _conic[i * 3 + 2];
+                T det = a * c - b * b;
 
                 T alpha = 0.0;
                 // skip any covariance matrices that are not positive definite
@@ -127,7 +127,7 @@ __global__ void render_tiles_kernel(
                     }
                     // compute mahalanobis distance
                     const T mh_sq =
-                        (d * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) /
+                        (c * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) /
                         det;
                     if (mh_sq > 0.0) {
                         // probablity at this pixel normalized to have

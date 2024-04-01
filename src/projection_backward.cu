@@ -418,7 +418,7 @@ __launch_bounds__(1024) __global__ void compute_conic_backward_kernel(
     T sigma_image_grad_out[4];
     sigma_image_grad_out[0] = conic_grad_out[i * 3 + 0];
     sigma_image_grad_out[1] = conic_grad_out[i * 3 + 1];
-    sigma_image_grad_out[2] = 0.0;
+    sigma_image_grad_out[2] = conic_grad_out[i * 3 + 1];
     sigma_image_grad_out[3] = conic_grad_out[i * 3 + 2];
 
     T JW_t_grad_sigma_image[6]; // 3x2

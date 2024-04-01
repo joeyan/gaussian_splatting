@@ -116,7 +116,7 @@ class ProjectionTest(unittest.TestCase):
 
         self.assertEqual(conic.shape, (6, 3))
         self.assertAlmostEqual(conic[3, 0].item(), 664.28760, places=4)
-        self.assertAlmostEqual(conic[3, 1].item(), 127.40891, places=4)
+        self.assertAlmostEqual(conic[3, 1].item(), 254.81781, places=4)
         self.assertAlmostEqual(conic[3, 2].item(), 5761.8906, places=4)
 
 

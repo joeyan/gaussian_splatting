@@ -254,7 +254,8 @@ __global__ void compute_conic_kernel(
 
     // write to conic
     conic[i * 3 + 0] = sigma_image[0];
-    conic[i * 3 + 1] = sigma_image[1];
+    // they are also equal but this keeps the pytorch autograd check happy
+    conic[i * 3 + 1] = sigma_image[1] + sigma_image[2];
     conic[i * 3 + 2] = sigma_image[3];
 }
 

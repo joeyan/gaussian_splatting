@@ -133,9 +133,9 @@ __global__ void render_tiles_backward_kernel(
 
                 // 2d covariance matrix b == c so we don't need to duplicate
                 const T a = _conic[i * 3 + 0];
-                const T b = _conic[i * 3 + 1];
-                const T d = _conic[i * 3 + 2];
-                T det = a * d - b * b;
+                const T b = _conic[i * 3 + 1] / 2.0;
+                const T c = _conic[i * 3 + 2];
+                T det = a * c - b * b;
 
                 T norm_prob = 0.0;
                 T reciprocal_det = 1.0 / det;
@@ -146,7 +146,7 @@ __global__ void render_tiles_backward_kernel(
                     }
                     // compute mahalanobis distance
                     const T mh_sq =
-                        (d * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) *
+                        (c * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) *
                         reciprocal_det;
                     if (mh_sq > 0.0) {
                         if (use_fast_exp) {
@@ -195,16 +195,15 @@ __global__ void render_tiles_backward_kernel(
                 T grad_mh_sq = -0.5 * norm_prob * grad_prob;
 
                 // compute gradient for projected mean
-                grad_u = -(-b * v_diff - b * v_diff + 2 * d * u_diff) * reciprocal_det * grad_mh_sq;
+                grad_u = -(-b * v_diff - b * v_diff + 2 * c * u_diff) * reciprocal_det * grad_mh_sq;
                 grad_v = -(2 * a * v_diff - b * u_diff - b * u_diff) * reciprocal_det * grad_mh_sq;
 
                 const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
-                                       b * u_diff * v_diff + d * u_diff * u_diff) *
+                                       b * u_diff * v_diff + c * u_diff * u_diff) *
                                       reciprocal_det * reciprocal_det;
                 grad_conic_splat[0] =
-                    (-d * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_conic_splat[1] =
-                    2.0 * (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                    (-c * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_conic_splat[1] = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_conic_splat[2] =
                     (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
 

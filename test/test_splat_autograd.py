@@ -37,9 +37,9 @@ class TestSplatAutograd(unittest.TestCase):
         )
         self.conic = torch.tensor(
             [
-                [1.3287e03, 9.7362e02, 7.3605e02],
-                [90.0, 20.0, 60.0],
-                [776.215, -2464.463, 8276.755],
+                [1.3287e03, 9.7362e02 * 2, 7.3605e02],
+                [90.0, 20.0 * 2, 60.0],
+                [776.215, -2464.463 * 2, 8276.755],
             ],
             dtype=torch.float64,
             device=self.device,
