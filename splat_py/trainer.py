@@ -487,7 +487,6 @@ class GSTrainer:
         loss = (1.0 - SSIM_RATIO) * l1_loss + SSIM_RATIO * ssim_loss
         with SimpleTimer("Backward"):
             loss.backward()
-
             self.gaussians.rgb.grad = self.gaussians.rgb.grad.float()
         with SimpleTimer("Optimizer Step"):
             self.optimizer.step()
