@@ -7,11 +7,11 @@
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
-template <typename T, typename T_SH, bool use_fast_exp, unsigned int CHUNK_SIZE, unsigned int N_SH>
+template <typename T, bool use_fast_exp, unsigned int CHUNK_SIZE, unsigned int N_SH, unsigned int N_SH_PAIRS>
 __global__ void render_tiles_kernel(
     const T* __restrict__ uvs,
     const T* __restrict__ opacity,
-    const T_SH* __restrict__ rgb,
+    const __nv_bfloat162* __restrict__ rgb,
     const T* __restrict__ conic,
     const T* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
@@ -19,8 +19,8 @@ __global__ void render_tiles_kernel(
     const int image_width,
     const int image_height,
     int* num_splats_per_pixel,
-    T* final_weight_per_pixel,
-    T* image
+    T* __restrict__ final_weight_per_pixel,
+    T* __restrict__ image
 ) {
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
@@ -41,8 +41,8 @@ __global__ void render_tiles_kernel(
     T alpha_weight = 0.0;
     int num_splats = 0;
 
-    T_SH view_dir[3];
-    T_SH sh_at_view_dir[N_SH];
+    __nv_bfloat16 view_dir[3];
+    __nv_bfloat16 sh_at_view_dir[N_SH];
 
     if (valid_pixel) {
         #pragma unroll
@@ -50,13 +50,13 @@ __global__ void render_tiles_kernel(
             view_dir[axis] =
                 __float2bfloat16(view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + axis]);
         }
-        compute_sh_coeffs_for_view_dir<T_SH, N_SH>(view_dir, sh_at_view_dir);
+        compute_sh_coeffs_for_view_dir<__nv_bfloat16, N_SH>(view_dir, sh_at_view_dir);
     }
 
     // shared memory copies of inputs
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
-    __shared__ T_SH _rgb[CHUNK_SIZE * 3 * N_SH];
+    __shared__ __nv_bfloat162 _rgb[CHUNK_SIZE * 3 * N_SH_PAIRS];
     __shared__ T _conic[CHUNK_SIZE * 3];
 
     const int shared_image_size = 16 * 16 * 3;
@@ -85,12 +85,11 @@ __global__ void render_tiles_kernel(
             _opacity[i] = opacity[gaussian_idx];
 
             #pragma unroll
-            for (int sh = 0; sh < N_SH; sh++) {
+            for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
-                    _rgb[(i * 3 + channel) * N_SH + sh] =
-                        rgb[(gaussian_idx * 3 + channel) * N_SH + sh];
+                    _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx] = rgb[(gaussian_idx * 3 + channel) * N_SH_PAIRS + sh_pair_idx];
                 }
             }
 
@@ -147,8 +146,19 @@ __global__ void render_tiles_kernel(
                 const T weight = alpha * (1.0 - alpha_accum);
 
                 // compute rgb
-                T_SH computed_rgb[3];
-                sh_to_rgb<T_SH, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
+                __nv_bfloat16 computed_rgb[3] = {__float2bfloat16(0.0f)};
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    #pragma unroll
+                    for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
+                        int sh_idx = sh_pair_idx * 2;
+                        // first value is valid in loop
+                        computed_rgb[channel] += _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx].x * sh_at_view_dir[sh_idx];
+                        if (sh_idx + 1 < N_SH) {
+                            computed_rgb[channel] += _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx].y * sh_at_view_dir[sh_idx + 1];
+                        }
+                    }
+                }
 
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
@@ -173,6 +183,36 @@ __global__ void render_tiles_kernel(
             image[(v_splat * image_width + u_splat) * 3 + channel] =
                 _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel];
         }
+    }
+}
+
+
+__global__ void convert_rgb_bfloat162(
+    const __nv_bfloat16* __restrict__ rgb_bf16,
+    const int N,
+    const int N_SH,
+    const int N_SH_PAIRS,
+    __nv_bfloat162* __restrict__ rgb_bf162
+) {
+    int splat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int channel_idx = threadIdx.y;
+    int sh_pair_idx = threadIdx.z;
+
+    // out of bounds
+    if (splat_idx >= N || channel_idx >= 3 || sh_pair_idx * 2 >= N_SH) {
+        return;
+    }
+    int rgb_in_idx = (splat_idx * 3 * N_SH) + (channel_idx * N_SH) + (sh_pair_idx * 2);
+    int rgb_pair_idx = (splat_idx * 3 * N_SH_PAIRS) + (channel_idx * N_SH_PAIRS) + sh_pair_idx;
+
+    // first value should always be valid
+    rgb_bf162[rgb_pair_idx].x = rgb_bf16[rgb_in_idx];
+
+    // second value may be invalid if N_SH is odd -> set to zero
+    if ((sh_pair_idx * 2 + 1) < N_SH) {
+        rgb_bf162[rgb_pair_idx].y = rgb_bf16[rgb_in_idx + 1];
+    } else {
+        rgb_bf162[rgb_pair_idx].y = __float2bfloat16(0.0f);
     }
 }
 
@@ -233,6 +273,18 @@ void render_tiles_cuda(
     } else {
         num_sh_coeff = 1;
     }
+
+    at::BFloat16* rgb_at = rgb.data_ptr<at::BFloat16>();
+    __nv_bfloat16* rgb_bf16 = reinterpret_cast<__nv_bfloat16*>(rgb_at);
+
+    // create bfloat162 output to store gradient
+    const int num_sh_pairs = (num_sh_coeff + 1) / 2;
+    const int num_b162 = N * 3 * num_sh_pairs;
+
+    // allocate bfloat162 rgb
+    __nv_bfloat162* rgb_bf162;
+    cudaMalloc(&rgb_bf162, num_b162 * sizeof(__nv_bfloat162));
+
     if (uvs.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(opacity);
         CHECK_BFLOAT16_TENSOR(rgb);
@@ -244,14 +296,22 @@ void render_tiles_cuda(
         CHECK_FLOAT_TENSOR(final_weight_per_pixel);
         CHECK_FLOAT_TENSOR(rendered_image);
 
-        at::BFloat16* rgb_ptr = rgb.data_ptr<at::BFloat16>();
-        __nv_bfloat16* rgb_ptr_bf16 = reinterpret_cast<__nv_bfloat16*>(rgb_ptr);
-
         if (num_sh_coeff == 1) {
-            render_tiles_kernel<float, __nv_bfloat16, true, 1248, 1><<<grid_size, block_size>>>(
+            // convert rgb
+            const int max_threads_per_block = 1024 / 3;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 1);
+    
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_kernel<float, true, 960, 1, 1><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -263,10 +323,20 @@ void render_tiles_cuda(
                 rendered_image.data_ptr<float>()
             );
         } else if (num_sh_coeff == 4) {
-            render_tiles_kernel<float, __nv_bfloat16, true, 960, 4><<<grid_size, block_size>>>(
+            const int max_threads_per_block = 1024 / 12;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 4);
+
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_kernel<float, true, 960, 4, 2><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -278,10 +348,20 @@ void render_tiles_cuda(
                 rendered_image.data_ptr<float>()
             );
         } else if (num_sh_coeff == 9) {
-            render_tiles_kernel<float, __nv_bfloat16, true, 576, 9><<<grid_size, block_size>>>(
+            const int max_threads_per_block = 1024 / 27;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 9);
+    
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_kernel<float, true, 512, 9, 5><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -293,10 +373,20 @@ void render_tiles_cuda(
                 rendered_image.data_ptr<float>()
             );
         } else if (num_sh_coeff == 16) {
-            render_tiles_kernel<float, __nv_bfloat16, true, 384, 16><<<grid_size, block_size>>>(
+            const int max_threads_per_block = 1024 / 48;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 16);
+
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_kernel<float, true, 384, 16, 8><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -310,82 +400,9 @@ void render_tiles_cuda(
         } else {
             AT_ERROR("Unsupported number of SH coefficients: ", num_sh_coeff);
         }
-        // }
-        // else if (uvs.dtype() == torch::kFloat64) {
-        //     CHECK_DOUBLE_TENSOR(opacity);
-        //     CHECK_DOUBLE_TENSOR(rgb);
-        //     CHECK_DOUBLE_TENSOR(conic);
-        //     CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
-        //     CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
-        //     CHECK_INT_TENSOR(num_splats_per_pixel);
-        //     CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
-        //     CHECK_DOUBLE_TENSOR(rendered_image);
-        //     if (num_sh_coeff == 1) {
-        //         render_tiles_kernel<double, double, false, 320, 1><<<grid_size, block_size>>>(
-        //             uvs.data_ptr<double>(),
-        //             opacity.data_ptr<double>(),
-        //             rgb.data_ptr<double>(),
-        //             conic.data_ptr<double>(),
-        //             view_dir_by_pixel.data_ptr<double>(),
-        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-        //             image_width,
-        //             image_height,
-        //             num_splats_per_pixel.data_ptr<int>(),
-        //             final_weight_per_pixel.data_ptr<double>(),
-        //             rendered_image.data_ptr<double>()
-        //         );
-        //     } else if (num_sh_coeff == 4) {
-        //         render_tiles_kernel<double, double, false, 160, 4><<<grid_size, block_size>>>(
-        //             uvs.data_ptr<double>(),
-        //             opacity.data_ptr<double>(),
-        //             rgb.data_ptr<double>(),
-        //             conic.data_ptr<double>(),
-        //             view_dir_by_pixel.data_ptr<double>(),
-        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-        //             image_width,
-        //             image_height,
-        //             num_splats_per_pixel.data_ptr<int>(),
-        //             final_weight_per_pixel.data_ptr<double>(),
-        //             rendered_image.data_ptr<double>()
-        //         );
-        //     } else if (num_sh_coeff == 9) {
-        //         render_tiles_kernel<double, double, false, 128, 9><<<grid_size, block_size>>>(
-        //             uvs.data_ptr<double>(),
-        //             opacity.data_ptr<double>(),
-        //             rgb.data_ptr<double>(),
-        //             conic.data_ptr<double>(),
-        //             view_dir_by_pixel.data_ptr<double>(),
-        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-        //             image_width,
-        //             image_height,
-        //             num_splats_per_pixel.data_ptr<int>(),
-        //             final_weight_per_pixel.data_ptr<double>(),
-        //             rendered_image.data_ptr<double>()
-        //         );
-        //     } else if (num_sh_coeff == 16) {
-        //         render_tiles_kernel<double, double, false, 64, 16><<<grid_size, block_size>>>(
-        //             uvs.data_ptr<double>(),
-        //             opacity.data_ptr<double>(),
-        //             rgb.data_ptr<double>(),
-        //             conic.data_ptr<double>(),
-        //             view_dir_by_pixel.data_ptr<double>(),
-        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-        //             image_width,
-        //             image_height,
-        //             num_splats_per_pixel.data_ptr<int>(),
-        //             final_weight_per_pixel.data_ptr<double>(),
-        //             rendered_image.data_ptr<double>()
-        //         );
-        //     }
-        //  else {
-        //     AT_ERROR("Unsupported number of SH coefficients: ", num_sh_coeff);
-        // }
     } else {
         AT_ERROR("Inputs must be float32 or float64");
     }
     cudaDeviceSynchronize();
+    cudaFree(rgb_bf162);
 }

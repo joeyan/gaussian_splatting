@@ -25,7 +25,7 @@ __global__ void render_tiles_backward_kernel(
     const int image_width,
     const int image_height,
     bool use_fast_exp,
-    __nv_bfloat162* __restrict__ grad_rgb, // N_gaussians x 3
+    __nv_bfloat162* __restrict__ grad_rgb, // N_gaussians x 3 x (N_SH + 1)/2
     T* __restrict__ grad_opacity,          // N_gaussians x 1
     T* __restrict__ grad_uv,               // N_gaussians x 2
     T* __restrict__ grad_conic             // N_gaussians x 3
@@ -409,8 +409,8 @@ void render_tiles_backward_cuda(
     __nv_bfloat16* rgb_ptr_bf16 = reinterpret_cast<__nv_bfloat16*>(rgb_ptr);
 
     // create bfloat162 output to store gradient
-    int padded_sh = (num_sh_coeff + 1) / 2 * 2;
-    int num_b162 = N * 3 * padded_sh / 2;
+    const int num_sh_pairs = (num_sh_coeff + 1) / 2;
+    const int num_b162 = N * 3 * num_sh_pairs;
 
     __nv_bfloat162* grad_rgb_bf162;
     cudaMalloc(&grad_rgb_bf162, num_b162 * sizeof(__nv_bfloat162));
@@ -524,7 +524,6 @@ void render_tiles_backward_cuda(
     at::BFloat16* grad_rgb_ptr = grad_rgb.data_ptr<at::BFloat16>();
     __nv_bfloat16* grad_rgb_ptr_bf16 = reinterpret_cast<__nv_bfloat16*>(grad_rgb_ptr);
 
-    const int num_sh_pairs = (num_sh_coeff + 1) / 2;
 
     if (num_sh_coeff == 1) {
         const int max_threads_per_block = 1024 / 3;
@@ -565,9 +564,9 @@ void render_tiles_backward_cuda(
         convert_rgb_grad_to_bfloat16<<<convert_gridsize, convert_blocksize>>>(
             grad_rgb_bf162, N, num_sh_coeff, num_sh_pairs, grad_rgb_ptr_bf16
         );
-
     } else {
         AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
     }
+    cudaDeviceSynchronize();
     cudaFree(grad_rgb_bf162);
 }
