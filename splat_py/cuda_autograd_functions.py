@@ -13,6 +13,8 @@ from splat_cuda import (
     render_tiles_backward_cuda,
 )
 
+from splat_py.structs import SimpleTimer
+
 
 class CameraPointProjection(torch.autograd.Function):
     @staticmethod
@@ -24,11 +26,12 @@ class CameraPointProjection(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_uv):
-        xyz_camera, K = ctx.saved_tensors
-        grad_xyz_camera = torch.zeros(
-            xyz_camera.shape, dtype=xyz_camera.dtype, device=xyz_camera.device
-        )
-        camera_projection_backward_cuda(xyz_camera, K, grad_uv, grad_xyz_camera)
+        with SimpleTimer("\t\tbackward camera point projection"):
+            xyz_camera, K = ctx.saved_tensors
+            grad_xyz_camera = torch.zeros(
+                xyz_camera.shape, dtype=xyz_camera.dtype, device=xyz_camera.device
+            )
+            camera_projection_backward_cuda(xyz_camera, K, grad_uv, grad_xyz_camera)
         return grad_xyz_camera, None
 
 
@@ -48,14 +51,15 @@ class ComputeSigmaWorld(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_sigma_world):
-        quaternions, scales = ctx.saved_tensors
-        grad_quaternions = torch.zeros(
-            quaternions.shape, dtype=quaternions.dtype, device=quaternions.device
-        )
-        grad_scales = torch.zeros(scales.shape, dtype=scales.dtype, device=scales.device)
-        compute_sigma_world_backward_cuda(
-            quaternions, scales, grad_sigma_world, grad_quaternions, grad_scales
-        )
+        with SimpleTimer("\t\tbackward sigma world"):
+            quaternions, scales = ctx.saved_tensors
+            grad_quaternions = torch.zeros(
+                quaternions.shape, dtype=quaternions.dtype, device=quaternions.device
+            )
+            grad_scales = torch.zeros(scales.shape, dtype=scales.dtype, device=scales.device)
+            compute_sigma_world_backward_cuda(
+                quaternions, scales, grad_sigma_world, grad_quaternions, grad_scales
+            )
         return grad_quaternions, grad_scales
 
 
@@ -71,11 +75,12 @@ class ComputeProjectionJacobian(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_jacobian):
-        xyz_camera, K = ctx.saved_tensors
-        grad_xyz_camera = torch.zeros(
-            xyz_camera.shape, dtype=xyz_camera.dtype, device=xyz_camera.device
-        )
-        compute_projection_jacobian_backward_cuda(xyz_camera, K, grad_jacobian, grad_xyz_camera)
+        with SimpleTimer("\t\tbackward jacobian"):
+            xyz_camera, K = ctx.saved_tensors
+            grad_xyz_camera = torch.zeros(
+                xyz_camera.shape, dtype=xyz_camera.dtype, device=xyz_camera.device
+            )
+            compute_projection_jacobian_backward_cuda(xyz_camera, K, grad_jacobian, grad_xyz_camera)
         return grad_xyz_camera, None
 
 
@@ -89,14 +94,15 @@ class ComputeConic(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_conic):
-        sigma_world, world_T_image, J = ctx.saved_tensors
-        grad_sigma_world = torch.zeros(
-            sigma_world.shape, dtype=sigma_world.dtype, device=sigma_world.device
-        )
-        grad_J = torch.zeros(J.shape, dtype=J.dtype, device=J.device)
-        compute_conic_backward_cuda(
-            sigma_world, J, world_T_image, grad_conic, grad_sigma_world, grad_J
-        )
+        with SimpleTimer("\t\tbackward conic"):
+            sigma_world, world_T_image, J = ctx.saved_tensors
+            grad_sigma_world = torch.zeros(
+                sigma_world.shape, dtype=sigma_world.dtype, device=sigma_world.device
+            )
+            grad_J = torch.zeros(J.shape, dtype=J.dtype, device=J.device)
+            compute_conic_backward_cuda(
+                sigma_world, J, world_T_image, grad_conic, grad_sigma_world, grad_J
+            )
         return grad_sigma_world, grad_J, None
 
 
@@ -149,38 +155,40 @@ class RenderImage(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_rendered_image):
-        (
-            uvs,
-            opacity,
-            rgb,
-            conic,
-            rays,
-            splat_start_end_idx_by_tile_idx,
-            sorted_gaussian_idx_by_splat_idx,
-            num_splats_per_pixel,
-            final_weight_per_pixel,
-        ) = ctx.saved_tensors
-        grad_rgb = torch.zeros_like(rgb)
-        grad_opacity = torch.zeros_like(opacity)
-        grad_uv = torch.zeros_like(uvs)
-        grad_conic = torch.zeros_like(conic)
+        with SimpleTimer("\t\tbackward render image"):
+            (
+                uvs,
+                opacity,
+                rgb,
+                conic,
+                rays,
+                splat_start_end_idx_by_tile_idx,
+                sorted_gaussian_idx_by_splat_idx,
+                num_splats_per_pixel,
+                final_weight_per_pixel,
+            ) = ctx.saved_tensors
+            grad_rgb = torch.zeros_like(rgb)
+            grad_opacity = torch.zeros_like(opacity)
+            grad_uv = torch.zeros_like(uvs)
+            grad_conic = torch.zeros_like(conic)
 
-        # ensure input is contiguous
-        grad_rendered_image = grad_rendered_image.contiguous()
-        render_tiles_backward_cuda(
-            uvs,
-            opacity,
-            rgb,
-            conic,
-            rays,
-            splat_start_end_idx_by_tile_idx,
-            sorted_gaussian_idx_by_splat_idx,
-            num_splats_per_pixel,
-            final_weight_per_pixel,
-            grad_rendered_image,
-            grad_rgb,
-            grad_opacity,
-            grad_uv,
-            grad_conic,
-        )
+            # ensure input is contiguous
+            grad_rendered_image = grad_rendered_image.contiguous()
+            render_tiles_backward_cuda(
+                uvs,
+                opacity,
+                rgb,
+                conic,
+                rays,
+                splat_start_end_idx_by_tile_idx,
+                sorted_gaussian_idx_by_splat_idx,
+                num_splats_per_pixel,
+                final_weight_per_pixel,
+                grad_rendered_image,
+                grad_rgb,
+                grad_opacity,
+                grad_uv,
+                grad_conic,
+            )
+
         return grad_rgb, grad_opacity, grad_uv, grad_conic, None, None, None, None

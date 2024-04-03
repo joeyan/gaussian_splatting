@@ -30,19 +30,19 @@ def match_gaussians_to_tiles_gpu(
             num_gaussians_per_tile,
         )
 
-    with SimpleTimer("\t\tCreate outputs for GPU Tile Vectorization"):
         # create start/end indices
         splat_start_end_idx_by_tile_idx = torch.zeros(
             tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
         )
         splat_start_end_idx_by_tile_idx[1:] = torch.cumsum(num_gaussians_per_tile.squeeze(), dim=0)
 
-    num_splats = splat_start_end_idx_by_tile_idx[-1]
-    # create gaussian to tile vector
-    gaussian_idx_by_splat_idx = torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
-    tile_idx_by_splat_idx = torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
+        num_splats = splat_start_end_idx_by_tile_idx[-1]
+        # create gaussian to tile vector
+        gaussian_idx_by_splat_idx = (
+            torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
+        )
+        tile_idx_by_splat_idx = torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
 
-    with SimpleTimer("\t\tGPU Tile Vectorization"):
         compute_splat_to_gaussian_id_vector_cuda(
             gaussian_indices_per_tile,
             num_gaussians_per_tile,

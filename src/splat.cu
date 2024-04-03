@@ -2,12 +2,18 @@
 #include <cuda_runtime.h>
 #include <torch/extension.h>
 
-#include "cuda_fp16.h"
+#include <cuda_bf16.h>
 
+#include "bfloat162_helpers.cuh"
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
-template <typename T, bool use_fast_exp, unsigned int CHUNK_SIZE, unsigned int N_SH, unsigned int N_SH_PAIRS>
+template <
+    typename T,
+    bool use_fast_exp,
+    unsigned int CHUNK_SIZE,
+    unsigned int N_SH,
+    unsigned int N_SH_PAIRS>
 __global__ void render_tiles_kernel(
     const T* __restrict__ uvs,
     const T* __restrict__ opacity,
@@ -42,7 +48,7 @@ __global__ void render_tiles_kernel(
     int num_splats = 0;
 
     __nv_bfloat16 view_dir[3];
-    __nv_bfloat16 sh_at_view_dir[N_SH];
+    __nv_bfloat162 sh_at_view_dir[N_SH_PAIRS];
 
     if (valid_pixel) {
         #pragma unroll
@@ -50,7 +56,23 @@ __global__ void render_tiles_kernel(
             view_dir[axis] =
                 __float2bfloat16(view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + axis]);
         }
-        compute_sh_coeffs_for_view_dir<__nv_bfloat16, N_SH>(view_dir, sh_at_view_dir);
+
+        // compute sh as bfloat16
+        __nv_bfloat16 tmp_sh[N_SH];
+        compute_sh_coeffs_for_view_dir<__nv_bfloat16, N_SH>(view_dir, tmp_sh);
+
+        // convert sh to bfloat162
+        #pragma unroll
+        for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
+            int sh_idx = sh_pair_idx * 2;
+            // first value is valid in loop
+            sh_at_view_dir[sh_pair_idx].x = tmp_sh[sh_idx];
+            if (sh_idx + 1 < N_SH) {
+                sh_at_view_dir[sh_pair_idx].y = tmp_sh[sh_idx + 1];
+            } else {
+                sh_at_view_dir[sh_pair_idx].y = __float2bfloat16(0.0f);
+            }
+        }
     }
 
     // shared memory copies of inputs
@@ -89,7 +111,8 @@ __global__ void render_tiles_kernel(
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
-                    _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx] = rgb[(gaussian_idx * 3 + channel) * N_SH_PAIRS + sh_pair_idx];
+                    _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx] =
+                        rgb[(gaussian_idx * 3 + channel) * N_SH_PAIRS + sh_pair_idx];
                 }
             }
 
@@ -111,8 +134,8 @@ __global__ void render_tiles_kernel(
                 const T u_mean = _uvs[i * 2 + 0];
                 const T v_mean = _uvs[i * 2 + 1];
 
-                const T u_diff = T(u_splat) - u_mean;
-                const T v_diff = T(v_splat) - v_mean;
+                const T u_diff = __int2float_rn(u_splat) - u_mean;
+                const T v_diff = __int2float_rn(v_splat) - v_mean;
 
                 // 2d covariance matrix
                 const T a = _conic[i * 3 + 0];
@@ -146,24 +169,42 @@ __global__ void render_tiles_kernel(
                 const T weight = alpha * (1.0 - alpha_accum);
 
                 // compute rgb
-                __nv_bfloat16 computed_rgb[3] = {__float2bfloat16(0.0f)};
+                __nv_bfloat162 tmp_rgb[3];
+
+                // equal to pair index zero
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    tmp_rgb[channel] =
+                        __hmul2(_rgb[(i * 3 + channel) * N_SH_PAIRS], sh_at_view_dir[0]);
+                }
+
+                // add additional sh pairs
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     #pragma unroll
-                    for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
-                        int sh_idx = sh_pair_idx * 2;
-                        // first value is valid in loop
-                        computed_rgb[channel] += _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx].x * sh_at_view_dir[sh_idx];
-                        if (sh_idx + 1 < N_SH) {
-                            computed_rgb[channel] += _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx].y * sh_at_view_dir[sh_idx + 1];
-                        }
+                    for (int sh_pair_idx = 1; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
+                        // hfma2(a, b, c) = a * b + c
+                        tmp_rgb[channel] = __hfma2(
+                            _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx],
+                            sh_at_view_dir[sh_pair_idx],
+                            tmp_rgb[channel]
+                        );
                     }
+                }
+
+                // convert rgb to float32
+                float computed_rgb[3];
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    // add the two parts of the accumulated bfloat162 together
+                    computed_rgb[channel] =
+                        __bfloat162float(__hadd(tmp_rgb[channel].x, tmp_rgb[channel].y));
                 }
 
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] +=
-                        __bfloat162float(computed_rgb[channel]) * weight;
+                        computed_rgb[channel] * weight;
                 }
 
                 alpha_accum += weight;
@@ -183,36 +224,6 @@ __global__ void render_tiles_kernel(
             image[(v_splat * image_width + u_splat) * 3 + channel] =
                 _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel];
         }
-    }
-}
-
-
-__global__ void convert_rgb_bfloat162(
-    const __nv_bfloat16* __restrict__ rgb_bf16,
-    const int N,
-    const int N_SH,
-    const int N_SH_PAIRS,
-    __nv_bfloat162* __restrict__ rgb_bf162
-) {
-    int splat_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int channel_idx = threadIdx.y;
-    int sh_pair_idx = threadIdx.z;
-
-    // out of bounds
-    if (splat_idx >= N || channel_idx >= 3 || sh_pair_idx * 2 >= N_SH) {
-        return;
-    }
-    int rgb_in_idx = (splat_idx * 3 * N_SH) + (channel_idx * N_SH) + (sh_pair_idx * 2);
-    int rgb_pair_idx = (splat_idx * 3 * N_SH_PAIRS) + (channel_idx * N_SH_PAIRS) + sh_pair_idx;
-
-    // first value should always be valid
-    rgb_bf162[rgb_pair_idx].x = rgb_bf16[rgb_in_idx];
-
-    // second value may be invalid if N_SH is odd -> set to zero
-    if ((sh_pair_idx * 2 + 1) < N_SH) {
-        rgb_bf162[rgb_pair_idx].y = rgb_bf16[rgb_in_idx + 1];
-    } else {
-        rgb_bf162[rgb_pair_idx].y = __float2bfloat16(0.0f);
     }
 }
 
@@ -302,7 +313,7 @@ void render_tiles_cuda(
             const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
             dim3 convert_gridsize(num_blocks, 1, 1);
             dim3 convert_blocksize(max_threads_per_block, 3, 1);
-    
+
             convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
                 rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
             );
@@ -352,7 +363,7 @@ void render_tiles_cuda(
             const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
             dim3 convert_gridsize(num_blocks, 1, 1);
             dim3 convert_blocksize(max_threads_per_block, 3, 9);
-    
+
             convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
                 rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
             );

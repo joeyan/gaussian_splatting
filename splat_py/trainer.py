@@ -405,7 +405,7 @@ class GSTrainer:
         return torch.tensor(test_psnrs)
 
     def splat_and_compute_loss(self, image_idx, world_T_image, camera):
-        with SimpleTimer("Splat Gaussians"):
+        with SimpleTimer("\tSplat Gaussians"):
             xyz_camera_frame = transform_points_torch(self.gaussians.xyz, world_T_image)
             uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
             uv.retain_grad()
@@ -485,11 +485,11 @@ class GSTrainer:
             gt_image.unsqueeze(0).permute(0, 3, 1, 2),
         )
         loss = (1.0 - SSIM_RATIO) * l1_loss + SSIM_RATIO * ssim_loss
-        with SimpleTimer("Backward"):
+        with SimpleTimer("\tBackward"):
             loss.backward()
             self.gaussians.rgb.grad = self.gaussians.rgb.grad.float()
-        with SimpleTimer("Optimizer Step"):
-            self.optimizer.step()
+
+        self.optimizer.step()
 
         self.uv_grad_accum += torch.abs(uv.grad.detach())
         self.xyz_grad_accum += torch.abs(self.gaussians.xyz.grad.detach())
@@ -541,11 +541,10 @@ class GSTrainer:
                 self.add_sh_band()
 
             if i % SAVE_DEBUG_IMAGE_INTERVAL == 0:
-                with SimpleTimer("Save Images"):
-                    debug_image = image.clip(0, 1).detach().cpu().numpy()
-                    cv2.imwrite(
-                        "{}/iter{}_image_{}.png".format(OUTPUT_DIR, i, image_idx),
-                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
-                    )
+                debug_image = image.clip(0, 1).detach().cpu().numpy()
+                cv2.imwrite(
+                    "{}/iter{}_image_{}.png".format(OUTPUT_DIR, i, image_idx),
+                    (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
+                )
         final_psnrs = self.compute_test_psnr(save_test_images=True, iter=i)
         print("Final PSNR: ", final_psnrs.mean().item())

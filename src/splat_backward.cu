@@ -5,16 +5,17 @@
 #include <cuda_runtime.h>
 #include <torch/extension.h>
 
+#include "bfloat162_helpers.cuh"
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
 namespace cg = cooperative_groups;
 
-template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
+template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH, unsigned int N_SH_PAIRS>
 __global__ void render_tiles_backward_kernel(
     const T* __restrict__ uvs,
     const T* __restrict__ opacity,
-    const __nv_bfloat16* __restrict__ rgb,
+    const __nv_bfloat162* __restrict__ rgb,
     const T* __restrict__ conic,
     const T* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
@@ -33,8 +34,6 @@ __global__ void render_tiles_backward_kernel(
     auto block = cg::this_thread_block();
     cg::thread_block_tile<32> warp_cg = cg::tiled_partition<32>(block);
 
-    int N_SH_PAIRS = (N_SH + 1) / 2;
-
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
     const int v_splat = blockIdx.y * blockDim.y + threadIdx.y;
@@ -50,14 +49,16 @@ __global__ void render_tiles_backward_kernel(
     // make local copy for faster access
     T grad_image_local[3];
     T color_accum[3] = {0.0, 0.0, 0.0};
+
     __nv_bfloat16 view_dir[3];
-    __nv_bfloat16 sh_at_view_dir[N_SH];
+    __nv_bfloat162 sh_at_view_dir[N_SH_PAIRS];
 
     // keep threads around even if pixel is not valid for copying data
     bool valid_pixel = u_splat < image_width && v_splat < image_height;
 
     if (valid_pixel) {
         num_splats_this_pixel = num_splats_per_pixel[v_splat * image_width + u_splat];
+        weight = final_weight_per_pixel[u_splat + v_splat * image_width];
 
         #pragma unroll
         for (int channel = 0; channel < 3; channel++) {
@@ -66,15 +67,30 @@ __global__ void render_tiles_backward_kernel(
                 __float2bfloat16(view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + channel]
                 );
         }
-        compute_sh_coeffs_for_view_dir<__nv_bfloat16, N_SH>(view_dir, sh_at_view_dir);
-        weight = final_weight_per_pixel[u_splat + v_splat * image_width];
+
+        // compute sh as bfloat16
+        __nv_bfloat16 tmp_sh[N_SH];
+        compute_sh_coeffs_for_view_dir<__nv_bfloat16, N_SH>(view_dir, tmp_sh);
+
+        // convert sh to bfloat162
+        #pragma unroll
+        for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
+            int sh_idx = sh_pair_idx * 2;
+            // first value is valid in loop
+            sh_at_view_dir[sh_pair_idx].x = tmp_sh[sh_idx];
+            if (sh_idx + 1 < N_SH) {
+                sh_at_view_dir[sh_pair_idx].y = tmp_sh[sh_idx + 1];
+            } else {
+                sh_at_view_dir[sh_pair_idx].y = __float2bfloat16(0.0f);
+            }
+        }
     }
 
     // shared memory copies of inputs
-    __shared__ T _uvs[CHUNK_SIZE * 2];
-    __shared__ T _opacity[CHUNK_SIZE];
-    __shared__ __nv_bfloat16 _rgb[CHUNK_SIZE * 3 * N_SH];
-    __shared__ T _conic[CHUNK_SIZE * 3];
+    __shared__ float _uvs[CHUNK_SIZE * 2];
+    __shared__ float _opacity[CHUNK_SIZE];
+    __shared__ __nv_bfloat162 _rgb[CHUNK_SIZE * 3 * N_SH_PAIRS];
+    __shared__ float _conic[CHUNK_SIZE * 3];
 
     const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
     const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
@@ -98,12 +114,12 @@ __global__ void render_tiles_backward_kernel(
             _opacity[i] = opacity[gaussian_idx];
 
             #pragma unroll
-            for (int channel = 0; channel < 3; channel++) {
+            for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
                 #pragma unroll
-                for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
+                for (int channel = 0; channel < 3; channel++) {
                     // rgb dimensions = (splat_idx, channel_idx, sh_coeff_idx)
-                    _rgb[(i * 3 * N_SH) + (channel * N_SH) + sh_idx] =
-                        rgb[(gaussian_idx * 3 * N_SH) + (channel * N_SH) + sh_idx];
+                    _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx] =
+                        rgb[(gaussian_idx * 3 + channel) * N_SH_PAIRS + sh_pair_idx];
                 }
             }
 
@@ -120,7 +136,7 @@ __global__ void render_tiles_backward_kernel(
         int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
         for (int i = chunk_end - chunk_start - 1; i >= 0; i--) {
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
-            __nv_bfloat16 grad_sh[3 * N_SH] = {__float2bfloat16(0.0f)};
+            __nv_bfloat162 grad_sh[3 * N_SH_PAIRS] = {__float2bfloat162_rn(0.0f)};
 
             T grad_opa = 0;
             T grad_u = 0;
@@ -134,8 +150,8 @@ __global__ void render_tiles_backward_kernel(
                 const T u_mean = _uvs[i * 2 + 0];
                 const T v_mean = _uvs[i * 2 + 1];
 
-                const T u_diff = T(u_splat) - u_mean;
-                const T v_diff = T(v_splat) - v_mean;
+                const T u_diff = __int2float_rn(u_splat) - u_mean;
+                const T v_diff = __int2float_rn(v_splat) - v_mean;
 
                 // 2d covariance matrix b == c so we don't need to duplicate
                 const T a = _conic[i * 3 + 0];
@@ -174,24 +190,55 @@ __global__ void render_tiles_backward_kernel(
                     weight = weight * reciprocal_one_minus_alpha;
                 }
 
-                __nv_bfloat16 grad_pixel_rgb[3];
+                // compute rgb
+                __nv_bfloat162 tmp_rgb[3];
+
+                // equal to pair index zero
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
-                    grad_pixel_rgb[channel] =
-                        __float2bfloat16(alpha * weight * grad_image_local[channel]);
+                    tmp_rgb[channel] =
+                        __hmul2(_rgb[(i * 3 + channel) * N_SH_PAIRS], sh_at_view_dir[0]);
                 }
 
-                // compute rgb from sh
-                __nv_bfloat16 computed_rgb[3];
-                sh_to_rgb<__nv_bfloat16, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
+                // add additional sh pairs
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    #pragma unroll
+                    for (int sh_pair_idx = 1; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
+                        // hfma2(a, b, c) = a * b + c
+                        tmp_rgb[channel] = __hfma2(
+                            _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx],
+                            sh_at_view_dir[sh_pair_idx],
+                            tmp_rgb[channel]
+                        );
+                    }
+                }
+
+                // convert rgb to float32
+                float computed_rgb[3];
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    // add the two parts of the accumulated bfloat162 together
+                    computed_rgb[channel] =
+                        __bfloat162float(__hadd(tmp_rgb[channel].x, tmp_rgb[channel].y));
+                }
 
                 // compute grad wrt spherical harmonic coeff
-                compute_sh_grad<__nv_bfloat16, N_SH>(grad_pixel_rgb, sh_at_view_dir, grad_sh);
+                #pragma unroll
+                for (int channel = 0; channel < 3; channel++) {
+                    __nv_bfloat162 grad_channel =
+                        __float2bfloat162_rn(alpha * weight * grad_image_local[channel]);
+                    #pragma unroll
+                    for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
+                        grad_sh[channel * N_SH_PAIRS + sh_pair_idx] =
+                            __hmul2(sh_at_view_dir[sh_pair_idx], grad_channel);
+                    }
+                }
 
                 T grad_alpha = 0.0;
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
-                    grad_alpha += (__bfloat162float(computed_rgb[channel]) * weight -
+                    grad_alpha += (computed_rgb[channel] * weight -
                                    color_accum[channel] * reciprocal_one_minus_alpha) *
                                   grad_image_local[channel];
                 }
@@ -217,8 +264,7 @@ __global__ void render_tiles_backward_kernel(
 
                 // update color_accum for next splat
                 for (int channel = 0; channel < 3; channel++) {
-                    color_accum[channel] +=
-                        __bfloat162float(computed_rgb[channel]) * alpha * weight;
+                    color_accum[channel] += computed_rgb[channel] * alpha * weight;
                 }
             }
 
@@ -232,9 +278,16 @@ __global__ void render_tiles_backward_kernel(
             #pragma unroll
             for (int channel = 0; channel < 3; channel++) {
                 #pragma unroll
-                for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
-                    grad_sh[(channel * N_SH) + sh_idx] = cg::reduce(
-                        warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<__nv_bfloat16>()
+                for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
+                    grad_sh[(channel * N_SH_PAIRS) + sh_pair_idx].x = cg::reduce(
+                        warp_cg,
+                        grad_sh[(channel * N_SH_PAIRS) + sh_pair_idx].x,
+                        cg::plus<__nv_bfloat16>()
+                    );
+                    grad_sh[(channel * N_SH_PAIRS) + sh_pair_idx].y = cg::reduce(
+                        warp_cg,
+                        grad_sh[(channel * N_SH_PAIRS) + sh_pair_idx].y,
+                        cg::plus<__nv_bfloat16>()
                     );
                 }
             }
@@ -254,21 +307,10 @@ __global__ void render_tiles_backward_kernel(
                     #pragma unroll
                     for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
                         // indexing: (gaussian_idx offset) + (channel offset) + (sh_offset)
-                        __nv_bfloat162 grad_pair;
-                        if (((channel * N_SH) + sh_pair_idx * 2 + 1) < N_SH) {
-                            grad_pair = make_bfloat162(
-                                (grad_sh[(channel * N_SH) + sh_pair_idx * 2]),
-                                (grad_sh[(channel * N_SH) + sh_pair_idx * 2 + 1])
-                            );
-                        } else {
-                            grad_pair = make_bfloat162(
-                                (grad_sh[(channel * N_SH) + sh_pair_idx * 2]), __float2bfloat16(0.0)
-                            );
-                        }
                         atomicAdd(
                             grad_rgb + (gaussian_idx * 3 * N_SH_PAIRS) + (channel * N_SH_PAIRS) +
                                 sh_pair_idx,
-                            grad_pair
+                            grad_sh[(channel * N_SH_PAIRS) + sh_pair_idx]
                         );
                     }
                 }
@@ -282,33 +324,6 @@ __global__ void render_tiles_backward_kernel(
             }
         } // compute chunk grad
     }     // loop over chunks
-}
-
-__global__ void convert_rgb_grad_to_bfloat16(
-    const __nv_bfloat162* __restrict__ rgb_grad_bf162,
-    const int N,
-    const int N_SH,
-    const int N_SH_PAIRS,
-    __nv_bfloat16* __restrict__ rgb_grad
-) {
-    int splat_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int channel_idx = threadIdx.y;
-    int sh_pair_idx = threadIdx.z;
-
-    // out of bounds
-    if (splat_idx >= N || channel_idx >= 3 || sh_pair_idx * 2 >= N_SH) {
-        return;
-    }
-    int grad_out_idx = (splat_idx * 3 * N_SH) + (channel_idx * N_SH) + (sh_pair_idx * 2);
-    int grad_pair_idx = (splat_idx * 3 * N_SH_PAIRS) + (channel_idx * N_SH_PAIRS) + sh_pair_idx;
-
-    // first value should always be valid
-    rgb_grad[grad_out_idx] = rgb_grad_bf162[grad_pair_idx].x;
-
-    // second value may be invalid if N_SH is odd
-    if ((sh_pair_idx * 2 + 1) < N_SH) {
-        rgb_grad[grad_out_idx + 1] = rgb_grad_bf162[grad_pair_idx].y;
-    }
 }
 
 void render_tiles_backward_cuda(
@@ -405,13 +420,17 @@ void render_tiles_backward_cuda(
     }
 
     // cast rgb to bfloat16 type from at::BFloat16
-    at::BFloat16* rgb_ptr = rgb.data_ptr<at::BFloat16>();
-    __nv_bfloat16* rgb_ptr_bf16 = reinterpret_cast<__nv_bfloat16*>(rgb_ptr);
+    at::BFloat16* rgb_at = rgb.data_ptr<at::BFloat16>();
+    __nv_bfloat16* rgb_bf16 = reinterpret_cast<__nv_bfloat16*>(rgb_at);
 
-    // create bfloat162 output to store gradient
     const int num_sh_pairs = (num_sh_coeff + 1) / 2;
     const int num_b162 = N * 3 * num_sh_pairs;
 
+    // allocate bfloat162 rgb
+    __nv_bfloat162* rgb_bf162;
+    cudaMalloc(&rgb_bf162, num_b162 * sizeof(__nv_bfloat162));
+
+    // create bfloat162 output to store gradient
     __nv_bfloat162* grad_rgb_bf162;
     cudaMalloc(&grad_rgb_bf162, num_b162 * sizeof(__nv_bfloat162));
     cudaMemset(grad_rgb_bf162, 0, num_b162 * sizeof(__nv_bfloat162));
@@ -432,10 +451,21 @@ void render_tiles_backward_cuda(
         CHECK_FLOAT_TENSOR(grad_conic);
 
         if (num_sh_coeff == 1) {
-            render_tiles_backward_kernel<float, 1248, 1><<<grid_size, block_size>>>(
+            // convert rgb
+            const int max_threads_per_block = 1024 / 3;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 1);
+
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_backward_kernel<float, 960, 1, 1><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -452,10 +482,20 @@ void render_tiles_backward_cuda(
                 grad_conic.data_ptr<float>()
             );
         } else if (num_sh_coeff == 4) {
-            render_tiles_backward_kernel<float, 960, 4><<<grid_size, block_size>>>(
+            const int max_threads_per_block = 1024 / 12;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 4);
+
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_backward_kernel<float, 960, 4, 2><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -473,10 +513,20 @@ void render_tiles_backward_cuda(
             );
 
         } else if (num_sh_coeff == 9) {
-            render_tiles_backward_kernel<float, 576, 9><<<grid_size, block_size>>>(
+            const int max_threads_per_block = 1024 / 27;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 9);
+
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_backward_kernel<float, 512, 9, 5><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -493,10 +543,20 @@ void render_tiles_backward_cuda(
                 grad_conic.data_ptr<float>()
             );
         } else if (num_sh_coeff == 16) {
-            render_tiles_backward_kernel<float, 384, 16><<<grid_size, block_size>>>(
+            const int max_threads_per_block = 1024 / 48;
+            const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
+            dim3 convert_gridsize(num_blocks, 1, 1);
+            dim3 convert_blocksize(max_threads_per_block, 3, 16);
+
+            convert_rgb_bfloat162<<<convert_gridsize, convert_blocksize>>>(
+                rgb_bf16, N, num_sh_coeff, num_sh_pairs, rgb_bf162
+            );
+            cudaDeviceSynchronize();
+
+            render_tiles_backward_kernel<float, 384, 16, 8><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
-                rgb_ptr_bf16,
+                rgb_bf162,
                 conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
@@ -519,11 +579,11 @@ void render_tiles_backward_cuda(
         AT_ERROR("Inputs must be float32 or float64");
     }
     cudaDeviceSynchronize();
+    cudaFree(rgb_bf162);
 
     // convert grad_rgb to at::BFloat16
     at::BFloat16* grad_rgb_ptr = grad_rgb.data_ptr<at::BFloat16>();
     __nv_bfloat16* grad_rgb_ptr_bf16 = reinterpret_cast<__nv_bfloat16*>(grad_rgb_ptr);
-
 
     if (num_sh_coeff == 1) {
         const int max_threads_per_block = 1024 / 3;
