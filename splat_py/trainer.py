@@ -457,7 +457,7 @@ class GSTrainer:
                 gaussian_idx_by_splat_idx,
                 tile_idx_by_splat_idx,
             )
-            
+
             rays = compute_rays_in_world_frame(camera, world_T_image)
             culled_gaussians.rgb = culled_gaussians.rgb.bfloat16()
             image = RenderImage.apply(

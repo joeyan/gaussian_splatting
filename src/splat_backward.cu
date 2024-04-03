@@ -1,15 +1,14 @@
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
 #include <cuda.h>
+#include <cuda_bf16.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
-#include <cuda_bf16.h>
 
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
 namespace cg = cooperative_groups;
-
 
 template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
 __global__ void render_tiles_backward_kernel(
@@ -26,10 +25,10 @@ __global__ void render_tiles_backward_kernel(
     const int image_width,
     const int image_height,
     bool use_fast_exp,
-    __nv_bfloat16* __restrict__ grad_rgb,  // N_gaussians x 3
-    T* __restrict__ grad_opacity, // N_gaussians x 1
-    T* __restrict__ grad_uv,      // N_gaussians x 2
-    T* __restrict__ grad_conic    // N_gaussians x 3
+    __nv_bfloat16* __restrict__ grad_rgb, // N_gaussians x 3
+    T* __restrict__ grad_opacity,         // N_gaussians x 1
+    T* __restrict__ grad_uv,              // N_gaussians x 2
+    T* __restrict__ grad_conic            // N_gaussians x 3
 ) {
     auto block = cg::this_thread_block();
     cg::thread_block_tile<32> warp_cg = cg::tiled_partition<32>(block);
@@ -61,7 +60,9 @@ __global__ void render_tiles_backward_kernel(
         #pragma unroll
         for (int channel = 0; channel < 3; channel++) {
             grad_image_local[channel] = grad_image[(v_splat * image_width + u_splat) * 3 + channel];
-            view_dir[channel] = __float2bfloat16(view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + channel]);
+            view_dir[channel] =
+                __float2bfloat16(view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + channel]
+                );
         }
         compute_sh_coeffs_for_view_dir<__nv_bfloat16, N_SH>(view_dir, sh_at_view_dir);
         weight = final_weight_per_pixel[u_splat + v_splat * image_width];
@@ -173,7 +174,8 @@ __global__ void render_tiles_backward_kernel(
                 __nv_bfloat16 grad_rgb[3];
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
-                    grad_rgb[channel] = __float2bfloat16(alpha * weight * grad_image_local[channel]);
+                    grad_rgb[channel] =
+                        __float2bfloat16(alpha * weight * grad_image_local[channel]);
                 }
 
                 // compute rgb from sh
@@ -205,13 +207,15 @@ __global__ void render_tiles_backward_kernel(
                                       reciprocal_det * reciprocal_det;
                 grad_conic_splat[0] =
                     (-c * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_conic_splat[1] = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_conic_splat[1] =
+                    (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_conic_splat[2] =
                     (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
 
                 // update color_accum for next splat
                 for (int channel = 0; channel < 3; channel++) {
-                    color_accum[channel] += __bfloat162float(computed_rgb[channel]) * alpha * weight;
+                    color_accum[channel] +=
+                        __bfloat162float(computed_rgb[channel]) * alpha * weight;
                 }
             }
 
@@ -226,8 +230,9 @@ __global__ void render_tiles_backward_kernel(
             for (int channel = 0; channel < 3; channel++) {
                 #pragma unroll
                 for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
-                    grad_sh[(channel * N_SH) + sh_idx] =
-                        cg::reduce(warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<__nv_bfloat16>());
+                    grad_sh[(channel * N_SH) + sh_idx] = cg::reduce(
+                        warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<__nv_bfloat16>()
+                    );
                 }
             }
 
@@ -286,12 +291,6 @@ __global__ void convert_rgb_to_bfloat162(
 //     rgb_grad[idx] = rgb_grad_bf162[idx].x;
 //     rgb_grad[idx + 1] = rgb_grad_bf162[idx].y;
 // }
-
-
-
-
-
-
 
 void render_tiles_backward_cuda(
     torch::Tensor uvs,
@@ -407,27 +406,20 @@ void render_tiles_backward_cuda(
         // convert bfloat16 to bfloat162 to speed up computation
         int padded_sh = (num_sh_coeff + 1) / 2 * 2;
         int num_b162 = N * 3 * padded_sh / 2;
-        
+
         __nv_bfloat162* rgb_bf162;
         cudaMalloc(&rgb_bf162, num_b162 * sizeof(__nv_bfloat162));
-        
+
         const int max_threads_per_block = 1024;
         const int num_blocks = (num_b162 + max_threads_per_block - 1) / max_threads_per_block;
         dim3 convert_gridsize(num_blocks, 1, 1);
         dim3 convert_blocksize(max_threads_per_block, 1, 1);
-        convert_rgb_to_bfloat162<<<convert_gridsize, convert_blocksize>>>(
-            rgb_ptr_bf16,
-            rgb_bf162
-        );
+        convert_rgb_to_bfloat162<<<convert_gridsize, convert_blocksize>>>(rgb_ptr_bf16, rgb_bf162);
 
         // create bfloat162 output to store gradient
         __nv_bfloat162* grad_rgb_bf162;
         cudaMalloc(&grad_rgb_bf162, num_b162 * sizeof(__nv_bfloat162));
         cudaMemset(grad_rgb_bf162, 0, num_b162 * sizeof(__nv_bfloat162));
-        
-
-
-
 
         at::BFloat16* grad_rgb_ptr = grad_rgb.data_ptr<at::BFloat16>();
         __nv_bfloat16* grad_rgb_ptr_bf16 = reinterpret_cast<__nv_bfloat16*>(grad_rgb_ptr);
@@ -516,103 +508,103 @@ void render_tiles_backward_cuda(
         } else {
             AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
         }
-    // } else if (uvs.dtype() == torch::kFloat64) {
-    //     CHECK_DOUBLE_TENSOR(opacity);
-    //     CHECK_DOUBLE_TENSOR(rgb);
-    //     CHECK_DOUBLE_TENSOR(conic);
-    //     CHECK_DOUBLE_TENSOR(view_dir_by_pixel);
-    //     CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
-    //     CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
-    //     CHECK_INT_TENSOR(num_splats_per_pixel);
-    //     CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
-    //     CHECK_DOUBLE_TENSOR(grad_image);
-    //     CHECK_DOUBLE_TENSOR(grad_rgb);
-    //     CHECK_DOUBLE_TENSOR(grad_opacity);
-    //     CHECK_DOUBLE_TENSOR(grad_uv);
-    //     CHECK_DOUBLE_TENSOR(grad_conic);
-    //     if (num_sh_coeff == 1) {
-    //         render_tiles_backward_kernel<double, double, 320, 1><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             grad_image.data_ptr<double>(),
-    //             image_width,
-    //             image_height,
-    //             false,
-    //             grad_rgb.data_ptr<double>(),
-    //             grad_opacity.data_ptr<double>(),
-    //             grad_uv.data_ptr<double>(),
-    //             grad_conic.data_ptr<double>()
-    //         );
-    //     } else if (num_sh_coeff == 4) {
-    //         render_tiles_backward_kernel<double, double, 160, 4><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             grad_image.data_ptr<double>(),
-    //             image_width,
-    //             image_height,
-    //             false,
-    //             grad_rgb.data_ptr<double>(),
-    //             grad_opacity.data_ptr<double>(),
-    //             grad_uv.data_ptr<double>(),
-    //             grad_conic.data_ptr<double>()
-    //         );
-    //     } else if (num_sh_coeff == 9) {
-    //         render_tiles_backward_kernel<double, double, 128, 9><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             grad_image.data_ptr<double>(),
-    //             image_width,
-    //             image_height,
-    //             false,
-    //             grad_rgb.data_ptr<double>(),
-    //             grad_opacity.data_ptr<double>(),
-    //             grad_uv.data_ptr<double>(),
-    //             grad_conic.data_ptr<double>()
-    //         );
-    //     } else if (num_sh_coeff == 16) {
-    //         render_tiles_backward_kernel<double, double, 64, 16><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             grad_image.data_ptr<double>(),
-    //             image_width,
-    //             image_height,
-    //             false,
-    //             grad_rgb.data_ptr<double>(),
-    //             grad_opacity.data_ptr<double>(),
-    //             grad_uv.data_ptr<double>(),
-    //             grad_conic.data_ptr<double>()
-    //         );
-    //     } else {
-    //         AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
-    //     }
+        // } else if (uvs.dtype() == torch::kFloat64) {
+        //     CHECK_DOUBLE_TENSOR(opacity);
+        //     CHECK_DOUBLE_TENSOR(rgb);
+        //     CHECK_DOUBLE_TENSOR(conic);
+        //     CHECK_DOUBLE_TENSOR(view_dir_by_pixel);
+        //     CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
+        //     CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        //     CHECK_INT_TENSOR(num_splats_per_pixel);
+        //     CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
+        //     CHECK_DOUBLE_TENSOR(grad_image);
+        //     CHECK_DOUBLE_TENSOR(grad_rgb);
+        //     CHECK_DOUBLE_TENSOR(grad_opacity);
+        //     CHECK_DOUBLE_TENSOR(grad_uv);
+        //     CHECK_DOUBLE_TENSOR(grad_conic);
+        //     if (num_sh_coeff == 1) {
+        //         render_tiles_backward_kernel<double, double, 320, 1><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             grad_image.data_ptr<double>(),
+        //             image_width,
+        //             image_height,
+        //             false,
+        //             grad_rgb.data_ptr<double>(),
+        //             grad_opacity.data_ptr<double>(),
+        //             grad_uv.data_ptr<double>(),
+        //             grad_conic.data_ptr<double>()
+        //         );
+        //     } else if (num_sh_coeff == 4) {
+        //         render_tiles_backward_kernel<double, double, 160, 4><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             grad_image.data_ptr<double>(),
+        //             image_width,
+        //             image_height,
+        //             false,
+        //             grad_rgb.data_ptr<double>(),
+        //             grad_opacity.data_ptr<double>(),
+        //             grad_uv.data_ptr<double>(),
+        //             grad_conic.data_ptr<double>()
+        //         );
+        //     } else if (num_sh_coeff == 9) {
+        //         render_tiles_backward_kernel<double, double, 128, 9><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             grad_image.data_ptr<double>(),
+        //             image_width,
+        //             image_height,
+        //             false,
+        //             grad_rgb.data_ptr<double>(),
+        //             grad_opacity.data_ptr<double>(),
+        //             grad_uv.data_ptr<double>(),
+        //             grad_conic.data_ptr<double>()
+        //         );
+        //     } else if (num_sh_coeff == 16) {
+        //         render_tiles_backward_kernel<double, double, 64, 16><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             grad_image.data_ptr<double>(),
+        //             image_width,
+        //             image_height,
+        //             false,
+        //             grad_rgb.data_ptr<double>(),
+        //             grad_opacity.data_ptr<double>(),
+        //             grad_uv.data_ptr<double>(),
+        //             grad_conic.data_ptr<double>()
+        //         );
+        //     } else {
+        //         AT_ERROR("Unsupported number of SH coefficients", num_sh_coeff);
+        //     }
     } else {
         AT_ERROR("Inputs must be float32 or float64");
     }

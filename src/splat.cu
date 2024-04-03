@@ -43,11 +43,12 @@ __global__ void render_tiles_kernel(
 
     T_SH view_dir[3];
     T_SH sh_at_view_dir[N_SH];
-    
+
     if (valid_pixel) {
         #pragma unroll
         for (int axis = 0; axis < 3; axis++) {
-            view_dir[axis] = __float2bfloat16(view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + axis]);
+            view_dir[axis] =
+                __float2bfloat16(view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + axis]);
         }
         compute_sh_coeffs_for_view_dir<T_SH, N_SH>(view_dir, sh_at_view_dir);
     }
@@ -246,7 +247,6 @@ void render_tiles_cuda(
         at::BFloat16* rgb_ptr = rgb.data_ptr<at::BFloat16>();
         __nv_bfloat16* rgb_ptr_bf16 = reinterpret_cast<__nv_bfloat16*>(rgb_ptr);
 
-
         if (num_sh_coeff == 1) {
             render_tiles_kernel<float, __nv_bfloat16, true, 1248, 1><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
@@ -310,77 +310,77 @@ void render_tiles_cuda(
         } else {
             AT_ERROR("Unsupported number of SH coefficients: ", num_sh_coeff);
         }
-    // } 
-    // else if (uvs.dtype() == torch::kFloat64) {
-    //     CHECK_DOUBLE_TENSOR(opacity);
-    //     CHECK_DOUBLE_TENSOR(rgb);
-    //     CHECK_DOUBLE_TENSOR(conic);
-    //     CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
-    //     CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
-    //     CHECK_INT_TENSOR(num_splats_per_pixel);
-    //     CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
-    //     CHECK_DOUBLE_TENSOR(rendered_image);
-    //     if (num_sh_coeff == 1) {
-    //         render_tiles_kernel<double, double, false, 320, 1><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             image_width,
-    //             image_height,
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             rendered_image.data_ptr<double>()
-    //         );
-    //     } else if (num_sh_coeff == 4) {
-    //         render_tiles_kernel<double, double, false, 160, 4><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             image_width,
-    //             image_height,
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             rendered_image.data_ptr<double>()
-    //         );
-    //     } else if (num_sh_coeff == 9) {
-    //         render_tiles_kernel<double, double, false, 128, 9><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             image_width,
-    //             image_height,
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             rendered_image.data_ptr<double>()
-    //         );
-    //     } else if (num_sh_coeff == 16) {
-    //         render_tiles_kernel<double, double, false, 64, 16><<<grid_size, block_size>>>(
-    //             uvs.data_ptr<double>(),
-    //             opacity.data_ptr<double>(),
-    //             rgb.data_ptr<double>(),
-    //             conic.data_ptr<double>(),
-    //             view_dir_by_pixel.data_ptr<double>(),
-    //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
-    //             gaussian_idx_by_splat_idx.data_ptr<int>(),
-    //             image_width,
-    //             image_height,
-    //             num_splats_per_pixel.data_ptr<int>(),
-    //             final_weight_per_pixel.data_ptr<double>(),
-    //             rendered_image.data_ptr<double>()
-    //         );
-    //     }
+        // }
+        // else if (uvs.dtype() == torch::kFloat64) {
+        //     CHECK_DOUBLE_TENSOR(opacity);
+        //     CHECK_DOUBLE_TENSOR(rgb);
+        //     CHECK_DOUBLE_TENSOR(conic);
+        //     CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
+        //     CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        //     CHECK_INT_TENSOR(num_splats_per_pixel);
+        //     CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
+        //     CHECK_DOUBLE_TENSOR(rendered_image);
+        //     if (num_sh_coeff == 1) {
+        //         render_tiles_kernel<double, double, false, 320, 1><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             image_width,
+        //             image_height,
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             rendered_image.data_ptr<double>()
+        //         );
+        //     } else if (num_sh_coeff == 4) {
+        //         render_tiles_kernel<double, double, false, 160, 4><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             image_width,
+        //             image_height,
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             rendered_image.data_ptr<double>()
+        //         );
+        //     } else if (num_sh_coeff == 9) {
+        //         render_tiles_kernel<double, double, false, 128, 9><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             image_width,
+        //             image_height,
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             rendered_image.data_ptr<double>()
+        //         );
+        //     } else if (num_sh_coeff == 16) {
+        //         render_tiles_kernel<double, double, false, 64, 16><<<grid_size, block_size>>>(
+        //             uvs.data_ptr<double>(),
+        //             opacity.data_ptr<double>(),
+        //             rgb.data_ptr<double>(),
+        //             conic.data_ptr<double>(),
+        //             view_dir_by_pixel.data_ptr<double>(),
+        //             splat_start_end_idx_by_tile_idx.data_ptr<int>(),
+        //             gaussian_idx_by_splat_idx.data_ptr<int>(),
+        //             image_width,
+        //             image_height,
+        //             num_splats_per_pixel.data_ptr<int>(),
+        //             final_weight_per_pixel.data_ptr<double>(),
+        //             rendered_image.data_ptr<double>()
+        //         );
+        //     }
         //  else {
         //     AT_ERROR("Unsupported number of SH coefficients: ", num_sh_coeff);
         // }

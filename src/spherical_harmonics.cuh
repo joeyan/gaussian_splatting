@@ -51,23 +51,29 @@ compute_sh_coeffs_for_view_dir(const T* __restrict__ view_dir, T* __restrict__ s
     const T zz = z * z;
 
     // Band 2
-    sh_at_view_dir[4] = __float2bfloat16(SH_2[0]) * xy;             // xy
-    sh_at_view_dir[5] = __float2bfloat16(SH_2[1]) * yz;             // yz
-    sh_at_view_dir[6] = __float2bfloat16(SH_2[2]) * (__float2bfloat16(3) * zz - __float2bfloat16(1)); // 3z^2 - 1
-    sh_at_view_dir[7] = __float2bfloat16(SH_2[3]) * xz;             // xz
-    sh_at_view_dir[8] = __float2bfloat16(SH_2[4]) * (xx - yy);      // x^2 - y^2
+    sh_at_view_dir[4] = __float2bfloat16(SH_2[0]) * xy; // xy
+    sh_at_view_dir[5] = __float2bfloat16(SH_2[1]) * yz; // yz
+    sh_at_view_dir[6] =
+        __float2bfloat16(SH_2[2]) * (__float2bfloat16(3) * zz - __float2bfloat16(1)); // 3z^2 - 1
+    sh_at_view_dir[7] = __float2bfloat16(SH_2[3]) * xz;                               // xz
+    sh_at_view_dir[8] = __float2bfloat16(SH_2[4]) * (xx - yy);                        // x^2 - y^2
 
     if (N_SH < 16)
         return;
 
     // Band 3
-    sh_at_view_dir[9] = __float2bfloat16(SH_3[0]) * y * (__float2bfloat16(3) * xx - yy);   // y * (3x^2 - y^2)
+    sh_at_view_dir[9] =
+        __float2bfloat16(SH_3[0]) * y * (__float2bfloat16(3) * xx - yy); // y * (3x^2 - y^2)
     sh_at_view_dir[10] = __float2bfloat16(SH_3[1]) * xy * z;             // xyz
-    sh_at_view_dir[11] = __float2bfloat16(SH_3[2]) * y * (__float2bfloat16(5) * zz - __float2bfloat16(1)); // y(5z^2 - 1)
-    sh_at_view_dir[12] = __float2bfloat16(SH_3[3]) * z * (__float2bfloat16(5) * zz - __float2bfloat16(3)); // z(5z^2 - 3)
-    sh_at_view_dir[13] = __float2bfloat16(SH_3[4]) * x * (__float2bfloat16(5) * zz - __float2bfloat16(1)); // x(5z^2 - 1)
-    sh_at_view_dir[14] = __float2bfloat16(SH_3[5]) * z * (xx - yy);      // z(x^2 - y^2)
-    sh_at_view_dir[15] = __float2bfloat16(SH_3[6]) * x * (xx - __float2bfloat16(3) * yy);  // x(x^2 - 3y^2)
+    sh_at_view_dir[11] = __float2bfloat16(SH_3[2]) * y *
+                         (__float2bfloat16(5) * zz - __float2bfloat16(1)); // y(5z^2 - 1)
+    sh_at_view_dir[12] = __float2bfloat16(SH_3[3]) * z *
+                         (__float2bfloat16(5) * zz - __float2bfloat16(3)); // z(5z^2 - 3)
+    sh_at_view_dir[13] = __float2bfloat16(SH_3[4]) * x *
+                         (__float2bfloat16(5) * zz - __float2bfloat16(1)); // x(5z^2 - 1)
+    sh_at_view_dir[14] = __float2bfloat16(SH_3[5]) * z * (xx - yy);        // z(x^2 - y^2)
+    sh_at_view_dir[15] =
+        __float2bfloat16(SH_3[6]) * x * (xx - __float2bfloat16(3) * yy); // x(x^2 - 3y^2)
 }
 
 template <typename T, unsigned int N_SH>
