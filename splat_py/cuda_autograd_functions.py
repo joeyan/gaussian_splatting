@@ -114,13 +114,13 @@ class RenderImage(torch.autograd.Function):
         image_size,
     ):
         rendered_image = torch.zeros(
-            image_size[0], image_size[1], 3, dtype=rgb.dtype, device=rgb.device
+            image_size[0], image_size[1], 3, dtype=uvs.dtype, device=uvs.device
         )
         num_splats_per_pixel = torch.zeros(
-            image_size[0], image_size[1], dtype=torch.int, device=rgb.device
+            image_size[0], image_size[1], dtype=torch.int, device=uvs.device
         )
         final_weight_per_pixel = torch.zeros(
-            image_size[0], image_size[1], dtype=rgb.dtype, device=rgb.device
+            image_size[0], image_size[1], dtype=uvs.dtype, device=uvs.device
         )
         render_tiles_cuda(
             uvs,

@@ -17,6 +17,9 @@ class TestSplatFull(unittest.TestCase):
         self.gaussians.opacities = inverse_sigmoid_torch(self.gaussians.opacities)
 
     def test_splat_gpu(self):
+        # convert rgb to half precision
+        self.gaussians.rgb = self.gaussians.rgb.bfloat16()
+
         image, _ = splat(self.gaussians, self.world_T_image, self.camera)
         debug_image = image.clip(0, 1).detach().cpu().numpy()
         cv2.imwrite("test_splat.png", (debug_image * 255).astype(np.uint8)[..., ::-1])

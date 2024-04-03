@@ -8,6 +8,8 @@
     CHECK_IS_CUDA(x);                                                                              \
     CHECK_IS_CONTIGUOUS(x)
 
+#define CHECK_HALF_TENSOR(x) TORCH_CHECK(x.dtype() == torch::kFloat16, #x " is not a half tensor")
+#define CHECK_BFLOAT16_TENSOR(x) TORCH_CHECK(x.dtype() == torch::kBFloat16, #x " is not a bfloat16 tensor")
 #define CHECK_FLOAT_TENSOR(x) TORCH_CHECK(x.dtype() == torch::kFloat32, #x " is not a float tensor")
 #define CHECK_DOUBLE_TENSOR(x)                                                                     \
     TORCH_CHECK(x.dtype() == torch::kFloat64, #x " is not a double tensor")

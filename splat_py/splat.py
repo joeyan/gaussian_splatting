@@ -46,7 +46,7 @@ def splat(gaussians, world_T_image, camera):
         opacities=torch.sigmoid(
             gaussians.opacities[~culling_mask]
         ),  # apply sigmoid activation to opacities
-        rgb=gaussians.rgb[~culling_mask, :],
+        rgb=gaussians.rgb[~culling_mask, :].bfloat16(),
     )
 
     sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternions, culled_gaussians.scales)
