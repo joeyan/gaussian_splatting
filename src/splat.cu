@@ -10,10 +10,10 @@
 
 template <unsigned int CHUNK_SIZE, unsigned int N_SH, unsigned int N_SH_PAIRS>
 __global__ void render_tiles_kernel(
-    const float* __restrict__ uvs,
+    const float2* __restrict__ uvs,
     const float* __restrict__ opacity,
     const __nv_bfloat162* __restrict__ rgb,
-    const float* __restrict__ conic,
+    const float3* __restrict__ conic,
     const float* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
     const int* __restrict__ gaussian_idx_by_splat_idx,
@@ -71,10 +71,10 @@ __global__ void render_tiles_kernel(
     }
 
     // shared memory copies of inputs
-    __shared__ float _uvs[CHUNK_SIZE * 2];
+    __shared__ float2 _uvs[CHUNK_SIZE];
     __shared__ float _opacity[CHUNK_SIZE];
     __shared__ __nv_bfloat162 _rgb[CHUNK_SIZE * 3 * N_SH_PAIRS];
-    __shared__ float _conic[CHUNK_SIZE * 3];
+    __shared__ float3 _conic[CHUNK_SIZE];
 
     const int shared_image_size = 16 * 16 * 3;
     __shared__ float _image[shared_image_size];
@@ -97,9 +97,9 @@ __global__ void render_tiles_kernel(
             const int global_splat_idx = splat_idx_start + tile_splat_idx;
 
             const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
-            _uvs[i * 2 + 0] = uvs[gaussian_idx * 2 + 0];
-            _uvs[i * 2 + 1] = uvs[gaussian_idx * 2 + 1];
+            _uvs[i] = uvs[gaussian_idx];
             _opacity[i] = opacity[gaussian_idx];
+            _conic[i] = conic[gaussian_idx];
 
             #pragma unroll
             for (int sh_pair_idx = 0; sh_pair_idx < N_SH_PAIRS; sh_pair_idx++) {
@@ -109,11 +109,6 @@ __global__ void render_tiles_kernel(
                     _rgb[(i * 3 + channel) * N_SH_PAIRS + sh_pair_idx] =
                         rgb[(gaussian_idx * 3 + channel) * N_SH_PAIRS + sh_pair_idx];
                 }
-            }
-
-            #pragma unroll
-            for (int j = 0; j < 3; j++) {
-                _conic[i * 3 + j] = conic[gaussian_idx * 3 + j];
             }
         }
         __syncthreads(); // wait for copying to complete before attempting to
@@ -126,16 +121,14 @@ __global__ void render_tiles_kernel(
                 if (alpha_accum > 0.999) {
                     break;
                 }
-                const float u_mean = _uvs[i * 2 + 0];
-                const float v_mean = _uvs[i * 2 + 1];
 
-                const float u_diff = __int2float_rn(u_splat) - u_mean;
-                const float v_diff = __int2float_rn(v_splat) - v_mean;
+                const float u_diff = __int2float_rn(u_splat) - _uvs[i].x;
+                const float v_diff = __int2float_rn(v_splat) - _uvs[i].y;
 
                 // 2d covariance matrix
-                const float a = _conic[i * 3 + 0];
-                const float b = _conic[i * 3 + 1] / 2.0;
-                const float c = _conic[i * 3 + 2];
+                const float a = _conic[i].x;
+                const float b = _conic[i].y / 2.0f;
+                const float c = _conic[i].z;
                 float det = a * c - b * b;
 
                 float alpha = 0.0f;
@@ -311,10 +304,10 @@ void render_tiles_cuda(
             cudaDeviceSynchronize();
 
             render_tiles_kernel<960, 1, 1><<<grid_size, block_size>>>(
-                uvs.data_ptr<float>(),
+                (float2*)uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
-                conic.data_ptr<float>(),
+                (float3*)conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -336,10 +329,10 @@ void render_tiles_cuda(
             cudaDeviceSynchronize();
 
             render_tiles_kernel<960, 4, 2><<<grid_size, block_size>>>(
-                uvs.data_ptr<float>(),
+                (float2*)uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
-                conic.data_ptr<float>(),
+                (float3*)conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -361,10 +354,10 @@ void render_tiles_cuda(
             cudaDeviceSynchronize();
 
             render_tiles_kernel<512, 9, 5><<<grid_size, block_size>>>(
-                uvs.data_ptr<float>(),
+                (float2*)uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
-                conic.data_ptr<float>(),
+                (float3*)conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
@@ -386,10 +379,10 @@ void render_tiles_cuda(
             cudaDeviceSynchronize();
 
             render_tiles_kernel<384, 16, 8><<<grid_size, block_size>>>(
-                uvs.data_ptr<float>(),
+                (float2*)uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
-                conic.data_ptr<float>(),
+                (float3*)conic.data_ptr<float>(),
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
