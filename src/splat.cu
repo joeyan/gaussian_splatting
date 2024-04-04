@@ -8,25 +8,20 @@
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
-template <
-    typename T,
-    bool use_fast_exp,
-    unsigned int CHUNK_SIZE,
-    unsigned int N_SH,
-    unsigned int N_SH_PAIRS>
+template <unsigned int CHUNK_SIZE, unsigned int N_SH, unsigned int N_SH_PAIRS>
 __global__ void render_tiles_kernel(
-    const T* __restrict__ uvs,
-    const T* __restrict__ opacity,
+    const float* __restrict__ uvs,
+    const float* __restrict__ opacity,
     const __nv_bfloat162* __restrict__ rgb,
-    const T* __restrict__ conic,
-    const T* __restrict__ view_dir_by_pixel,
+    const float* __restrict__ conic,
+    const float* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
     const int* __restrict__ gaussian_idx_by_splat_idx,
     const int image_width,
     const int image_height,
     int* num_splats_per_pixel,
-    T* __restrict__ final_weight_per_pixel,
-    T* __restrict__ image
+    float* __restrict__ final_weight_per_pixel,
+    float* __restrict__ image
 ) {
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
@@ -43,8 +38,8 @@ __global__ void render_tiles_kernel(
     const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
     const int block_size = blockDim.x * blockDim.y;
 
-    T alpha_accum = 0.0;
-    T alpha_weight = 0.0;
+    float alpha_accum = 0.0f;
+    float alpha_weight = 0.0f;
     int num_splats = 0;
 
     __nv_bfloat16 view_dir[3];
@@ -76,13 +71,13 @@ __global__ void render_tiles_kernel(
     }
 
     // shared memory copies of inputs
-    __shared__ T _uvs[CHUNK_SIZE * 2];
-    __shared__ T _opacity[CHUNK_SIZE];
+    __shared__ float _uvs[CHUNK_SIZE * 2];
+    __shared__ float _opacity[CHUNK_SIZE];
     __shared__ __nv_bfloat162 _rgb[CHUNK_SIZE * 3 * N_SH_PAIRS];
-    __shared__ T _conic[CHUNK_SIZE * 3];
+    __shared__ float _conic[CHUNK_SIZE * 3];
 
     const int shared_image_size = 16 * 16 * 3;
-    __shared__ T _image[shared_image_size];
+    __shared__ float _image[shared_image_size];
 
     #pragma unroll
     for (int i = thread_id; i < shared_image_size; i += block_size) {
@@ -131,42 +126,38 @@ __global__ void render_tiles_kernel(
                 if (alpha_accum > 0.999) {
                     break;
                 }
-                const T u_mean = _uvs[i * 2 + 0];
-                const T v_mean = _uvs[i * 2 + 1];
+                const float u_mean = _uvs[i * 2 + 0];
+                const float v_mean = _uvs[i * 2 + 1];
 
-                const T u_diff = __int2float_rn(u_splat) - u_mean;
-                const T v_diff = __int2float_rn(v_splat) - v_mean;
+                const float u_diff = __int2float_rn(u_splat) - u_mean;
+                const float v_diff = __int2float_rn(v_splat) - v_mean;
 
                 // 2d covariance matrix
-                const T a = _conic[i * 3 + 0];
-                const T b = _conic[i * 3 + 1] / 2.0;
-                const T c = _conic[i * 3 + 2];
-                T det = a * c - b * b;
+                const float a = _conic[i * 3 + 0];
+                const float b = _conic[i * 3 + 1] / 2.0;
+                const float c = _conic[i * 3 + 2];
+                float det = a * c - b * b;
 
-                T alpha = 0.0;
+                float alpha = 0.0f;
                 // skip any covariance matrices that are not positive definite
-                if (det > 0.0) {
+                if (det > 0.0f) {
                     if (det < 1e-14) {
                         det += 1e-14;
                     }
                     // compute mahalanobis distance
-                    const T mh_sq =
+                    const float mh_sq =
                         (c * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) /
                         det;
                     if (mh_sq > 0.0) {
                         // probablity at this pixel normalized to have
                         // probability at the center of the gaussian to be 1.0
-                        T norm_prob = 0.0;
-                        if (use_fast_exp) {
-                            norm_prob = __expf(-0.5 * mh_sq);
-                        } else {
-                            norm_prob = exp(-0.5 * mh_sq);
-                        }
+                        float norm_prob = 0.0f;
+                        norm_prob = __expf(-0.5 * mh_sq);
                         alpha = _opacity[i] * norm_prob;
                     }
                 }
-                alpha_weight = 1.0 - alpha_accum;
-                const T weight = alpha * (1.0 - alpha_accum);
+                alpha_weight = 1.0f - alpha_accum;
+                const float weight = alpha * (1.0f - alpha_accum);
 
                 // compute rgb
                 __nv_bfloat162 tmp_rgb[3];
@@ -319,7 +310,7 @@ void render_tiles_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_kernel<float, true, 960, 1, 1><<<grid_size, block_size>>>(
+            render_tiles_kernel<960, 1, 1><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
@@ -344,7 +335,7 @@ void render_tiles_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_kernel<float, true, 960, 4, 2><<<grid_size, block_size>>>(
+            render_tiles_kernel<960, 4, 2><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
@@ -369,7 +360,7 @@ void render_tiles_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_kernel<float, true, 512, 9, 5><<<grid_size, block_size>>>(
+            render_tiles_kernel<512, 9, 5><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
@@ -394,7 +385,7 @@ void render_tiles_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_kernel<float, true, 384, 16, 8><<<grid_size, block_size>>>(
+            render_tiles_kernel<384, 16, 8><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,

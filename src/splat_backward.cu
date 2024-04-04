@@ -11,25 +11,25 @@
 
 namespace cg = cooperative_groups;
 
-template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH, unsigned int N_SH_PAIRS>
+template <unsigned int CHUNK_SIZE, unsigned int N_SH, unsigned int N_SH_PAIRS>
 __global__ void render_tiles_backward_kernel(
-    const T* __restrict__ uvs,
-    const T* __restrict__ opacity,
+    const float* __restrict__ uvs,
+    const float* __restrict__ opacity,
     const __nv_bfloat162* __restrict__ rgb,
-    const T* __restrict__ conic,
-    const T* __restrict__ view_dir_by_pixel,
+    const float* __restrict__ conic,
+    const float* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
     const int* __restrict__ gaussian_idx_by_splat_idx,
     const int* __restrict__ num_splats_per_pixel,
-    const T* __restrict__ final_weight_per_pixel,
-    const T* __restrict__ grad_image,
+    const float* __restrict__ final_weight_per_pixel,
+    const float* __restrict__ grad_image,
     const int image_width,
     const int image_height,
     bool use_fast_exp,
     __nv_bfloat162* __restrict__ grad_rgb, // N_gaussians x 3 x (N_SH + 1)/2
-    T* __restrict__ grad_opacity,          // N_gaussians x 1
-    T* __restrict__ grad_uv,               // N_gaussians x 2
-    T* __restrict__ grad_conic             // N_gaussians x 3
+    float* __restrict__ grad_opacity,      // N_gaussians x 1
+    float* __restrict__ grad_uv,           // N_gaussians x 2
+    float* __restrict__ grad_conic         // N_gaussians x 3
 ) {
     auto block = cg::this_thread_block();
     cg::thread_block_tile<32> warp_cg = cg::tiled_partition<32>(block);
@@ -45,10 +45,10 @@ __global__ void render_tiles_backward_kernel(
     int num_splats_this_tile = splat_idx_end - splat_idx_start;
 
     int num_splats_this_pixel;
-    T weight;
+    float weight;
     // make local copy for faster access
-    T grad_image_local[3];
-    T color_accum[3] = {0.0, 0.0, 0.0};
+    float grad_image_local[3];
+    float color_accum[3] = {0.0, 0.0, 0.0};
 
     __nv_bfloat16 view_dir[3];
     __nv_bfloat162 sh_at_view_dir[N_SH_PAIRS];
@@ -138,36 +138,36 @@ __global__ void render_tiles_backward_kernel(
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
             __nv_bfloat162 grad_sh[3 * N_SH_PAIRS] = {__float2bfloat162_rn(0.0f)};
 
-            T grad_opa = 0;
-            T grad_u = 0;
-            T grad_v = 0;
+            float grad_opa = 0;
+            float grad_u = 0;
+            float grad_v = 0;
 
-            T grad_conic_splat[3] = {0.0, 0.0, 0.0};
+            float grad_conic_splat[3] = {0.0, 0.0, 0.0};
 
             // don't compute grad if pixel is out of bounds or this splat is
             // after saturation during forward pass
             if (valid_pixel && tile_splat_idx < num_splats_this_pixel) {
-                const T u_mean = _uvs[i * 2 + 0];
-                const T v_mean = _uvs[i * 2 + 1];
+                const float u_mean = _uvs[i * 2 + 0];
+                const float v_mean = _uvs[i * 2 + 1];
 
-                const T u_diff = __int2float_rn(u_splat) - u_mean;
-                const T v_diff = __int2float_rn(v_splat) - v_mean;
+                const float u_diff = __int2float_rn(u_splat) - u_mean;
+                const float v_diff = __int2float_rn(v_splat) - v_mean;
 
                 // 2d covariance matrix b == c so we don't need to duplicate
-                const T a = _conic[i * 3 + 0];
-                const T b = _conic[i * 3 + 1] / 2.0;
-                const T c = _conic[i * 3 + 2];
-                T det = a * c - b * b;
+                const float a = _conic[i * 3 + 0];
+                const float b = _conic[i * 3 + 1] / 2.0;
+                const float c = _conic[i * 3 + 2];
+                float det = a * c - b * b;
 
-                T norm_prob = 0.0;
-                T reciprocal_det = 1.0 / det;
+                float norm_prob = 0.0;
+                float reciprocal_det = 1.0 / det;
                 if (det > 0.0) {
                     if (det < 1e-14) {
                         det += 1e-14;
                         reciprocal_det = 1.0 / det;
                     }
                     // compute mahalanobis distance
-                    const T mh_sq =
+                    const float mh_sq =
                         (c * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) *
                         reciprocal_det;
                     if (mh_sq > 0.0) {
@@ -179,11 +179,11 @@ __global__ void render_tiles_backward_kernel(
                     }
                 }
 
-                T alpha = _opacity[i] * norm_prob;
+                float alpha = _opacity[i] * norm_prob;
                 if (abs(alpha - 1.0) < 1e-14) {
                     alpha -= 1e-14;
                 }
-                const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
+                const float reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
 
                 // update weight if this is not the first iteration
                 if (i < num_splats_this_pixel - 1) {
@@ -235,7 +235,7 @@ __global__ void render_tiles_backward_kernel(
                     }
                 }
 
-                T grad_alpha = 0.0;
+                float grad_alpha = 0.0;
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     grad_alpha += (computed_rgb[channel] * weight -
@@ -245,16 +245,16 @@ __global__ void render_tiles_backward_kernel(
                 grad_opa = norm_prob * grad_alpha;
 
                 // compute gradient for probability
-                T grad_prob = _opacity[i] * grad_alpha;
-                T grad_mh_sq = -0.5 * norm_prob * grad_prob;
+                float grad_prob = _opacity[i] * grad_alpha;
+                float grad_mh_sq = -0.5 * norm_prob * grad_prob;
 
                 // compute gradient for projected mean
                 grad_u = -(-b * v_diff - b * v_diff + 2 * c * u_diff) * reciprocal_det * grad_mh_sq;
                 grad_v = -(2 * a * v_diff - b * u_diff - b * u_diff) * reciprocal_det * grad_mh_sq;
 
-                const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
-                                       b * u_diff * v_diff + c * u_diff * u_diff) *
-                                      reciprocal_det * reciprocal_det;
+                const float common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
+                                           b * u_diff * v_diff + c * u_diff * u_diff) *
+                                          reciprocal_det * reciprocal_det;
                 grad_conic_splat[0] =
                     (-c * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_conic_splat[1] =
@@ -271,9 +271,9 @@ __global__ void render_tiles_backward_kernel(
             // reduce gradients across warp_cg
             // large speedup here by reducing the number of atomicAdd calls
             warp_cg.sync();
-            grad_opa = cg::reduce(warp_cg, grad_opa, cg::plus<T>());
-            grad_u = cg::reduce(warp_cg, grad_u, cg::plus<T>());
-            grad_v = cg::reduce(warp_cg, grad_v, cg::plus<T>());
+            grad_opa = cg::reduce(warp_cg, grad_opa, cg::plus<float>());
+            grad_u = cg::reduce(warp_cg, grad_u, cg::plus<float>());
+            grad_v = cg::reduce(warp_cg, grad_v, cg::plus<float>());
 
             #pragma unroll
             for (int channel = 0; channel < 3; channel++) {
@@ -294,7 +294,7 @@ __global__ void render_tiles_backward_kernel(
 
             #pragma unroll
             for (int j = 0; j < 3; j++) {
-                grad_conic_splat[j] = cg::reduce(warp_cg, grad_conic_splat[j], cg::plus<T>());
+                grad_conic_splat[j] = cg::reduce(warp_cg, grad_conic_splat[j], cg::plus<float>());
             }
 
             // write gradients to global memory
@@ -462,7 +462,7 @@ void render_tiles_backward_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_backward_kernel<float, 960, 1, 1><<<grid_size, block_size>>>(
+            render_tiles_backward_kernel<960, 1, 1><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
@@ -492,7 +492,7 @@ void render_tiles_backward_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_backward_kernel<float, 960, 4, 2><<<grid_size, block_size>>>(
+            render_tiles_backward_kernel<960, 4, 2><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
@@ -523,7 +523,7 @@ void render_tiles_backward_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_backward_kernel<float, 512, 9, 5><<<grid_size, block_size>>>(
+            render_tiles_backward_kernel<512, 9, 5><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
@@ -553,7 +553,7 @@ void render_tiles_backward_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_backward_kernel<float, 384, 16, 8><<<grid_size, block_size>>>(
+            render_tiles_backward_kernel<384, 16, 8><<<grid_size, block_size>>>(
                 uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,
