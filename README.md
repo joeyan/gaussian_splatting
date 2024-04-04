@@ -2,7 +2,40 @@
 A "from scratch" re-implementation of [3D Gaussian Splatting
 for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) by Kerbl and Kopanas et al.
 
+This repository implements the forward and backwards passes using a PyTorch CUDA extension based on the algorithms descriped in the paper. Some details of the splatting and adaptive control algorithm are not explicitly described in the paper and there may be differences between this repo and the official implementation.
+
+The forward and backward pass algorithms are detailed in [MATH.md](https://github.com/joeyan/gaussian_splatting/MATH.md)
+
+
+## Performance
+
+Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This corresponds to the 2x downsampled indoor scenes and 4x downsampled outdoor scenes. Every 8th image was used for the test split.
+
+
+Here are some comparisons with the with the official implementation.
+
+
+| Method       | Dataset     | PSNR | SSIM | LPIPS | N Gaussians | Train Duration*  |
+|--------------|-------------|------|------|-------|-------------|------------------|
+| Official-30k | Garden 1/4x | 27.7 |      |       |             | ~35-45min (A6000)|
+| Ours-30k     | Garden 1/4x | 26.8 | 0.84 | 0.10  | 3.78M       | ~33min (RTX4090)  |
+
+*The training time is not directly comparable between the different GPUs. The RTX4090 should be faster than the A6000
+
+#### Some notes on performance
+The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass.
+
+ The discrepancy in PSNR are most likely due to differences in the adaptive control algorithm and hyperparameter tuning. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
+
+
+
+
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/e6305685-621a-43c1-91ad-abd876f8fbe9)
+
+
+
+
+
 
 
 ## Installation
@@ -19,6 +52,10 @@ pip install -e ./
 Note:
 - Windows systems may need modify compilation flags in `setup.py`
 - This step may be sensitive to the version of `pip`. This step failed after upgrading from `23.0.1` to `23.3.2`
+- If `pip install` fails, this may work:
+```
+python setup.py build_ext && python setup.py install
+```
 
 
 ## Verifying Install

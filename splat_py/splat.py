@@ -39,15 +39,27 @@ def splat(gaussians, world_T_image, camera):
     uv = uv[~culling_mask, :]
     xyz_camera_frame = xyz_camera_frame[~culling_mask, :]
 
-    culled_gaussians = Gaussians(
-        xyz=gaussians.xyz[~culling_mask, :],
-        quaternions=gaussians.quaternions[~culling_mask, :],
-        scales=gaussians.scales[~culling_mask, :],
-        opacities=torch.sigmoid(
-            gaussians.opacities[~culling_mask]
-        ),  # apply sigmoid activation to opacities
-        rgb=gaussians.rgb[~culling_mask, :],
-    )
+    if gaussians.sh is not None:
+        culled_gaussians = Gaussians(
+            xyz=gaussians.xyz[~culling_mask, :],
+            quaternions=gaussians.quaternions[~culling_mask, :],
+            scales=gaussians.scales[~culling_mask, :],
+            opacities=torch.sigmoid(
+                gaussians.opacities[~culling_mask]
+            ),  # apply sigmoid activation to opacities
+            rgb=gaussians.rgb[~culling_mask, :],
+            sh=gaussians.sh[~culling_mask, :],
+        )
+    else:
+        culled_gaussians = Gaussians(
+            xyz=gaussians.xyz[~culling_mask, :],
+            quaternions=gaussians.quaternions[~culling_mask, :],
+            scales=gaussians.scales[~culling_mask, :],
+            opacities=torch.sigmoid(
+                gaussians.opacities[~culling_mask]
+            ),  # apply sigmoid activation to opacities
+            rgb=gaussians.rgb[~culling_mask, :],
+        )
 
     sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternions, culled_gaussians.scales)
     J = ComputeProjectionJacobian.apply(xyz_camera_frame, camera.K)
@@ -65,8 +77,13 @@ def splat(gaussians, world_T_image, camera):
         xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
     )
     rays = compute_rays_in_world_frame(camera, world_T_image)
+    if culled_gaussians.sh is not None:
+        render_rgb = torch.cat((culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2)
+    else:
+        render_rgb = culled_gaussians.rgb
+
     image = RenderImage.apply(
-        culled_gaussians.rgb,
+        render_rgb,
         culled_gaussians.opacities,
         uv,
         conic,

@@ -18,8 +18,8 @@ __global__ void render_tiles_kernel(
     const int image_height,
     bool use_fast_exp,
     int* num_splats_per_pixel,
-    T* final_weight_per_pixel,
-    T* image
+    T* __restrict__ final_weight_per_pixel,
+    T* __restrict__ image
 ) {
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;

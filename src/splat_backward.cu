@@ -66,6 +66,7 @@ __global__ void render_tiles_backward_kernel(
     }
 
     // shared memory copies of inputs
+    __shared__ int _gaussian_idx_by_splat_idx[CHUNK_SIZE];
     __shared__ T _uvs[CHUNK_SIZE * 2];
     __shared__ T _opacity[CHUNK_SIZE];
     __shared__ T _rgb[CHUNK_SIZE * 3 * N_SH];
@@ -88,6 +89,7 @@ __global__ void render_tiles_backward_kernel(
 
             // copy gaussians in the order they are splatted
             const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
+            _gaussian_idx_by_splat_idx[i] = gaussian_idx;
             _uvs[i * 2 + 0] = uvs[gaussian_idx * 2 + 0];
             _uvs[i * 2 + 1] = uvs[gaussian_idx * 2 + 1];
             _opacity[i] = opacity[gaussian_idx];
@@ -203,7 +205,8 @@ __global__ void render_tiles_backward_kernel(
                                       reciprocal_det * reciprocal_det;
                 grad_conic_splat[0] =
                     (-c * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_conic_splat[1] = (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                grad_conic_splat[1] =
+                    (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
                 grad_conic_splat[2] =
                     (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
 
@@ -236,8 +239,7 @@ __global__ void render_tiles_backward_kernel(
 
             // write gradients to global memory
             if (warp_cg.thread_rank() == 0) {
-                const int global_splat_idx = splat_idx_start + tile_splat_idx;
-                const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
+                const int gaussian_idx = _gaussian_idx_by_splat_idx[i];
 
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
