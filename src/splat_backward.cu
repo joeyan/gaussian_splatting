@@ -87,14 +87,15 @@ __global__ void render_tiles_backward_kernel(
     }
 
     // shared memory copies of inputs
-    __shared__ float2 _uvs[CHUNK_SIZE];
-    __shared__ float _opacity[CHUNK_SIZE];
+    __shared__ int _gaussian_idx_by_splat_idx[CHUNK_SIZE];
+    __shared__ float3 _uv_opacity[CHUNK_SIZE];
     __shared__ __nv_bfloat162 _rgb[CHUNK_SIZE * 3 * N_SH_PAIRS];
     __shared__ float3 _conic[CHUNK_SIZE];
 
     const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
     const int thread_id = threadIdx.x + threadIdx.y * blockDim.x;
     const int block_size = blockDim.x * blockDim.y;
+
     // copy chunks last to first
     for (int chunk_idx = num_chunks - 1; chunk_idx >= 0; chunk_idx--) {
         // copy gaussians in-order
@@ -106,11 +107,9 @@ __global__ void render_tiles_backward_kernel(
                 break;
             }
             const int global_splat_idx = splat_idx_start + tile_splat_idx;
-
-            // copy gaussians in the order they are splatted
             const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
-            _uvs[i] = uvs[gaussian_idx];
-            _opacity[i] = opacity[gaussian_idx];
+            _gaussian_idx_by_splat_idx[i] = gaussian_idx;
+            _uv_opacity[i] = {uvs[gaussian_idx].x, uvs[gaussian_idx].y, opacity[gaussian_idx]};
             _conic[i] = conic[gaussian_idx];
 
             #pragma unroll
@@ -142,8 +141,9 @@ __global__ void render_tiles_backward_kernel(
             // don't compute grad if pixel is out of bounds or this splat is
             // after saturation during forward pass
             if (valid_pixel && tile_splat_idx < num_splats_this_pixel) {
-                const float u_diff = __int2float_rn(u_splat) - _uvs[i].x;
-                const float v_diff = __int2float_rn(v_splat) - _uvs[i].y;
+                const float u_diff = __int2float_rn(u_splat) - _uv_opacity[i].x;
+                const float v_diff = __int2float_rn(v_splat) - _uv_opacity[i].y;
+                const float opacity = _uv_opacity[i].z;
 
                 // 2d covariance matrix b == c so we don't need to duplicate
                 const float a = _conic[i].x;
@@ -171,7 +171,7 @@ __global__ void render_tiles_backward_kernel(
                     }
                 }
 
-                float alpha = _opacity[i] * norm_prob;
+                float alpha = opacity * norm_prob;
                 if (abs(alpha - 1.0) < 1e-14) {
                     alpha -= 1e-14;
                 }
@@ -237,7 +237,7 @@ __global__ void render_tiles_backward_kernel(
                 grad_opa = norm_prob * grad_alpha;
 
                 // compute gradient for probability
-                float grad_prob = _opacity[i] * grad_alpha;
+                float grad_prob = opacity * grad_alpha;
                 float grad_mh_sq = -0.5 * norm_prob * grad_prob;
 
                 // compute gradient for projected mean
@@ -291,8 +291,7 @@ __global__ void render_tiles_backward_kernel(
 
             // write gradients to global memory
             if (warp_cg.thread_rank() == 0) {
-                const int global_splat_idx = splat_idx_start + tile_splat_idx;
-                const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
+                const int gaussian_idx = _gaussian_idx_by_splat_idx[i];
 
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
@@ -484,7 +483,7 @@ void render_tiles_backward_cuda(
             );
             cudaDeviceSynchronize();
 
-            render_tiles_backward_kernel<960, 4, 2><<<grid_size, block_size>>>(
+            render_tiles_backward_kernel<928, 4, 2><<<grid_size, block_size>>>(
                 (float2*)uvs.data_ptr<float>(),
                 opacity.data_ptr<float>(),
                 rgb_bf162,

@@ -71,8 +71,7 @@ __global__ void render_tiles_kernel(
     }
 
     // shared memory copies of inputs
-    __shared__ float2 _uvs[CHUNK_SIZE];
-    __shared__ float _opacity[CHUNK_SIZE];
+    __shared__ float3 _uv_opacity[CHUNK_SIZE];
     __shared__ __nv_bfloat162 _rgb[CHUNK_SIZE * 3 * N_SH_PAIRS];
     __shared__ float3 _conic[CHUNK_SIZE];
 
@@ -95,10 +94,8 @@ __global__ void render_tiles_kernel(
                 break;
             }
             const int global_splat_idx = splat_idx_start + tile_splat_idx;
-
             const int gaussian_idx = gaussian_idx_by_splat_idx[global_splat_idx];
-            _uvs[i] = uvs[gaussian_idx];
-            _opacity[i] = opacity[gaussian_idx];
+            _uv_opacity[i] = {uvs[gaussian_idx].x, uvs[gaussian_idx].y, opacity[gaussian_idx]};
             _conic[i] = conic[gaussian_idx];
 
             #pragma unroll
@@ -114,16 +111,17 @@ __global__ void render_tiles_kernel(
         __syncthreads(); // wait for copying to complete before attempting to
                          // use data
         if (valid_pixel) {
-            int chunk_start = chunk_idx * CHUNK_SIZE;
-            int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
-            int num_splats_this_chunk = chunk_end - chunk_start;
+            const int chunk_start = chunk_idx * CHUNK_SIZE;
+            const int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
+            const int num_splats_this_chunk = chunk_end - chunk_start;
             for (int i = 0; i < num_splats_this_chunk; i++) {
                 if (alpha_accum > 0.999) {
                     break;
                 }
 
-                const float u_diff = __int2float_rn(u_splat) - _uvs[i].x;
-                const float v_diff = __int2float_rn(v_splat) - _uvs[i].y;
+                const float u_diff = __int2float_rn(u_splat) - _uv_opacity[i].x;
+                const float v_diff = __int2float_rn(v_splat) - _uv_opacity[i].y;
+                const float opacity = _uv_opacity[i].z;
 
                 // 2d covariance matrix
                 const float a = _conic[i].x;
@@ -146,7 +144,7 @@ __global__ void render_tiles_kernel(
                         // probability at the center of the gaussian to be 1.0
                         float norm_prob = 0.0f;
                         norm_prob = __expf(-0.5 * mh_sq);
-                        alpha = _opacity[i] * norm_prob;
+                        alpha = opacity * norm_prob;
                     }
                 }
                 alpha_weight = 1.0f - alpha_accum;
