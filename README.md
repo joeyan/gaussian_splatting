@@ -15,10 +15,13 @@ Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This
 Here are some comparisons with the with the official implementation.
 
 
-| Method       | Dataset     | PSNR | SSIM | LPIPS | N Gaussians | Train Duration*  |
-|--------------|-------------|------|------|-------|-------------|------------------|
-| Official-30k | Garden 1/4x | 27.7 |      |       |             | ~35-45min (A6000)|
-| Ours-30k     | Garden 1/4x | 26.8 | 0.84 | 0.10  | 3.78M       | ~33min (RTX4090)  |
+| Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
+|--------------|-------------|------|------|-------------|------------------|
+| Official-30k | Garden 1/4x | 27.7 |      |             | ~35-45min (A6000)|
+| Ours-30k     | Garden 1/4x | 26.8 | 0.84 | 3.78M       | ~33min (RTX4090) |
+| Ours-30k     | Counter 1/2x| 28.38| 0.90 | 2.14M       | ~52min (RTX4090) |
+| Ours-30k     | Bonsai  1/2x| 31.65| 0.94 | 2.01M       | ~45min (RTX4090) |
+
 
 *The training time is not directly comparable between the different GPUs. The RTX4090 should be faster than the A6000
 
