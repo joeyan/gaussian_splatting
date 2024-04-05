@@ -22,7 +22,8 @@ Let's start with 1 dimensional gaussian probability density function where $\sig
 $$ g(x) = \frac{1}{\sigma\sqrt{2\pi}}exp\left(\frac{-(x - \mu)}{2\sigma^2}\right)$$ 
 
 
-[Image 1]
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/105862db-3c2e-4579-bcc9-1ac4e9b8da44)
+
 
 The peak probability changes with $\sigma$ due to the normalization term $ \frac{1}{\sigma\sqrt{2\pi}}$. For gaussian splatting purposes, this means that the opacity of the gaussian is dependent on the size of the gaussian. Large gaussians will require a very high opacity factor to make them visible and small gaussians may oversaturate the image. Additionally, this makes it difficult to compare opacity across different sized gaussians which is required for the opacity reset and delete in the adaptive control algorithm. 
 
@@ -31,8 +32,7 @@ Dropping the normalization term decouples the density from the opacity of the ga
 
 $$ g(x) = exp\left(\frac{-(x - \mu)}{2\sigma^2}\right)$$ 
 
-[Image 2]
-
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/be238e84-8baa-40f8-84e2-fcddf70f6391)
 
 #### Multivariate Gaussian Distribution
 
@@ -142,8 +142,7 @@ The intersection between the oriented bounding box and the tile can be computed 
 
 Here is a really good deep dive on the [Separating Axis Theorem](https://dyn4j.org/2010/01/sat/). 
 
-[Picture of tiling intersections]
-
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/741a17f8-3de0-4561-bc64-309f5a38c1cd)
 
 #### Alpha Compositing
 
