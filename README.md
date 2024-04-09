@@ -17,12 +17,16 @@ Here are some comparisons with the with the official implementation.
 
 | Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
 |--------------|-------------|------|------|-------------|------------------|
-| Official-30k | Garden 1/4x | 27.7 |      |             | ~35-45min (A6000)|
+| Official-30k | Garden 1/4x | 27.4 | 0.87 |             | ~35-45min (A6000)|
 | Ours-30k     | Garden 1/4x | 26.8 | 0.84 | 3.78M       | ~33min (RTX4090) |
+| Official-30k | Counter 1/2x| 28.70| 0.90 |             |                  |
 | Ours-30k     | Counter 1/2x| 28.38| 0.90 | 2.14M       | ~52min (RTX4090) |
+| Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
 | Ours-30k     | Bonsai  1/2x| 31.65| 0.94 | 2.01M       | ~45min (RTX4090) |
+| Official-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
 | Ours-7k      | Bonsai 1/2x | 29.84| 0.93 | 1.65M       | ~7min  (RTX4090) |
-| Ours-7k      | Garden 1/4x | 25.47| 0.78 | 1.24M       | ~5min  (RTX4090) |
+| Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
+| Ours-7k      | Garden 1/4x | 25.47| 0.78 | 1.13M       | ~5min  (RTX4090) |
 
 
 *The training time is not directly comparable between the different GPUs. The RTX4090 should be faster than the A6000

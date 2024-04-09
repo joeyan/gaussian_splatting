@@ -36,6 +36,7 @@ class GSTrainer:
         self.update_optimizer()
         self.reset_grad_accum()
         self.setup_test_train_split()
+        self.setup_test_images()
 
         self.metrics = GSMetrics()
 
@@ -45,8 +46,16 @@ class GSTrainer:
         self.test_split = np.arange(0, num_images, TEST_SPLIT_RATIO)
         self.train_split = np.array(list(set(all_images) - set(self.test_split)))
 
+    def setup_test_images(self):
+        for image_idx in range(len(self.images)):
+            self.images[image_idx].image = (
+                self.images[image_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
+            )
+            self.images[image_idx].image = self.images[image_idx].image.to(torch.device("cuda"))
+
     def update_optimizer(self):
         print("Updating optimizer")
+
         # add new params to optimizer
         self.optimizer = torch.optim.Adam(
             [
@@ -105,18 +114,46 @@ class GSTrainer:
             device=self.gaussians.xyz.device,
         )
 
-    def reset_opacities(self, iter):
+    def reset_opacities(self):
         print("\t\tResetting opacities")
         self.gaussians.opacities = torch.nn.Parameter(
             torch.ones_like(self.gaussians.opacities) * inverse_sigmoid(INITIAL_OPACITY)
         )
-        self.update_optimizer()
+
+        # reset exp_avg and exp_avg_sq for opacities
+        old_optimizer_param = self.optimizer.param_groups[3]["params"][0]
+        optimizer_param_state = self.optimizer.state[old_optimizer_param]
+        del self.optimizer.state[old_optimizer_param]
+
+        optimizer_param_state["exp_avg"] = torch.zeros_like(optimizer_param_state["exp_avg"])
+        optimizer_param_state["exp_avg_sq"] = torch.zeros_like(optimizer_param_state["exp_avg_sq"])
+
+        del self.optimizer.param_groups[3]["params"][0]
+        del self.optimizer.param_groups[3]["params"]
+
+        self.optimizer.param_groups[3]["params"] = [self.gaussians.opacities]
+        self.optimizer.state[3] = optimizer_param_state
+
         self.reset_grad_accum()
+
+    def add_sh_band_to_optimizer(self):
+        old_optimizer_param = self.optimizer.param_groups[5]["params"][0]
+        optimizer_param_state = self.optimizer.state[old_optimizer_param]
+        del self.optimizer.state[old_optimizer_param]
+
+        optimizer_param_state["exp_avg"] = torch.zeros_like(self.gaussians.sh)
+        optimizer_param_state["exp_avg_sq"] = torch.zeros_like(self.gaussians.sh)
+
+        del self.optimizer.param_groups[5]["params"][0]
+        del self.optimizer.param_groups[5]["params"]
+
+        self.optimizer.param_groups[5]["params"] = [self.gaussians.sh]
+        self.optimizer.state[5] = optimizer_param_state
 
     def add_sh_band(self):
         num_gaussians = self.gaussians.xyz.shape[0]
 
-        if self.gaussians.sh is None:
+        if self.gaussians.sh is None and MAX_SH_BAND > 0:
             new_sh = torch.zeros(
                 num_gaussians,
                 3,
@@ -125,8 +162,12 @@ class GSTrainer:
                 device=self.gaussians.rgb.device,
             )
             self.gaussians.sh = torch.nn.Parameter(new_sh)
-            self.update_optimizer()
-        elif self.gaussians.sh.shape[2] == 3:
+
+            # add new sh to optimizer
+            self.optimizer.add_param_group(
+                {"params": self.gaussians.sh, "lr": BASE_LR * SH_LR_MULTIPLIER},
+            )
+        elif self.gaussians.sh.shape[2] == 3 and MAX_SH_BAND > 1:
             new_sh = torch.zeros(
                 num_gaussians,
                 3,
@@ -136,8 +177,8 @@ class GSTrainer:
             )
             new_sh[:, :, :3] = self.gaussians.sh
             self.gaussians.sh = torch.nn.Parameter(new_sh)
-            self.update_optimizer()
-        elif self.gaussians.sh.shape[2] == 8:
+            self.add_sh_band_to_optimizer()
+        elif self.gaussians.sh.shape[2] == 8 and MAX_SH_BAND > 2:
             new_sh = torch.zeros(
                 num_gaussians,
                 3,
@@ -147,7 +188,7 @@ class GSTrainer:
             )
             new_sh[:, :, :8] = self.gaussians.sh
             self.gaussians.sh = torch.nn.Parameter(new_sh)
-            self.update_optimizer()
+            self.add_sh_band_to_optimizer()
 
     def delete_param_from_optimizer(self, new_param, keep_mask, param_index):
         old_optimizer_param = self.optimizer.param_groups[param_index]["params"][0]
@@ -411,8 +452,7 @@ class GSTrainer:
                 test_camera = self.cameras[self.images[test_img_idx].camera_id]
 
                 test_image, _ = splat(self.gaussians, test_world_T_image, test_camera)
-                gt_image = self.images[test_img_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
-                gt_image = gt_image.to(torch.device("cuda"))
+                gt_image = self.images[test_img_idx].image
                 l2_loss = torch.nn.functional.mse_loss(test_image.clip(0, 1), gt_image)
                 psnr = -10 * torch.log10(l2_loss).item()
 
@@ -517,8 +557,7 @@ class GSTrainer:
                 sorted_gaussian_idx_by_splat_idx,
                 torch.tensor([camera.height, camera.width], device=culled_uv.device),
             )
-        gt_image = self.images[image_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
-        gt_image = gt_image.to(torch.device("cuda"))
+        gt_image = self.images[image_idx].image
 
         l1_loss = torch.nn.functional.l1_loss(image, gt_image)
 
@@ -537,7 +576,12 @@ class GSTrainer:
         with SimpleTimer("Optimizer Step"):
             self.optimizer.step()
 
-        self.uv_grad_accum += torch.abs(uv.grad.detach())
+        # scale uv grad back to world coordinates - this way, uv grad is consistent across multiple cameras
+        uv_grad = uv.grad.detach()
+        uv_grad[:, 0] = uv_grad[:, 0] * camera.K[0, 0]
+        uv_grad[:, 1] = uv_grad[:, 1] * camera.K[1, 1]
+
+        self.uv_grad_accum += torch.abs(uv_grad)
         self.xyz_grad_accum += torch.abs(self.gaussians.xyz.grad.detach())
         self.grad_accum_count += (~culling_mask).int()
 
@@ -585,7 +629,7 @@ class GSTrainer:
                 and i < RESET_OPACITY_END
                 and i % RESET_OPACITY_INTERVAL == 0
             ):
-                self.reset_opacities(i)
+                self.reset_opacities()
 
             if USE_SH_COEFF and i > 0 and i % ADD_SH_BAND_INTERVAL == 0:
                 self.add_sh_band()
