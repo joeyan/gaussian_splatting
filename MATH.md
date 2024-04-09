@@ -45,7 +45,7 @@ Where $\boldsymbol{\sigma}$ and $\boldsymbol{\mu}$ are the vector standard devia
 
 #### Optimizing 3D Gaussians
 
-The 3D gaussians are represented by a $3x3$ covariance matrix. The symmetry of the matrix can be maintained by only optimizing the 6 parameters in the upper triangular portion of the matrix but it is much more difficult to constrain the matrix to be positive semi-definite. Instead of optimizing the 3D covariance matrix directly, the authors construct the matrix representation of an ellipsoid from 3 scale terms and a 3D rotation.
+The 3D gaussians are represented by a $3x3$ covariance matrix. The symmetry of the matrix can be maintained by only optimizing the 6 parameters in the upper triangular portion of the matrix but it is much more difficult to constrain the matrix to be positive semi-definite. Instead of optimizing the 3D covariance matrix directly, the authors construct the matrix representation of an ellipsoid from 3 scale terms and a 3D rotation. This process is effectively an inverse Principal Component Analysis.
 
 The covariance matrix can be decomposed into its eigenvalues and eigenvectors:
 $$ \Sigma \boldsymbol{v} = \lambda \boldsymbol{v} $$ 
@@ -68,7 +68,7 @@ Substituting back in:
 
 $$ \Sigma = RSS^TR^T = RS(RS)^T$$ 
 
-The $3x3$ rotation matrix can be represented with a quaternion leaving 7 total parameters to be optimized: $ q_w, q_x, q_y, q_z$ and $s_1, s_2, s_3$
+The $3x3$ rotation matrix can be represented with a quaternion leaving 7 total parameters to be optimized: $ q_w, q_x, q_y, q_z$ and $s_1, s_2, s_3$. The resulting covariance matrix is guaranteed to be positive semi-definite since  $\lambda_n = s_{n}^{2}$ and therefore all eigenvalues are non-negative.
 
 
 #### Projecting 3D Gaussians

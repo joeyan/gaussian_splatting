@@ -21,6 +21,8 @@ Here are some comparisons with the with the official implementation.
 | Ours-30k     | Garden 1/4x | 26.8 | 0.84 | 3.78M       | ~33min (RTX4090) |
 | Ours-30k     | Counter 1/2x| 28.38| 0.90 | 2.14M       | ~52min (RTX4090) |
 | Ours-30k     | Bonsai  1/2x| 31.65| 0.94 | 2.01M       | ~45min (RTX4090) |
+| Ours-7k      | Bonsai 1/2x | 29.84| 0.93 | 1.65M       | ~7min  (RTX4090) |
+| Ours-7k      | Garden 1/4x | 25.47| 0.78 | 1.24M       | ~5min  (RTX4090) |
 
 
 *The training time is not directly comparable between the different GPUs. The RTX4090 should be faster than the A6000
