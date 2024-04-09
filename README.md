@@ -37,13 +37,7 @@ The gradient computation kernels are currently templated to enable `float64` ten
  The discrepancy in PSNR are most likely due to differences in the adaptive control algorithm and hyperparameter tuning. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
 
 
-
-
-![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/e6305685-621a-43c1-91ad-abd876f8fbe9)
-
-
-
-
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/2dd7f43a-ae30-46de-93f6-fc8e6e918a0d)
 
 
 
