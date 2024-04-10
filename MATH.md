@@ -155,8 +155,144 @@ Here is a really good deep dive on the [Separating Axis Theorem](https://dyn4j.o
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/741a17f8-3de0-4561-bc64-309f5a38c1cd)
 
 #### Alpha Compositing
+The RGB value of each pixel is computed by $\alpha$ blending the gaussians from front-to-back. The rgb values of each pixel can be computed with:
 
+$$C(u, v) = \sum_{i=1}^{N} w_{i}c_{i}$$
+
+$$ w_{i} = \alpha_i g_{i}(u, v) (1 - \sum_{j=0}^{i-1}w_{j})$$ 
+
+Where $c_{i}$ and $\alpha_i$ are the color and opacity of the $i^{th}$ gaussian and $g_{i}(u, v)$ is the probabilty of the the $i^{th}$ gaussian at the pixel coordinates $u, v$. 
 
 
 ## Backward Pass
+For implemented forward/backwards passes in PyTorch - see analytic_diff.ipynb
+
+#### Notation
+For simplicity, all gradients are denotied by $\partial$ 
+
+
+#### Camera Projection
+Computing the reverse-mode derivatives for the camera projection is fairly straightforward. For the forward projection:
+
+$$\begin{bmatrix} u \\\ v \end{bmatrix} = \begin{bmatrix} f_x & 0 & c_x \\\ 0 & f_y & c_y \end{bmatrix} \begin{bmatrix} \frac{x}{z} \\\ \frac{y}{z} \\\ 1 \end{bmatrix}$$
+
+The Jacobian is (same Jacobian that is used to project the 3D gaussians to 2D): 
+
+$$J = \begin{bmatrix} f_x / z & 0 & -f_x x/z^2 \\\ 0 & f_y/z & -f_yy/z^2\end{bmatrix}$$
+
+Computing the vector-Jacobian product yields:
+
+$$\begin{bmatrix} \partial{x} & \partial{y} & \partial_{z} \end{bmatrix} = \begin{bmatrix}\partial{u} & \partial{v}\end{bmatrix} \begin{bmatrix} f_x / z & 0 & -f_x x/z^2 \\\ 0 & f_y/z & -f_yy/z^2\end{bmatrix}$$ 
+
+
+#### Quaternion to Rotation Matrix
+
+
+
+
+#### 3D Covariance Matrix
+The reverse mode differentiation for matrix operations is documented in [An extended collection of matrix derivative results for forward and reverse mode algorithmic differentiation](https://people.maths.ox.ac.uk/gilesm/files/NA-08-01.pdf). 
+
+For matrix multiplication in section 2.2.2:
+
+$$C = AB$$
+
+The gradients can be computed by:
+
+$$\partial{A} = \partial{C}B^{T}$$ 
+
+$$\partial{B} = A^{T}\partial{C} $$ 
+
+This can be applied to the computation of the 3D covariance matrix. 
+
+$$\Sigma_{3D} = RS(RS)^{T}$$
+
+Breaking this down into two matrix multiplication operations:
+
+$$M = RS$$
+
+$$ \Sigma_{3D} = MM^{T} $$
+
+The gradients can be computed by:
+
+$$\partial{M} = \partial{\Sigma_{3D}}(M^{T})^{T} = \partial{\Sigma_{3D}}M$$
+
+$$\partial{M^{T}} = M^{T} \partial{\Sigma_{3D}}$$
+
+Computing the gradients of the components of $M$:
+
+$$ \partial{R} = \partial{M} S^{T}$$
+
+$$ \partial{S} = R^{T} \partial{M}$$
+
+Computing the gradients of the components of $M^{T}$:
+
+$$\partial{R^{T}} = S\partial{M^{T}}$$
+
+$$\partial{S^{T}} = \partial{M^{T}} R$$
+
+Combining the gradients of the transposed components:
+
+$$\partial{R} = \partial{M} S^{T} + (S\partial{M^{T}})^T = \partial{M} S^{T} + (\partial{M^{T}})^{T}S^{T} $$
+
+$$\partial{S} = R^{T}\partial{M} + (\partial{M}^{T}R)^{T} = R^{T}\partial{M} + R^{T}(\partial{M^{T}})^{T} $$
+
+Substituting in for $M$:
+
+$$\partial{R} = \partial{\Sigma_{3D}}RSS^{T} + (\partial{\Sigma_{3D}})^{T}RSS^{T}$$ 
+
+$$\partial{S} = R^{T}\partial{\Sigma_{3D}}RS + R^{T}(\partial{\Sigma_{3D}})^{T}RS$$
+
+The expression can be further simplified since $S$, $\Sigma_{3D}$, and $\partial{\Sigma_{3D}}$ are all symmetric:
+$$\partial{R} = 2\partial{\Sigma_{3D}}RSS$$
+
+$$\partial{S} = 2R^{T}\partial{\Sigma_{3D}}RS$$
+
+
+#### 2D Covariance Matrix/Conic
+Using the First Quadratic Form from _An extended collection of matrix derivative results_ in section 2.3.2: 
+
+$$C=B^{T}AB$$
+
+$$\partial{A} = B\partial{C}B^{T}$$
+$$\partial{B} = AB(\partial{C})^{T} + A^{T}B\partial{C}$$
+
+Subsitituting in the 2D covariance matrix calculation: 
+
+$$\Sigma_{2D} = JW\Sigma{3D}(JW)^T$$
+
+$$A = \Sigma_{3D} $$
+
+$$B = (JW)^T $$
+
+
+$$\partial{\Sigma_{3D}} = (JW)^{T}\partial{\Sigma_{2D}}JW$$
+
+
+$$\partial{(JW)^{T}} = \Sigma_{3D}(JW)^{T}(\partial{\Sigma_{2D}})^{T} + \Sigma_{3D}^{T}(JW)^{T} \partial{\Sigma_{2D}}$$ 
+
+With symmetric $\Sigma_{3D}$ and $\partial{\Sigma_{2D}}$:
+
+$$ \partial{(JW)^{T}} = 2\Sigma_{3D}(JW)^{T} \partial{\Sigma_{2D}}$$
+
+Computing the gradient with respect to $J$ and $W$:
+
+$$(JW)^{T} = W^TJ^T$$
+
+$$C = (JW)^{T}$$
+
+$$A = W^T$$ 
+
+$$B = J^T$$
+
+$$\partial{W^T} = \partial{(JW)^{T}} (J^T)^T = \partial{(JW)^{T}}J$$
+
+$$\partial{J^T} = (W^T)^T\partial{(JW)^{T}} = W\partial{(JW)^{T}} $$
+
+
+Transposing and substituting back in:
+
+$$ \partial{W} = (2\Sigma_{3D}(JW)^{T} \partial{\Sigma_{2D}}J)^T = 2J^T\partial{\Sigma_{2D}}JW\Sigma_{3D}$$
+
+$$ \partial{J} = (2W\Sigma_{3D}(JW)^{T} \partial{\Sigma_{2D}})^T = 2\partial{\Sigma_{2D}}JW\Sigma_{3D}W^T$$ 
 
