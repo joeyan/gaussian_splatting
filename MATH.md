@@ -199,14 +199,13 @@ $$ \hat{q} = \begin{bmatrix} \frac{w}{\lVert q \rVert} & \frac{x}{\lVert q \rVer
 The vector-Jacobian products are:
 
 
-$$ {\nabla w} = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\\- \frac{w x}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{w y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{w z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$
+$$ {\nabla w} = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}} \\\ - \frac{w x}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{w y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ - \frac{w z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$
 
-$$ \nabla x = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w x}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\\- \frac{x y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$
+$$ \nabla x = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w x}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{x^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}} \\\ -\frac{x y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{x z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$
 
-$$ \nabla y = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{y^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\\- \frac{y z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$ 
+$$ \nabla y = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{x y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{y^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}} \\\ -\frac{y z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$ 
 
-$$ \nabla z = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{y z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{z^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\end{bmatrix} $$
-
+$$ \nabla z = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{x z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{y z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} \\\ -\frac{z^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\end{bmatrix} $$
 
 
 
@@ -214,17 +213,17 @@ $$ \nabla z = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w z}{\left(w^{2} + x^{2}
 
 For a normalized quaternion $\hat{q}$ (Note: the notation is a little sloppy here. In this section $w$, $x$, $y$, and $z$ are the components of $\hat{q}$ not $q$ unlike the previous section):
 
-$$R = \begin{bmatrix}- 2 y^{2} - 2 z^{2} + 1 & - 2 w z + 2 x y & 2 w y + 2 x z\\2 w z + 2 x y & - 2 x^{2} - 2 z^{2} + 1 & - 2 w x + 2 y z\\- 2 w y + 2 x z & 2 w x + 2 y z & - 2 x^{2} - 2 y^{2} + 1\end{bmatrix} $$
+$$R = \begin{bmatrix}- 2 y^{2} - 2 z^{2} + 1 & - 2 w z + 2 x y & 2 w y + 2 x z \\\ 2 w z + 2 x y & - 2 x^{2} - 2 z^{2} + 1 & - 2 w x + 2 y z \\\ -2 w y + 2 x z & 2 w x + 2 y z & - 2 x^{2} - 2 y^{2} + 1\end{bmatrix} $$
 
 Computing the Jacobians and computing the vector-Jacobian product:
 
-$$  \nabla{w}= \nabla{R}^T\begin{bmatrix}0 & - 2 z & 2 y\\2 z & 0 & - 2 x\\- 2 y & 2 x & 0\end{bmatrix} $$
+$$  \nabla{w}= \nabla{R}^T\begin{bmatrix}0 & - 2 z & 2 y \\\ 2 z & 0 & - 2 x \\\ -2 y & 2 x & 0\end{bmatrix} $$
 
-$$  \nabla{x} = \nabla{R}^T\begin{bmatrix}0 & 2 y & 2 z\\2 y & - 4 x & - 2 w\\2 z & 2 w & - 4 x\end{bmatrix} $$ 
+$$  \nabla{x} = \nabla{R}^T\begin{bmatrix}0 & 2 y & 2 z \\\ 2 y & - 4 x & - 2 w \\\ 2 z & 2 w & - 4 x\end{bmatrix} $$ 
 
-$$  \nabla{y} = \nabla{R}^T \begin{bmatrix}- 4 y & 2 x & 2 w\\2 x & 0 & 2 z\\- 2 w & 2 z & - 4 y\end{bmatrix} $$ 
+$$  \nabla{y} = \nabla{R}^T \begin{bmatrix}- 4 y & 2 x & 2 w \\\ 2 x & 0 & 2 z \\\ -2 w & 2 z & - 4 y\end{bmatrix} $$ 
 
-$$  \nabla{z} = \nabla{R}^T \begin{bmatrix}- 4 z & - 2 w & 2 x\\2 w & - 4 z & 2 y\\2 x & 2 y & 0\end{bmatrix} $$
+$$  \nabla{z} = \nabla{R}^T \begin{bmatrix}- 4 z & - 2 w & 2 x \\\ 2 w & - 4 z & 2 y \\\ 2 x & 2 y & 0\end{bmatrix} $$
 
 
 
