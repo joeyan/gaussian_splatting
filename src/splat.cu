@@ -153,10 +153,10 @@ __global__ void render_tiles_kernel(
                         computed_rgb[channel] * weight;
                 }
                 alpha_accum += weight;
-                num_splats++; // still need to update splat counter for backwards pass
-            }                 // end splat loop
-        }                     // valid pixel check
-    }                         // end chunk loop
+                num_splats++;
+            } // end splat loop
+        }     // valid pixel check
+    }         // end chunk loop
 
     // copy back to global memory
     __syncthreads(); // wait for splatting to complete

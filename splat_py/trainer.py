@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import torch
-from pytorch_msssim import SSIM
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from splat_py.constants import *
 from splat_py.cuda_autograd_functions import (
@@ -31,7 +31,7 @@ class GSTrainer:
         self.images = images
         self.cameras = cameras
 
-        self.ssim = SSIM(data_range=1.0, size_average=True, channel=3)
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.gaussians.xyz.device)
 
         self.update_optimizer()
         self.reset_grad_accum()
