@@ -45,16 +45,20 @@ with SimpleTimer("Load Colmap Data"):
     colmap_data = ColmapData(
         DATASET_PATH, torch.device("cuda"), downsample_factor=DOWNSAMPLE_FACTOR
     )
-    gaussians = colmap_data.create_gaussians()
+
+    if LOAD_MODEL:
+        gaussians = torch.load(MODEL_PATH)
+    else:
+        gaussians = colmap_data.create_gaussians()
+        gaussians.xyz = torch.nn.Parameter(gaussians.xyz)
+        gaussians.quaternions = torch.nn.Parameter(gaussians.quaternions)
+        gaussians.scales = torch.nn.Parameter(gaussians.scales)
+        gaussians.opacities = torch.nn.Parameter(gaussians.opacities)
+        gaussians.rgb = torch.nn.Parameter(gaussians.rgb)
 
     images = colmap_data.get_images()
     cameras = colmap_data.get_cameras()
 
-    gaussians.xyz = torch.nn.Parameter(gaussians.xyz)
-    gaussians.quaternions = torch.nn.Parameter(gaussians.quaternions)
-    gaussians.scales = torch.nn.Parameter(gaussians.scales)
-    gaussians.opacities = torch.nn.Parameter(gaussians.opacities)
-    gaussians.rgb = torch.nn.Parameter(gaussians.rgb)
 
 start = time.time()
 trainer = GSTrainer(gaussians, images, cameras)

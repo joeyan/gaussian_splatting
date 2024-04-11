@@ -18,8 +18,8 @@ __global__ void render_tiles_kernel(
     const int image_height,
     bool use_fast_exp,
     int* num_splats_per_pixel,
-    T* final_weight_per_pixel,
-    T* image
+    T* __restrict__ final_weight_per_pixel,
+    T* __restrict__ image
 ) {
     // grid = tiles, blocks = pixels within each tile
     const int u_splat = blockIdx.x * blockDim.x + threadIdx.x;
@@ -47,7 +47,6 @@ __global__ void render_tiles_kernel(
         for (int axis = 0; axis < 3; axis++) {
             view_dir[axis] = view_dir_by_pixel[(v_splat * image_width + u_splat) * 3 + axis];
         }
-
         compute_sh_coeffs_for_view_dir<T, N_SH>(view_dir, sh_at_view_dir);
     }
 
@@ -104,7 +103,7 @@ __global__ void render_tiles_kernel(
             int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
             int num_splats_this_chunk = chunk_end - chunk_start;
             for (int i = 0; i < num_splats_this_chunk; i++) {
-                if (alpha_accum > 0.999) {
+                if (alpha_accum > 0.9999) {
                     break;
                 }
                 const T u_mean = _uvs[i * 2 + 0];
@@ -143,22 +142,21 @@ __global__ void render_tiles_kernel(
                 }
                 alpha_weight = 1.0 - alpha_accum;
                 const T weight = alpha * (1.0 - alpha_accum);
-
                 // compute rgb
                 T computed_rgb[3];
                 sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
 
+                // update image
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
                     _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] +=
                         computed_rgb[channel] * weight;
                 }
-
                 alpha_accum += weight;
-                num_splats++;
-            } // end splat loop
-        }     // valid pixel check
-    }         // end chunk loop
+                num_splats++; // still need to update splat counter for backwards pass
+            }                 // end splat loop
+        }                     // valid pixel check
+    }                         // end chunk loop
 
     // copy back to global memory
     __syncthreads(); // wait for splatting to complete

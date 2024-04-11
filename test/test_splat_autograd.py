@@ -151,7 +151,7 @@ class TestSplatAutograd(unittest.TestCase):
         )
         self.assertTrue(test)
 
-    def test_render_image_grad_SH_9(self):
+    def test_render_image_grad_SH_16(self):
         test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
         sh_coeff_16 = (
             torch.ones(
