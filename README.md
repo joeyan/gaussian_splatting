@@ -18,7 +18,7 @@ Here are some comparisons with the with the official implementation.
 | Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
 |--------------|-------------|------|------|-------------|------------------|
 | Official-30k | Garden 1/4x | 27.41| 0.87 |             | ~35-45min (A6000)|
-| Ours-30k     | Garden 1/4x | 26.73| 0.83 | 2.02M       | ~31min (RTX4090) |
+| Ours-30k     | Garden 1/4x | 26.94| 0.85 | 2.99M       | ~37min (RTX4090) |
 | Official-30k | Counter 1/2x| 28.70| 0.90 |             |                  |
 | Ours-30k     | Counter 1/2x| 28.28| 0.90 | 1.47M       | ~35min (RTX4090) |
 | Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |

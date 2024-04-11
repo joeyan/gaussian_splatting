@@ -11,6 +11,8 @@ from splat_cuda import (
     compute_conic_backward_cuda,
     render_tiles_cuda,
     render_tiles_backward_cuda,
+    precompute_rgb_from_sh_cuda,
+    precompute_rgb_from_sh_backward_cuda,
 )
 
 
@@ -98,6 +100,31 @@ class ComputeConic(torch.autograd.Function):
             sigma_world, J, world_T_image, grad_conic, grad_sigma_world, grad_J
         )
         return grad_sigma_world, grad_J, None
+
+
+class PrecomputeRGBFromSH(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, sh_coeffs, xyz, camera_T_world):
+        rgb = torch.zeros(xyz.shape[0], 3, dtype=sh_coeffs.dtype, device=sh_coeffs.device)
+        precompute_rgb_from_sh_cuda(xyz, sh_coeffs, camera_T_world, rgb)
+
+        if sh_coeffs.dim() == 2:
+            num_sh_coeff = torch.tensor(1, dtype=torch.int, device=sh_coeffs.device)
+        else:
+            num_sh_coeff = torch.tensor(
+                sh_coeffs.shape[2], dtype=torch.int, device=sh_coeffs.device
+            )
+        ctx.save_for_backward(xyz, camera_T_world, num_sh_coeff)
+        return rgb
+
+    @staticmethod
+    def backward(ctx, grad_rgb):
+        xyz, camera_T_world, num_sh_coeff = ctx.saved_tensors
+        grad_sh_coeffs = torch.zeros(
+            xyz.shape[0], 3, num_sh_coeff.item(), dtype=xyz.dtype, device=xyz.device
+        )
+        precompute_rgb_from_sh_backward_cuda(xyz, camera_T_world, grad_rgb, grad_sh_coeffs)
+        return grad_sh_coeffs, None, None
 
 
 class RenderImage(torch.autograd.Function):

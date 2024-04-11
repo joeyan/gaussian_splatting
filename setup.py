@@ -10,6 +10,7 @@ setup(
             name="splat_cuda",
             sources=[
                 "src/bindings.cpp",
+                "src/fast_splat.cu",
                 "src/splat.cu",
                 "src/splat_backward.cu",
                 "src/projection.cu",

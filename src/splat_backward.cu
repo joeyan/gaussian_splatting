@@ -134,28 +134,30 @@ __global__ void render_tiles_backward_kernel(
                 const T v_diff = T(v_splat) - v_mean;
 
                 // 2d covariance matrix b == c so we don't need to duplicate
-                const T a = _conic[i * 3 + 0];
-                const T b = _conic[i * 3 + 1] / 2.0;
-                const T c = _conic[i * 3 + 2];
-                T det = a * c - b * b;
+                // add 0.25 to a and c to make sure matrix is positive definite
+                T a;
+                T c;
+                const T b = _conic[i * 3 + 1] * 0.5;
+                if (use_fast_exp) {
+                    a = _conic[i * 3 + 0] + 0.25;
+                    c = _conic[i * 3 + 2] + 0.25;
+                } else {
+                    a = _conic[i * 3 + 0];
+                    c = _conic[i * 3 + 2];
+                }
+                const T det = a * c - b * b;
 
                 T norm_prob = 0.0;
                 T reciprocal_det = 1.0 / det;
-                if (det > 0.0) {
-                    if (det < 1e-14) {
-                        det += 1e-14;
-                        reciprocal_det = 1.0 / det;
-                    }
-                    // compute mahalanobis distance
-                    const T mh_sq =
-                        (c * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) *
-                        reciprocal_det;
-                    if (mh_sq > 0.0) {
-                        if (use_fast_exp) {
-                            norm_prob = __expf(-0.5 * mh_sq);
-                        } else {
-                            norm_prob = exp(-0.5 * mh_sq);
-                        }
+                // compute mahalanobis distance
+                const T mh_sq =
+                    (c * u_diff * u_diff - (b + b) * u_diff * v_diff + a * v_diff * v_diff) *
+                    reciprocal_det;
+                if (mh_sq > 0.0) {
+                    if (use_fast_exp) {
+                        norm_prob = __expf(-0.5 * mh_sq);
+                    } else {
+                        norm_prob = exp(-0.5 * mh_sq);
                     }
                 }
 

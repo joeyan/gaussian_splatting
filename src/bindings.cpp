@@ -96,6 +96,20 @@ void compute_splat_to_gaussian_id_vector_cuda(
     torch::Tensor tile_idx_by_splat_idx
 );
 
+void precompute_rgb_from_sh_cuda(
+    const torch::Tensor xyz,
+    const torch::Tensor sh_coeff,
+    const torch::Tensor camera_T_world,
+    torch::Tensor rgb
+);
+
+void precompute_rgb_from_sh_backward_cuda(
+    const torch::Tensor xyz,
+    const torch::Tensor camera_T_world,
+    const torch::Tensor grad_rgb,
+    torch::Tensor grad_sh
+);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("render_tiles_cuda", &render_tiles_cuda, "Render tiles CUDA");
     m.def("render_tiles_backward_cuda", &render_tiles_backward_cuda, "Render tiles backward");
@@ -130,5 +144,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "compute_splat_to_gaussian_id_vector_cuda",
         &compute_splat_to_gaussian_id_vector_cuda,
         "compute tile to gaussian vector CUDA"
+    );
+    m.def(
+        "precompute_rgb_from_sh_cuda",
+        &precompute_rgb_from_sh_cuda,
+        "precompute rgb from sh per gaussian"
+    );
+    m.def(
+        "precompute_rgb_from_sh_backward_cuda",
+        &precompute_rgb_from_sh_backward_cuda,
+        "precompute rgb from sh per gaussian backward"
     );
 }

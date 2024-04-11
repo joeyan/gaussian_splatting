@@ -22,14 +22,14 @@ class TestSplatFull(unittest.TestCase):
         cv2.imwrite("test_splat.png", (debug_image * 255).astype(np.uint8)[..., ::-1])
 
         # near red gaussian center
-        self.assertAlmostEqual(image[340, 348, 0].item(), 0.476977467, places=5)
+        self.assertAlmostEqual(image[340, 348, 0].item(), 0.47698545455932617, places=5)
         self.assertAlmostEqual(image[340, 348, 1].item(), 0.0, places=5)
         self.assertAlmostEqual(image[340, 348, 2].item(), 0.0, places=5)
 
         # overlap of red and blue gaussian, blue is in front of red
         self.assertAlmostEqual(image[200, 348, 0].item(), 0.03330837935209274, places=5)
         self.assertAlmostEqual(image[200, 348, 1].item(), 0.0, places=5)
-        self.assertAlmostEqual(image[200, 348, 2].item(), 0.2675478458404541, places=5)
+        self.assertAlmostEqual(image[200, 348, 2].item(), 0.267561137676239, places=5)
 
 
 if __name__ == "__main__":
