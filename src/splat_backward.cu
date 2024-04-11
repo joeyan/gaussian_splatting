@@ -159,10 +159,8 @@ __global__ void render_tiles_backward_kernel(
                     }
                 }
 
-                T alpha = _opacity[i] * norm_prob;
-                if (abs(alpha - 1.0) < 1e-14) {
-                    alpha -= 1e-14;
-                }
+                // compute alpha, prevent divide by zero
+                T alpha = min(0.9999, _opacity[i] * norm_prob);
                 const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
 
                 // update weight if this is not the first iteration
@@ -170,10 +168,10 @@ __global__ void render_tiles_backward_kernel(
                     weight = weight * reciprocal_one_minus_alpha;
                 }
 
-                T grad_rgb[3];
+                T grad_rgb_local[3];
                 #pragma unroll
                 for (int channel = 0; channel < 3; channel++) {
-                    grad_rgb[channel] = alpha * weight * grad_image_local[channel];
+                    grad_rgb_local[channel] = alpha * weight * grad_image_local[channel];
                 }
 
                 // compute rgb from sh
@@ -181,7 +179,7 @@ __global__ void render_tiles_backward_kernel(
                 sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
 
                 // compute grad wrt spherical harmonic coeff
-                compute_sh_grad<T, N_SH>(grad_rgb, sh_at_view_dir, grad_sh);
+                compute_sh_grad<T, N_SH>(grad_rgb_local, sh_at_view_dir, grad_sh);
 
                 T grad_alpha = 0.0;
                 #pragma unroll

@@ -152,6 +152,8 @@ The intersection between the oriented bounding box and the tile can be computed 
 
 Here is a really good deep dive on the [Separating Axis Theorem](https://dyn4j.org/2010/01/sat/). 
 
+This example image shows 3 gaussians splatted on the image. The green boxes are the oriented bounding boxes at $3\sigma$ and the tiles that intersect are colored in white. 
+
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/741a17f8-3de0-4561-bc64-309f5a38c1cd)
 
 #### Alpha Compositing
@@ -168,7 +170,7 @@ Where $c_{i}$ and $\alpha_i$ are the color and opacity of the $i^{th}$ gaussian 
 For implemented forward/backwards passes in PyTorch - see analytic_diff.ipynb
 
 #### Notation
-For simplicity, all gradients are denotied by $\partial$ 
+For simplicity, all gradients are denoted by $\nabla$ 
 
 
 #### Camera Projection
@@ -182,11 +184,47 @@ $$J = \begin{bmatrix} f_x / z & 0 & -f_x x/z^2 \\\ 0 & f_y/z & -f_yy/z^2\end{bma
 
 Computing the vector-Jacobian product yields:
 
-$$\begin{bmatrix} \partial{x} & \partial{y} & \partial_{z} \end{bmatrix} = \begin{bmatrix}\partial{u} & \partial{v}\end{bmatrix} \begin{bmatrix} f_x / z & 0 & -f_x x/z^2 \\\ 0 & f_y/z & -f_yy/z^2\end{bmatrix}$$ 
+$$\begin{bmatrix} \nabla{x} & \nabla{y} & \nabla{z} \end{bmatrix} = \begin{bmatrix}\nabla{u} & \nabla{v}\end{bmatrix} \begin{bmatrix} f_x / z & 0 & -f_x x/z^2 \\\ 0 & f_y/z & -f_yy/z^2\end{bmatrix}$$ 
 
 
-#### Quaternion to Rotation Matrix
+#### Normalizing Quaternion
+For a quaternion $q$:
 
+$$ q = \begin{bmatrix} w & x & y & z\end{bmatrix}$$
+
+The normalized quaternion can be computed with:
+
+$$ \hat{q} = \begin{bmatrix} \frac{w}{\lVert q \rVert} & \frac{x}{\lVert q \rVert} & \frac{y}{\lVert q \rVert} & \frac{z}{\lVert q \rVert}\end{bmatrix}$$
+
+The vector-Jacobian products are:
+
+
+$$ {\nabla w} = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\\- \frac{w x}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{w y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{w z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$
+
+$$ \nabla x = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w x}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\\- \frac{x y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$
+
+$$ \nabla y = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x y}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{y^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\\- \frac{y z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\end{bmatrix} $$ 
+
+$$ \nabla z = \nabla{\hat{q}}^{T}\begin{bmatrix}- \frac{w z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{x z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{y z}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}}\\- \frac{z^{2}}{\left(w^{2} + x^{2} + y^{2} + z^{2}\right)^{\frac{3}{2}}} + \frac{1}{\sqrt{w^{2} + x^{2} + y^{2} + z^{2}}}\end{bmatrix} $$
+
+
+
+
+#### Normalized Quaternion to Rotation Matrix
+
+For a normalized quaternion $\hat{q}$ (Note: the notation is a little sloppy here. In this section $w$, $x$, $y$, and $z$ are the components of $\hat{q}$ not $q$ unlike the previous section):
+
+$$R = \begin{bmatrix}- 2 y^{2} - 2 z^{2} + 1 & - 2 w z + 2 x y & 2 w y + 2 x z\\2 w z + 2 x y & - 2 x^{2} - 2 z^{2} + 1 & - 2 w x + 2 y z\\- 2 w y + 2 x z & 2 w x + 2 y z & - 2 x^{2} - 2 y^{2} + 1\end{bmatrix} $$
+
+Computing the Jacobians and computing the vector-Jacobian product:
+
+$$  \nabla{w}= \nabla{R}^T\begin{bmatrix}0 & - 2 z & 2 y\\2 z & 0 & - 2 x\\- 2 y & 2 x & 0\end{bmatrix} $$
+
+$$  \nabla{x} = \nabla{R}^T\begin{bmatrix}0 & 2 y & 2 z\\2 y & - 4 x & - 2 w\\2 z & 2 w & - 4 x\end{bmatrix} $$ 
+
+$$  \nabla{y} = \nabla{R}^T \begin{bmatrix}- 4 y & 2 x & 2 w\\2 x & 0 & 2 z\\- 2 w & 2 z & - 4 y\end{bmatrix} $$ 
+
+$$  \nabla{z} = \nabla{R}^T \begin{bmatrix}- 4 z & - 2 w & 2 x\\2 w & - 4 z & 2 y\\2 x & 2 y & 0\end{bmatrix} $$
 
 
 
@@ -199,9 +237,9 @@ $$C = AB$$
 
 The gradients can be computed by:
 
-$$\partial{A} = \partial{C}B^{T}$$ 
+$$\nabla{A} = \nabla{C}B^{T}$$ 
 
-$$\partial{B} = A^{T}\partial{C} $$ 
+$$\nabla{B} = A^{T}\nabla{C} $$ 
 
 This can be applied to the computation of the 3D covariance matrix. 
 
@@ -215,38 +253,38 @@ $$ \Sigma_{3D} = MM^{T} $$
 
 The gradients can be computed by:
 
-$$\partial{M} = \partial{\Sigma_{3D}}(M^{T})^{T} = \partial{\Sigma_{3D}}M$$
+$$\nabla{M} = \nabla{\Sigma_{3D}}(M^{T})^{T} = \nabla{\Sigma_{3D}}M$$
 
-$$\partial{M^{T}} = M^{T} \partial{\Sigma_{3D}}$$
+$$\nabla{M^{T}} = M^{T} \nabla{\Sigma_{3D}}$$
 
 Computing the gradients of the components of $M$:
 
-$$ \partial{R} = \partial{M} S^{T}$$
+$$ \nabla{R} = \nabla{M} S^{T}$$
 
-$$ \partial{S} = R^{T} \partial{M}$$
+$$ \nabla{S} = R^{T} \nabla{M}$$
 
 Computing the gradients of the components of $M^{T}$:
 
-$$\partial{R^{T}} = S\partial{M^{T}}$$
+$$\nabla{R^{T}} = S\nabla{M^{T}}$$
 
-$$\partial{S^{T}} = \partial{M^{T}} R$$
+$$\nabla{S^{T}} = \nabla{M^{T}} R$$
 
 Combining the gradients of the transposed components:
 
-$$\partial{R} = \partial{M} S^{T} + (S\partial{M^{T}})^T = \partial{M} S^{T} + (\partial{M^{T}})^{T}S^{T} $$
+$$\nabla{R} = \nabla{M} S^{T} + (S\nabla{M^{T}})^T = \nabla{M} S^{T} + (\nabla{M^{T}})^{T}S^{T} $$
 
-$$\partial{S} = R^{T}\partial{M} + (\partial{M}^{T}R)^{T} = R^{T}\partial{M} + R^{T}(\partial{M^{T}})^{T} $$
+$$\nabla{S} = R^{T}\nabla{M} + (\nabla{M}^{T}R)^{T} = R^{T}\nabla{M} + R^{T}(\nabla{M^{T}})^{T} $$
 
 Substituting in for $M$:
 
-$$\partial{R} = \partial{\Sigma_{3D}}RSS^{T} + (\partial{\Sigma_{3D}})^{T}RSS^{T}$$ 
+$$\nabla{R} = \nabla{\Sigma_{3D}}RSS^{T} + (\nabla{\Sigma_{3D}})^{T}RSS^{T}$$ 
 
-$$\partial{S} = R^{T}\partial{\Sigma_{3D}}RS + R^{T}(\partial{\Sigma_{3D}})^{T}RS$$
+$$\nabla{S} = R^{T}\nabla{\Sigma_{3D}}RS + R^{T}(\nabla{\Sigma_{3D}})^{T}RS$$
 
-The expression can be further simplified since $S$, $\Sigma_{3D}$, and $\partial{\Sigma_{3D}}$ are all symmetric:
-$$\partial{R} = 2\partial{\Sigma_{3D}}RSS$$
+The expression can be further simplified since $S$, $\Sigma_{3D}$, and $\nabla{\Sigma_{3D}}$ are all symmetric:
+$$\nabla{R} = 2\nabla{\Sigma_{3D}}RSS$$
 
-$$\partial{S} = 2R^{T}\partial{\Sigma_{3D}}RS$$
+$$\nabla{S} = 2R^{T}\nabla{\Sigma_{3D}}RS$$
 
 
 #### 2D Covariance Matrix/Conic
@@ -254,8 +292,8 @@ Using the First Quadratic Form from _An extended collection of matrix derivative
 
 $$C=B^{T}AB$$
 
-$$\partial{A} = B\partial{C}B^{T}$$
-$$\partial{B} = AB(\partial{C})^{T} + A^{T}B\partial{C}$$
+$$\nabla{A} = B\nabla{C}B^{T}$$
+$$\nabla{B} = AB(\nabla{C})^{T} + A^{T}B\nabla{C}$$
 
 Subsitituting in the 2D covariance matrix calculation: 
 
@@ -266,14 +304,14 @@ $$A = \Sigma_{3D} $$
 $$B = (JW)^T $$
 
 
-$$\partial{\Sigma_{3D}} = (JW)^{T}\partial{\Sigma_{2D}}JW$$
+$$\nabla{\Sigma_{3D}} = (JW)^{T}\nabla{\Sigma_{2D}}JW$$
 
 
-$$\partial{(JW)^{T}} = \Sigma_{3D}(JW)^{T}(\partial{\Sigma_{2D}})^{T} + \Sigma_{3D}^{T}(JW)^{T} \partial{\Sigma_{2D}}$$ 
+$$\nabla{(JW)^{T}} = \Sigma_{3D}(JW)^{T}(\nabla{\Sigma_{2D}})^{T} + \Sigma_{3D}^{T}(JW)^{T} \nabla{\Sigma_{2D}}$$ 
 
-With symmetric $\Sigma_{3D}$ and $\partial{\Sigma_{2D}}$:
+With symmetric $\Sigma_{3D}$ and $\nabla{\Sigma_{2D}}$:
 
-$$ \partial{(JW)^{T}} = 2\Sigma_{3D}(JW)^{T} \partial{\Sigma_{2D}}$$
+$$ \nabla{(JW)^{T}} = 2\Sigma_{3D}(JW)^{T} \nabla{\Sigma_{2D}}$$
 
 Computing the gradient with respect to $J$ and $W$:
 
@@ -285,14 +323,63 @@ $$A = W^T$$
 
 $$B = J^T$$
 
-$$\partial{W^T} = \partial{(JW)^{T}} (J^T)^T = \partial{(JW)^{T}}J$$
+$$\nabla{W^T} = \nabla{(JW)^{T}} (J^T)^T = \nabla{(JW)^{T}}J$$
 
-$$\partial{J^T} = (W^T)^T\partial{(JW)^{T}} = W\partial{(JW)^{T}} $$
+$$\nabla{J^T} = (W^T)^T\nabla{(JW)^{T}} = W\nabla{(JW)^{T}} $$
 
 
 Transposing and substituting back in:
 
-$$ \partial{W} = (2\Sigma_{3D}(JW)^{T} \partial{\Sigma_{2D}}J)^T = 2J^T\partial{\Sigma_{2D}}JW\Sigma_{3D}$$
+$$ \nabla{W} = (2\Sigma_{3D}(JW)^{T} \nabla{\Sigma_{2D}}J)^T = 2J^T\nabla{\Sigma_{2D}}JW\Sigma_{3D}$$
 
-$$ \partial{J} = (2W\Sigma_{3D}(JW)^{T} \partial{\Sigma_{2D}})^T = 2\partial{\Sigma_{2D}}JW\Sigma_{3D}W^T$$ 
+$$ \nabla{J} = (2W\Sigma_{3D}(JW)^{T} \nabla{\Sigma_{2D}})^T = 2\nabla{\Sigma_{2D}}JW\Sigma_{3D}W^T$$ 
+
+
+#### Evalutating the Gaussian
+The unnormalized probability of the Gaussian function:
+
+
+$$ g(\boldsymbol{x}) = exp\left( - \frac{1}{2}(\boldsymbol{x} - \boldsymbol{\mu})^T \Sigma^{-1}(\boldsymbol{x} - \boldsymbol{\mu})\right) $$
+
+With the Mahalanobis distance:
+
+$$ d_M = \sqrt{(\boldsymbol{x} - \boldsymbol{\mu})^T \Sigma^{-1}(\boldsymbol{x} - \boldsymbol{\mu})} $$
+
+$$ g(\boldsymbol{x}) = exp\left( - \frac{1}{2} d_M^2\right) $$
+
+
+Evaluated at the pixel $(u, v)$ and using the conic representation of the 2D covariance matrix:
+$$ d_M^2 = \begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}^T \begin{bmatrix} a & b \\\ b & c \end{bmatrix}^{-1}\begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}$$
+
+$$ d_M^2 = \frac{1}{(ac - 2b)}\begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}^T \begin{bmatrix} c & -b \\\ -b & a \end{bmatrix}\begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}$$
+
+Simplifying with:
+$$ \Delta u = u - \mu_u $$
+
+$$ \Delta v = v - \mu_v $$
+
+$$ d_M^2 = \frac{a \Delta v^{2} - 2b \Delta u \Delta v + c \Delta u^{2}}{(ac - 2b)}$$
+
+
+Computing vector-Jacobian products:
+
+$$ \nabla{\Sigma_{2D}} = \nabla{d_M^2} \begin{bmatrix} \frac{\partial{d_M^2}}{\partial{a}} & \frac{\partial{d_M^2}}{\partial{b}} \\\ \frac{\partial{d_M^2}}{\partial{b}} & \frac{\partial{d_M^2}}{\partial{c}}  \end{bmatrix}$$
+
+Since the covariance matrix is symmetric, the gradient for $b$ is the sum of the two (identical) components:
+
+$$ \nabla{a} =  \nabla{d_M^2}\left(- \frac{c \left(a v^{2} - 2 b u v + c u^{2}\right)}{\left(a c - 2 b\right)^{2}} + \frac{v^{2}}{a c - 2 b} \right)$$ 
+
+$$ \nabla{b} =  2 \nabla{d_M^2}\left( - \frac{u v}{a c - 2 b} + \frac{\left(a v^{2} - b u v + c u^{2}\right)}{\left(a c - 2 b\right)^{2}} \right)$$
+
+$$ \nabla{c} = - \nabla{d_M^2}\left(\frac{a \left(a v^{2} - 2 b u v + c u^{2}\right)}{\left(a c - 2 b\right)^{2}} + \frac{u^{2}}{a c - 2 b} \right)  $$ 
+
+
+
+
+The gradient of $d_M^2$ is easily computed from the the probability density at $(u, v)$:
+
+$$ \nabla{d_M^2} = - \frac{1}{2}\nabla{g(u, v)}g(u, v) = -\frac{1}{2}\nabla{g(u, v)}exp\left( - \frac{1}{2} d_M^2\right) $$ 
+
+
+#### Alpha Compositing
 
