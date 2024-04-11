@@ -349,11 +349,13 @@ $$ g(\boldsymbol{x}) = exp\left( - \frac{1}{2} d_M^2\right) $$
 
 
 Evaluated at the pixel $(u, v)$ and using the conic representation of the 2D covariance matrix:
+
 $$ d_M^2 = \begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}^T \begin{bmatrix} a & b \\\ b & c \end{bmatrix}^{-1}\begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}$$
 
 $$ d_M^2 = \frac{1}{(ac - 2b)}\begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}^T \begin{bmatrix} c & -b \\\ -b & a \end{bmatrix}\begin{bmatrix} u - \mu_u \\\ v - \mu_v \end{bmatrix}$$
 
 Simplifying with:
+
 $$ \Delta u = u - \mu_u $$
 
 $$ \Delta v = v - \mu_v $$

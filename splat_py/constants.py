@@ -73,4 +73,4 @@ DOWNSAMPLE_FACTOR = 4
 
 # Load model from checkpoint
 LOAD_MODEL = False
-MODEL_PATH = "sh_26_86.pt"
+MODEL_PATH = "splat_output/gaussians.pt"

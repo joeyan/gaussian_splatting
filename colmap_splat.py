@@ -60,7 +60,6 @@ with SimpleTimer("Load Colmap Data"):
     cameras = colmap_data.get_cameras()
 
 
-
 start = time.time()
 trainer = GSTrainer(gaussians, images, cameras)
 trainer.train()

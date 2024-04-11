@@ -60,6 +60,14 @@ Note:
 python setup.py build_ext && python setup.py install
 ```
 
+Optional:
+This project uses `clang-format` to lint the C++/CUDA files:
+
+```
+sudo apt install clang-format
+```
+Running `lint.sh` will run both `black` and `clang-format`.
+
 
 ## Verifying Install
 
@@ -79,3 +87,4 @@ To run all unit tests:
 ```
 python -m unittest discover test
 ```
+
