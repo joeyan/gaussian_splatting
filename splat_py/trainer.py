@@ -547,7 +547,7 @@ class GSTrainer:
                 )
                 if USE_SH_PRECOMPUTE:
                     render_rgb = PrecomputeRGBFromSH.apply(
-                        sh_coeffs, culled_gaussians.xyz, world_T_image
+                        sh_coeffs, culled_gaussians.xyz, torch.inverse(world_T_image).contiguous()
                     )
                 else:
                     render_rgb = sh_coeffs

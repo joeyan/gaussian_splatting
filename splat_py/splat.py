@@ -81,7 +81,9 @@ def splat(gaussians, world_T_image, camera):
     if culled_gaussians.sh is not None:
         sh_coeffs = torch.cat((culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2)
         if USE_SH_PRECOMPUTE:
-            render_rgb = PrecomputeRGBFromSH.apply(sh_coeffs, culled_gaussians.xyz, world_T_image)
+            render_rgb = PrecomputeRGBFromSH.apply(
+                sh_coeffs, culled_gaussians.xyz, torch.inverse(world_T_image).contiguous()
+            )
         else:
             render_rgb = sh_coeffs
     else:
