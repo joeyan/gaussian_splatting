@@ -12,6 +12,7 @@ from splat_py.cuda_autograd_functions import (
     RenderImage,
     PrecomputeRGBFromSH,
 )
+from splat_py.optimizer_manager import OptimizerManager
 from splat_py.structs import Gaussians, Tiles, SimpleTimer, GSMetrics
 from splat_py.splat import splat
 from splat_py.tile_culling import (
@@ -32,14 +33,13 @@ class GSTrainer:
         self.images = images
         self.cameras = cameras
 
+        self.optimizer_manager = OptimizerManager(gaussians)
+        self.metrics = GSMetrics()
         self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.gaussians.xyz.device)
 
-        self.update_optimizer()
         self.reset_grad_accum()
         self.setup_test_train_split()
         self.setup_test_images()
-
-        self.metrics = GSMetrics()
 
     def setup_test_train_split(self):
         num_images = len(self.images)
@@ -53,30 +53,6 @@ class GSTrainer:
                 self.images[image_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
             )
             self.images[image_idx].image = self.images[image_idx].image.to(torch.device("cuda"))
-
-    def update_optimizer(self):
-        print("Updating optimizer")
-
-        # add new params to optimizer
-        self.optimizer = torch.optim.Adam(
-            [
-                {"params": self.gaussians.xyz, "lr": BASE_LR * XYZ_LR_MULTIPLIER},
-                {
-                    "params": self.gaussians.quaternions,
-                    "lr": BASE_LR * QUAT_LR_MULTIPLIER,
-                },
-                {"params": self.gaussians.scales, "lr": BASE_LR * SCALE_LR_MULTIPLIER},
-                {
-                    "params": self.gaussians.opacities,
-                    "lr": BASE_LR * OPACITY_LR_MULTIPLIER,
-                },
-                {"params": self.gaussians.rgb, "lr": BASE_LR * RGB_LR_MULTIPLIER},
-            ],
-        )
-        if self.gaussians.sh is not None:
-            self.optimizer.add_param_group(
-                {"params": self.gaussians.sh, "lr": BASE_LR * SH_LR_MULTIPLIER},
-            )
 
     def check_nans(self):
         if torch.any(~torch.isfinite(self.gaussians.xyz)):
@@ -120,36 +96,8 @@ class GSTrainer:
         self.gaussians.opacities = torch.nn.Parameter(
             torch.ones_like(self.gaussians.opacities) * inverse_sigmoid(INITIAL_OPACITY)
         )
-
-        # reset exp_avg and exp_avg_sq for opacities
-        old_optimizer_param = self.optimizer.param_groups[3]["params"][0]
-        optimizer_param_state = self.optimizer.state[old_optimizer_param]
-        del self.optimizer.state[old_optimizer_param]
-
-        optimizer_param_state["exp_avg"] = torch.zeros_like(optimizer_param_state["exp_avg"])
-        optimizer_param_state["exp_avg_sq"] = torch.zeros_like(optimizer_param_state["exp_avg_sq"])
-
-        del self.optimizer.param_groups[3]["params"][0]
-        del self.optimizer.param_groups[3]["params"]
-
-        self.optimizer.param_groups[3]["params"] = [self.gaussians.opacities]
-        self.optimizer.state[3] = optimizer_param_state
-
+        self.optimizer_manager.reset_opacity_exp_avg(self.gaussians)
         self.reset_grad_accum()
-
-    def add_sh_band_to_optimizer(self):
-        old_optimizer_param = self.optimizer.param_groups[5]["params"][0]
-        optimizer_param_state = self.optimizer.state[old_optimizer_param]
-        del self.optimizer.state[old_optimizer_param]
-
-        optimizer_param_state["exp_avg"] = torch.zeros_like(self.gaussians.sh)
-        optimizer_param_state["exp_avg_sq"] = torch.zeros_like(self.gaussians.sh)
-
-        del self.optimizer.param_groups[5]["params"][0]
-        del self.optimizer.param_groups[5]["params"]
-
-        self.optimizer.param_groups[5]["params"] = [self.gaussians.sh]
-        self.optimizer.state[5] = optimizer_param_state
 
     def add_sh_band(self):
         num_gaussians = self.gaussians.xyz.shape[0]
@@ -163,11 +111,7 @@ class GSTrainer:
                 device=self.gaussians.rgb.device,
             )
             self.gaussians.sh = torch.nn.Parameter(new_sh)
-
-            # add new sh to optimizer
-            self.optimizer.add_param_group(
-                {"params": self.gaussians.sh, "lr": BASE_LR * SH_LR_MULTIPLIER},
-            )
+            self.optimizer_manager.add_sh_to_optimizer(self.gaussians)
         elif self.gaussians.sh.shape[2] == 3 and MAX_SH_BAND > 1:
             new_sh = torch.zeros(
                 num_gaussians,
@@ -178,7 +122,7 @@ class GSTrainer:
             )
             new_sh[:, :, :3] = self.gaussians.sh
             self.gaussians.sh = torch.nn.Parameter(new_sh)
-            self.add_sh_band_to_optimizer()
+            self.optimizer_manager.add_sh_band_to_optimizer(self.gaussians)
         elif self.gaussians.sh.shape[2] == 8 and MAX_SH_BAND > 2:
             new_sh = torch.zeros(
                 num_gaussians,
@@ -189,103 +133,7 @@ class GSTrainer:
             )
             new_sh[:, :, :8] = self.gaussians.sh
             self.gaussians.sh = torch.nn.Parameter(new_sh)
-            self.add_sh_band_to_optimizer()
-
-    def delete_param_from_optimizer(self, new_param, keep_mask, param_index):
-        old_optimizer_param = self.optimizer.param_groups[param_index]["params"][0]
-        optimizer_param_state = self.optimizer.state[old_optimizer_param]
-        del self.optimizer.state[old_optimizer_param]
-
-        optimizer_param_state["exp_avg"] = optimizer_param_state["exp_avg"][keep_mask, :]
-        optimizer_param_state["exp_avg_sq"] = optimizer_param_state["exp_avg_sq"][keep_mask, :]
-
-        del self.optimizer.param_groups[param_index]["params"][0]
-        del self.optimizer.param_groups[param_index]["params"]
-
-        self.optimizer.param_groups[param_index]["params"] = [new_param]
-        self.optimizer.state[new_param] = optimizer_param_state
-
-    def delete_gaussians_from_optimizer(self, keep_mask):
-        self.delete_param_from_optimizer(self.gaussians.xyz, keep_mask, 0)
-        self.delete_param_from_optimizer(self.gaussians.quaternions, keep_mask, 1)
-        self.delete_param_from_optimizer(self.gaussians.scales, keep_mask, 2)
-        self.delete_param_from_optimizer(self.gaussians.opacities, keep_mask, 3)
-        self.delete_param_from_optimizer(self.gaussians.rgb, keep_mask, 4)
-        if self.gaussians.sh is not None:
-            self.delete_param_from_optimizer(self.gaussians.sh, keep_mask, 5)
-
-    def add_params_to_optimizer(self, new_param, num_added, param_index):
-        old_optimizer_param = self.optimizer.param_groups[param_index]["params"][0]
-        optimizer_param_state = self.optimizer.state[old_optimizer_param]
-
-        if new_param.dim() == 2:
-            # set exp_avg and exp_avg_sq for cloned gaussians to zero
-            optimizer_param_state["exp_avg"] = torch.cat(
-                [
-                    optimizer_param_state["exp_avg"],
-                    torch.zeros(
-                        num_added,
-                        new_param.shape[1],
-                        device=optimizer_param_state["exp_avg"].device,
-                        dtype=optimizer_param_state["exp_avg"].dtype,
-                    ),
-                ],
-                dim=0,
-            )
-            optimizer_param_state["exp_avg_sq"] = torch.cat(
-                [
-                    optimizer_param_state["exp_avg_sq"],
-                    torch.zeros(
-                        num_added,
-                        new_param.shape[1],
-                        device=optimizer_param_state["exp_avg_sq"].device,
-                        dtype=optimizer_param_state["exp_avg_sq"].dtype,
-                    ),
-                ],
-                dim=0,
-            )
-        if new_param.dim() == 3:
-            # set exp_avg and exp_avg_sq for cloned gaussians to zero
-            optimizer_param_state["exp_avg"] = torch.cat(
-                [
-                    optimizer_param_state["exp_avg"],
-                    torch.zeros(
-                        num_added,
-                        new_param.shape[1],
-                        new_param.shape[2],
-                        device=optimizer_param_state["exp_avg"].device,
-                        dtype=optimizer_param_state["exp_avg"].dtype,
-                    ),
-                ],
-                dim=0,
-            )
-            optimizer_param_state["exp_avg_sq"] = torch.cat(
-                [
-                    optimizer_param_state["exp_avg_sq"],
-                    torch.zeros(
-                        num_added,
-                        new_param.shape[1],
-                        new_param.shape[2],
-                        device=optimizer_param_state["exp_avg_sq"].device,
-                        dtype=optimizer_param_state["exp_avg_sq"].dtype,
-                    ),
-                ],
-                dim=0,
-            )
-
-        del self.optimizer.state[old_optimizer_param]
-        del old_optimizer_param
-        self.optimizer.param_groups[param_index]["params"] = [new_param]
-        self.optimizer.state[new_param] = optimizer_param_state
-
-    def add_gaussians_to_optimizer(self, clone_mask):
-        self.add_params_to_optimizer(self.gaussians.xyz, clone_mask, 0)
-        self.add_params_to_optimizer(self.gaussians.quaternions, clone_mask, 1)
-        self.add_params_to_optimizer(self.gaussians.scales, clone_mask, 2)
-        self.add_params_to_optimizer(self.gaussians.opacities, clone_mask, 3)
-        self.add_params_to_optimizer(self.gaussians.rgb, clone_mask, 4)
-        if self.gaussians.sh is not None:
-            self.add_params_to_optimizer(self.gaussians.sh, clone_mask, 5)
+            self.optimizer_manager.add_sh_band_to_optimizer(self.gaussians)
 
     def delete_gaussians(self, keep_mask):
         self.gaussians.filter_in_place(keep_mask)
@@ -294,7 +142,7 @@ class GSTrainer:
         self.grad_accum_count = self.grad_accum_count[keep_mask]
 
         # remove deleted gaussians from optimizer
-        self.delete_gaussians_from_optimizer(keep_mask)
+        self.optimizer_manager.delete_gaussians_from_optimizer(self.gaussians, keep_mask)
 
     def clone_gaussians(self, clone_mask, xyz_grad_avg):
         # create cloned gaussians
@@ -332,7 +180,9 @@ class GSTrainer:
             self.gaussians.append(
                 cloned_xyz, cloned_rgb, cloned_opacities, cloned_scales, cloned_quaternions
             )
-        self.add_gaussians_to_optimizer(torch.sum(clone_mask).detach().cpu().numpy())
+        self.optimizer_manager.add_gaussians_to_optimizer(
+            self.gaussians, torch.sum(clone_mask).detach().cpu().numpy()
+        )
 
     def split_gaussians(self, split_mask):
         samples = NUM_SPLIT_SAMPLES
@@ -375,7 +225,9 @@ class GSTrainer:
             self.gaussians.append(
                 split_xyz, split_rgb, split_opacities, split_scales, split_quaternions
             )
-        self.add_gaussians_to_optimizer(torch.sum(split_mask).detach().cpu().numpy() * samples)
+        self.optimizer_manager.add_gaussians_to_optimizer(
+            self.gaussians, torch.sum(split_mask).detach().cpu().numpy() * samples
+        )
 
     def adaptive_density_control(self):
         if not (USE_DELETE or USE_CLONE or USE_SPLIT):
@@ -539,16 +391,20 @@ class GSTrainer:
                 gaussian_idx_by_splat_idx,
                 tile_idx_by_splat_idx,
             )
-            rays = compute_rays_in_world_frame(camera, world_T_image)
+            with SimpleTimer("Compute Rays"):
+                rays = compute_rays_in_world_frame(camera, world_T_image)
 
             if culled_gaussians.sh is not None:
                 sh_coeffs = torch.cat(
                     (culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2
                 )
                 if USE_SH_PRECOMPUTE:
-                    render_rgb = PrecomputeRGBFromSH.apply(
-                        sh_coeffs, culled_gaussians.xyz, torch.inverse(world_T_image).contiguous()
-                    )
+                    with SimpleTimer("Precompute RGB from SH"):
+                        render_rgb = PrecomputeRGBFromSH.apply(
+                            sh_coeffs,
+                            culled_gaussians.xyz,
+                            torch.inverse(world_T_image).contiguous(),
+                        )
                 else:
                     render_rgb = sh_coeffs
             else:
@@ -581,7 +437,7 @@ class GSTrainer:
         with SimpleTimer("Backward"):
             loss.backward()
         with SimpleTimer("Optimizer Step"):
-            self.optimizer.step()
+            self.optimizer_manager.optimizer.step()
 
         # scale uv grad back to world coordinates - this way, uv grad is consistent across multiple cameras
         uv_grad = uv.grad.detach()
@@ -600,7 +456,7 @@ class GSTrainer:
             world_T_image = self.images[image_idx].world_T_image
             camera = self.cameras[self.images[image_idx].camera_id]
 
-            self.optimizer.zero_grad()
+            self.optimizer_manager.optimizer.zero_grad()
 
             image, psnr = self.splat_and_compute_loss(image_idx, world_T_image, camera)
             self.metrics.train_psnr.append(psnr.item())
