@@ -164,7 +164,7 @@ def plot_bbox(bbox, image, color=(0, 255, 0), thickness=1):
     cv2.line(image, bbox[2, :], bbox[0, :], color, thickness)  # bottom left to top left
 
 
-def save_bboxes_to_image(bboxes, filename="culling_test_0.png"):
+def save_bboxes_to_image(bboxes, filename="/tmp/culling_test_0.png"):
     image = torch.zeros((1024, 1024, 3), dtype=torch.uint8).numpy()
     for bbox in bboxes:
         # scale to avoid pixelation
@@ -173,7 +173,7 @@ def save_bboxes_to_image(bboxes, filename="culling_test_0.png"):
     cv2.imwrite(filename, image)
 
 
-def draw_intersect_mask(intersect_mask, tiles, bboxes, filename="culling_test_1.png"):
+def draw_intersect_mask(intersect_mask, tiles, bboxes, filename="/tmp/culling_test_1.png"):
     image = torch.zeros((tiles.image_height, tiles.image_width, 3), dtype=torch.uint8).numpy()
 
     tile_corners = get_tile_corners(tiles)
@@ -401,7 +401,9 @@ class TestCulling(unittest.TestCase):
             if intersect_mask[tile]:
                 intersecting_tiles.append(tile)
 
-        draw_intersect_mask(intersect_mask, tiles, [obb], filename="test_obb_intersection_2.png")
+        draw_intersect_mask(
+            intersect_mask, tiles, [obb], filename="/tmp/test_obb_intersection_2.png"
+        )
 
     def test_compute_tiles_cuda(self):
         cuda_device = torch.device("cuda")
@@ -445,7 +447,7 @@ class TestCulling(unittest.TestCase):
             intersect_mask,
             tiles,
             [obb_0, obb_1, obb_2],
-            filename="test_compute_tiles_cuda.png",
+            filename="/tmp/test_compute_tiles_cuda.png",
         )
 
 

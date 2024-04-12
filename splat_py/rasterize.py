@@ -77,7 +77,7 @@ def rasterize(gaussians, world_T_image, camera):
     sorted_gaussian_idx_by_splat_idx = sort_gaussians(
         xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
     )
-    rays = compute_rays_in_world_frame(camera, world_T_image)
+    rays = torch.zeros(1, 1, 1, dtype=gaussians.xyz.dtype, device=gaussians.xyz.device)
     if culled_gaussians.sh is not None:
         sh_coeffs = torch.cat((culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2)
         if USE_SH_PRECOMPUTE:
@@ -86,6 +86,8 @@ def rasterize(gaussians, world_T_image, camera):
             )
         else:
             render_rgb = sh_coeffs
+            # actually need to compute rays here
+            rays = compute_rays_in_world_frame(camera, world_T_image)
     else:
         render_rgb = culled_gaussians.rgb
 

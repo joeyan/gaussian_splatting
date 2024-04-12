@@ -20,7 +20,7 @@ Here are some comparisons with the with the official implementation (copied from
 | Official-30k | Garden 1/4x | 27.41| 0.87 |             | ~35-45min (A6000)|
 | Ours-30k     | Garden 1/4x | 26.86| 0.85 | 2.78M       | ~21min (RTX4090) |
 | Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k      | Garden 1/4x | 25.39| 0.78 | 0.88M       | ~3min  (RTX4090) |
+| Ours-7k      | Garden 1/4x | 25.80| 0.80 | 1.61M       | ~3min  (RTX4090) |
 | Official-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
 | Ours-30k     | Counter 1/2x| 28.60| 0.90 | 2.01M       | ~26min (RTX4090) |
 | Official-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |

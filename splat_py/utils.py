@@ -19,13 +19,6 @@ def inverse_sigmoid_torch(x):
     return torch.log(clipped / (1.0 - (clipped)))
 
 
-def sample_pdf(xyz, sigma_world):
-    pdf = MultivariateNormal(xyz, sigma_world)
-    mean_1 = pdf.sample()
-    mean_2 = pdf.sample()
-    return mean_1, mean_2
-
-
 def compute_initial_scale_from_sparse_points(points, num_neighbors, neighbor_dist_to_scale_factor):
     """
     Computes the initial gaussian scale from the distance to the nearest points

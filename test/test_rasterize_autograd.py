@@ -7,7 +7,7 @@ from splat_py.tile_culling import match_gaussians_to_tiles_gpu
 from splat_py.utils import compute_rays_in_world_frame
 
 
-class TestSplatAutograd(unittest.TestCase):
+class TestRasterizeAutograd(unittest.TestCase):
     def setUp(self):
         self.assertTrue(torch.cuda.is_available())
         self.device = torch.device("cuda")
@@ -62,7 +62,7 @@ class TestSplatAutograd(unittest.TestCase):
             requires_grad=True,
         )
 
-    def test_render_image_grad_SH_0(self):
+    def test_rasterize_image_grad_SH_0(self):
         image_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
         rgb = (
             torch.ones(
@@ -93,7 +93,7 @@ class TestSplatAutograd(unittest.TestCase):
         )
         self.assertTrue(test)
 
-    def test_render_image_grad_SH_4(self):
+    def test_rasterize_image_grad_SH_4(self):
         test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
         sh_coeff_4 = (
             torch.ones(
@@ -122,7 +122,7 @@ class TestSplatAutograd(unittest.TestCase):
         )
         self.assertTrue(test)
 
-    def test_render_image_grad_SH_9(self):
+    def test_rasterize_image_grad_SH_9(self):
         test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
         sh_coeff_9 = (
             torch.ones(
@@ -151,7 +151,7 @@ class TestSplatAutograd(unittest.TestCase):
         )
         self.assertTrue(test)
 
-    def test_render_image_grad_SH_16(self):
+    def test_rasterize_image_grad_SH_16(self):
         test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
         sh_coeff_16 = (
             torch.ones(
