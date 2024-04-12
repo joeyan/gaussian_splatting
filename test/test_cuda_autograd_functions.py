@@ -5,6 +5,7 @@ from splat_py.cuda_autograd_functions import (
     ComputeProjectionJacobian,
     ComputeSigmaWorld,
     ComputeConic,
+    PrecomputeRGBFromSH,
 )
 
 
@@ -106,6 +107,130 @@ class TestAutogradFunctions(unittest.TestCase):
         test = torch.autograd.gradcheck(
             ComputeConic.apply,
             (sigma_world, projection_jacobian, self.world_T_image),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
+    def test_compute_rgb_from_sh_1(self):
+        N_gaussians = 100
+        sh_coeffs = torch.ones(
+            N_gaussians,
+            3,
+            1,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=True,
+        )
+        xyz = torch.rand(
+            N_gaussians,
+            3,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        camera_T_world = torch.zeros(
+            4,
+            4,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        test = torch.autograd.gradcheck(
+            PrecomputeRGBFromSH.apply,
+            (sh_coeffs, xyz, camera_T_world),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
+    def test_compute_rgb_from_sh_4(self):
+        N_gaussians = 100
+        sh_coeffs = torch.ones(
+            N_gaussians,
+            3,
+            4,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=True,
+        )
+        xyz = torch.rand(
+            N_gaussians,
+            3,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        camera_T_world = torch.zeros(
+            4,
+            4,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        test = torch.autograd.gradcheck(
+            PrecomputeRGBFromSH.apply,
+            (sh_coeffs, xyz, camera_T_world),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
+    def test_compute_rgb_from_sh_9(self):
+        N_gaussians = 100
+        sh_coeffs = torch.ones(
+            N_gaussians,
+            3,
+            9,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=True,
+        )
+        xyz = torch.rand(
+            N_gaussians,
+            3,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        camera_T_world = torch.zeros(
+            4,
+            4,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        test = torch.autograd.gradcheck(
+            PrecomputeRGBFromSH.apply,
+            (sh_coeffs, xyz, camera_T_world),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
+    def test_compute_rgb_from_sh_16(self):
+        N_gaussians = 100
+        sh_coeffs = torch.ones(
+            N_gaussians,
+            3,
+            16,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=True,
+        )
+        xyz = torch.rand(
+            N_gaussians,
+            3,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        camera_T_world = torch.zeros(
+            4,
+            4,
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        test = torch.autograd.gradcheck(
+            PrecomputeRGBFromSH.apply,
+            (sh_coeffs, xyz, camera_T_world),
             raise_exception=True,
         )
         self.assertTrue(test)

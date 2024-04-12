@@ -2,6 +2,7 @@
 #define SPHERICAL_HARMONICS_CUH
 
 __device__ __constant__ const float SH_0 = 0.28209479177387814;
+__device__ __constant__ const float r_SH_0 = 3.544907701811032;
 // repeat same value to make sign management easier during SH calculation
 __device__ __constant__ const float SH_1[3] = {
     -0.4886025119029199,

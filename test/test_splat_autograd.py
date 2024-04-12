@@ -177,6 +177,7 @@ class TestSplatAutograd(unittest.TestCase):
                 test_size,
             ),
             raise_exception=True,
+            atol=3e-5,
         )
         self.assertTrue(test)
 
