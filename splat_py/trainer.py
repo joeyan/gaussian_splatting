@@ -4,26 +4,12 @@ import torch
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
 from splat_py.constants import *
-from splat_py.cuda_autograd_functions import (
-    CameraPointProjection,
-    ComputeSigmaWorld,
-    ComputeProjectionJacobian,
-    ComputeConic,
-    RenderImage,
-    PrecomputeRGBFromSH,
-)
 from splat_py.optimizer_manager import OptimizerManager
-from splat_py.structs import Gaussians, Tiles, SimpleTimer, GSMetrics
-from splat_py.splat import splat
-from splat_py.tile_culling import (
-    match_gaussians_to_tiles_gpu,
-    sort_gaussians,
-)
+from splat_py.structs import SimpleTimer, GSMetrics
+from splat_py.rasterize import rasterize
 from splat_py.utils import (
     inverse_sigmoid,
     quaternion_to_rotation_torch,
-    transform_points_torch,
-    compute_rays_in_world_frame,
 )
 
 
@@ -53,25 +39,6 @@ class GSTrainer:
                 self.images[image_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
             )
             self.images[image_idx].image = self.images[image_idx].image.to(torch.device("cuda"))
-
-    def check_nans(self):
-        if torch.any(~torch.isfinite(self.gaussians.xyz)):
-            print("NaN or inf in xyz")
-
-        if torch.any(~torch.isfinite(self.gaussians.quaternions)):
-            print("NaN or inf in quaternions")
-
-        if torch.any(~torch.isfinite(self.gaussians.scales)):
-            print("NaN or inf in scales")
-
-        if torch.any(~torch.isfinite(self.gaussians.opacities)):
-            print("NaN or inf in opacities")
-
-        if torch.any(~torch.isfinite(self.gaussians.rgb)):
-            print("NaN or inf in rgb")
-
-        if self.gaussians.sh is not None and torch.any(~torch.isfinite(self.gaussians.sh)):
-            print("NaN or inf in sh")
 
     def reset_grad_accum(self):
         # reset grad accumulators
@@ -233,7 +200,6 @@ class GSTrainer:
         if not (USE_DELETE or USE_CLONE or USE_SPLIT):
             return
         print("Adaptive_density control update")
-        self.check_nans()
 
         # Step 1. Delete gaussians
         # low opacity
@@ -294,7 +260,6 @@ class GSTrainer:
             self.split_gaussians(split_mask)
 
         self.reset_grad_accum()
-        self.check_nans()
 
     def compute_test_psnr(self, save_test_images=False, iter=0):
         with torch.no_grad():
@@ -304,7 +269,11 @@ class GSTrainer:
                 test_world_T_image = self.images[test_img_idx].world_T_image
                 test_camera = self.cameras[self.images[test_img_idx].camera_id]
 
-                test_image, _ = splat(self.gaussians, test_world_T_image, test_camera)
+                (
+                    test_image,
+                    _,
+                    _,
+                ) = rasterize(self.gaussians, test_world_T_image, test_camera)
                 gt_image = self.images[test_img_idx].image
                 l2_loss = torch.nn.functional.mse_loss(test_image.clip(0, 1), gt_image)
                 psnr = -10 * torch.log10(l2_loss).item()
@@ -328,103 +297,13 @@ class GSTrainer:
 
     def splat_and_compute_loss(self, image_idx, world_T_image, camera):
         with SimpleTimer("Splat Gaussians"):
-            xyz_camera_frame = transform_points_torch(self.gaussians.xyz, world_T_image)
-            uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
-            uv.retain_grad()
+            image, culling_mask, uv = rasterize(self.gaussians, world_T_image, camera)
+        uv.retain_grad()
 
-            # perform frustrum culling
-            culling_mask = torch.zeros(
-                xyz_camera_frame.shape[0],
-                dtype=torch.bool,
-                device=self.gaussians.xyz.device,
-            )
-            culling_mask = culling_mask | (xyz_camera_frame[:, 2] < NEAR_THRESH)
-            culling_mask = (
-                culling_mask
-                | (uv[:, 0] < -1 * CULL_MASK_PADDING)
-                | (uv[:, 0] > camera.width + CULL_MASK_PADDING)
-                | (uv[:, 1] < -1 * CULL_MASK_PADDING)
-                | (uv[:, 1] > camera.height + CULL_MASK_PADDING)
-            )
-
-            # cull gaussians outside of camera frustrum
-            culled_uv = uv[~culling_mask, :]
-            culled_xyz_camera_frame = xyz_camera_frame[~culling_mask, :]
-
-            if self.gaussians.sh is not None:
-                culled_gaussians = Gaussians(
-                    xyz=self.gaussians.xyz[~culling_mask, :],
-                    quaternions=self.gaussians.quaternions[~culling_mask, :],
-                    scales=self.gaussians.scales[~culling_mask, :],
-                    opacities=torch.sigmoid(
-                        self.gaussians.opacities[~culling_mask]
-                    ),  # apply sigmoid activation to opacities
-                    rgb=self.gaussians.rgb[~culling_mask, :],
-                    sh=self.gaussians.sh[~culling_mask, :],
-                )
-            else:
-                culled_gaussians = Gaussians(
-                    xyz=self.gaussians.xyz[~culling_mask, :],
-                    quaternions=self.gaussians.quaternions[~culling_mask, :],
-                    scales=self.gaussians.scales[~culling_mask, :],
-                    opacities=torch.sigmoid(
-                        self.gaussians.opacities[~culling_mask]
-                    ),  # apply sigmoid activation to opacities
-                    rgb=self.gaussians.rgb[~culling_mask, :],
-                )
-            sigma_world = ComputeSigmaWorld.apply(
-                culled_gaussians.quaternions, culled_gaussians.scales
-            )
-            J = ComputeProjectionJacobian.apply(culled_xyz_camera_frame, camera.K)
-            conic = ComputeConic.apply(sigma_world, J, world_T_image)
-
-            # perform tile culling
-            tiles = Tiles(camera.height, camera.width, culled_uv.device)
-            (
-                gaussian_idx_by_splat_idx,
-                splat_start_end_idx_by_tile_idx,
-                tile_idx_by_splat_idx,
-            ) = match_gaussians_to_tiles_gpu(culled_uv, tiles, conic, mh_dist=MH_DIST)
-
-            sorted_gaussian_idx_by_splat_idx = sort_gaussians(
-                culled_xyz_camera_frame,
-                gaussian_idx_by_splat_idx,
-                tile_idx_by_splat_idx,
-            )
-            with SimpleTimer("Compute Rays"):
-                rays = compute_rays_in_world_frame(camera, world_T_image)
-
-            if culled_gaussians.sh is not None:
-                sh_coeffs = torch.cat(
-                    (culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2
-                )
-                if USE_SH_PRECOMPUTE:
-                    with SimpleTimer("Precompute RGB from SH"):
-                        render_rgb = PrecomputeRGBFromSH.apply(
-                            sh_coeffs,
-                            culled_gaussians.xyz,
-                            torch.inverse(world_T_image).contiguous(),
-                        )
-                else:
-                    render_rgb = sh_coeffs
-            else:
-                render_rgb = culled_gaussians.rgb
-
-            image = RenderImage.apply(
-                render_rgb,
-                culled_gaussians.opacities,
-                culled_uv,
-                conic,
-                rays,
-                splat_start_end_idx_by_tile_idx,
-                sorted_gaussian_idx_by_splat_idx,
-                torch.tensor([camera.height, camera.width], device=culled_uv.device),
-            )
         gt_image = self.images[image_idx].image
-
         l1_loss = torch.nn.functional.l1_loss(image, gt_image)
 
-        # print PSNR
+        # for debug only
         l2_loss = torch.nn.functional.mse_loss(image, gt_image)
         psnr = -10 * torch.log10(l2_loss)
 
@@ -444,7 +323,7 @@ class GSTrainer:
         uv_grad[:, 0] = uv_grad[:, 0] * camera.K[0, 0]
         uv_grad[:, 1] = uv_grad[:, 1] * camera.K[1, 1]
 
-        self.uv_grad_accum += torch.abs(uv_grad)
+        self.uv_grad_accum[~culling_mask] += torch.abs(uv_grad)
         self.xyz_grad_accum += torch.abs(self.gaussians.xyz.grad.detach())
         self.grad_accum_count += (~culling_mask).int()
 

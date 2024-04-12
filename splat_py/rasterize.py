@@ -17,7 +17,7 @@ from splat_py.tile_culling import (
 )
 
 
-def splat(gaussians, world_T_image, camera):
+def rasterize(gaussians, world_T_image, camera):
     xyz_camera_frame = transform_points_torch(gaussians.xyz, world_T_image)
     uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
 
@@ -99,4 +99,4 @@ def splat(gaussians, world_T_image, camera):
         sorted_gaussian_idx_by_splat_idx,
         torch.tensor([camera.height, camera.width], device=uv.device),
     )
-    return image, culling_mask
+    return image, culling_mask, uv
