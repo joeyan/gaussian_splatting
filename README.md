@@ -12,7 +12,7 @@ The forward and backward pass algorithms are detailed in MATH.md
 Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This corresponds to the 2x downsampled indoor scenes and 4x downsampled outdoor scenes. Every 8th image was used for the test split.
 
 
-Here are some comparisons with the with the official implementation. 
+Here are some comparisons with the with the official implementation (copied from "Per-Scene Error Metrics).
 
 
 | Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
@@ -20,16 +20,16 @@ Here are some comparisons with the with the official implementation.
 | Official-30k | Garden 1/4x | 27.41| 0.87 |             | ~35-45min (A6000)|
 | Ours-30k     | Garden 1/4x | 26.86| 0.85 | 2.78M       | ~21min (RTX4090) |
 | Official-30k | Counter 1/2x| 28.70| 0.90 |             |                  |
-| Ours-30k     | Counter 1/2x| 28.28| 0.90 | 1.47M       | ~35min (RTX4090) |
+| Ours-30k     | Counter 1/2x| 28.60| 0.90 | 2.01M       | ~26min (RTX4090) |
 | Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
-| Ours-30k     | Bonsai  1/2x| 31.65| 0.94 | 2.01M       | ~45min (RTX4090) |
+| Ours-30k     | Bonsai  1/2x| 31.45| 0.94 | 0.84M       | ~18min (RTX4090) |
 | Official-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
-| Ours-7k      | Bonsai 1/2x | 29.84| 0.93 | 1.65M       | ~7min  (RTX4090) |
+| Ours-7k      | Bonsai 1/2x | 29.98| 0.93 | 1.16M       | ~4min  (RTX4090) |
 | Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k      | Garden 1/4x | 25.47| 0.78 | 1.13M       | ~5min  (RTX4090) |
+| Ours-7k      | Garden 1/4x | 25.39| 0.78 | 0.88M       | ~3min  (RTX4090) |
 
 
-*The training time is not directly comparable between the different GPUs. The RTX4090 is faster than the A6000. The performance between the two methods should be similar.
+*The training time is not directly comparable between the different GPUs. The RTX4090 is faster than the A6000. The training speed between the two methods should be similar.
 
 The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
 
