@@ -12,7 +12,7 @@ The forward and backward pass algorithms are detailed in MATH.md
 Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This corresponds to the 2x downsampled indoor scenes and 4x downsampled outdoor scenes. Every 8th image was used for the test split.
 
 
-Here are some comparisons with the with the official implementation (copied from "Per-Scene Error Metrics).
+Here are some comparisons with the with the official implementation (copied from "Per-Scene Error Metrics").
 
 
 | Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
