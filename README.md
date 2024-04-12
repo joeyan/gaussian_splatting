@@ -18,7 +18,7 @@ Here are some comparisons with the with the official implementation.
 | Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
 |--------------|-------------|------|------|-------------|------------------|
 | Official-30k | Garden 1/4x | 27.41| 0.87 |             | ~35-45min (A6000)|
-| Ours-30k     | Garden 1/4x | 26.94| 0.85 | 2.99M       | ~37min (RTX4090) |
+| Ours-30k     | Garden 1/4x | 26.86| 0.85 | 2.78M       | ~21min (RTX4090) |
 | Official-30k | Counter 1/2x| 28.70| 0.90 |             |                  |
 | Ours-30k     | Counter 1/2x| 28.28| 0.90 | 1.47M       | ~35min (RTX4090) |
 | Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
@@ -29,7 +29,7 @@ Here are some comparisons with the with the official implementation.
 | Ours-7k      | Garden 1/4x | 25.47| 0.78 | 1.13M       | ~5min  (RTX4090) |
 
 
-*The training time is not directly comparable between the different GPUs. The RTX4090 should be faster than the A6000. Our implementation is most likely slower than the official implementation at the moment.
+*The training time is not directly comparable between the different GPUs. The RTX4090 is faster than the A6000. The performance between the two methods should be similar.
 
 The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
 

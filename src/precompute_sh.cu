@@ -3,11 +3,14 @@
 #include "checks.cuh"
 #include "spherical_harmonics.cuh"
 
+//(TODO) remove N_SH templating
 template <typename T, unsigned int N_SH>
 __global__ void precompute_rgb_from_sh_kernel(
     const T* __restrict__ xyz,
     const T* __restrict__ sh_coeff,
-    const T* __restrict__ camera_T_world,
+    const T camera_x,
+    const T camera_y,
+    const T camera_z,
     const unsigned int N,
     T* __restrict__ rgb
 ) {
@@ -23,12 +26,10 @@ __global__ void precompute_rgb_from_sh_kernel(
         }
     } else {
         // compute normalized view direction
-        const T camera_center[3] = {
-            camera_T_world[0 * 4 + 3], camera_T_world[1 * 4 + 3], camera_T_world[2 * 4 + 3]};
         T view_dir[3] = {
-            xyz[gaussian_idx * 3 + 0] - camera_center[0],
-            xyz[gaussian_idx * 3 + 1] - camera_center[1],
-            xyz[gaussian_idx * 3 + 2] - camera_center[2]};
+            xyz[gaussian_idx * 3 + 0] - camera_x,
+            xyz[gaussian_idx * 3 + 1] - camera_y,
+            xyz[gaussian_idx * 3 + 2] - camera_z};
         const T r_view_dir_norm = rsqrt(
             view_dir[0] * view_dir[0] + view_dir[1] * view_dir[1] + view_dir[2] * view_dir[2]
         );
@@ -59,7 +60,9 @@ __global__ void precompute_rgb_from_sh_kernel(
 template <typename T, unsigned int N_SH>
 __global__ void precompute_rgb_from_sh_backward_kernel(
     const T* __restrict__ xyz,
-    const T* __restrict__ camera_T_world,
+    const T camera_x,
+    const T camera_y,
+    const T camera_z,
     const T* __restrict__ grad_rgb,
     const unsigned int N,
     T* __restrict__ grad_sh
@@ -75,12 +78,10 @@ __global__ void precompute_rgb_from_sh_backward_kernel(
         }
     } else {
         // compute normalized view direction
-        const T camera_center[3] = {
-            camera_T_world[0 * 4 + 3], camera_T_world[1 * 4 + 3], camera_T_world[2 * 4 + 3]};
         T view_dir[3] = {
-            xyz[gaussian_idx * 3 + 0] - camera_center[0],
-            xyz[gaussian_idx * 3 + 1] - camera_center[1],
-            xyz[gaussian_idx * 3 + 2] - camera_center[2]};
+            xyz[gaussian_idx * 3 + 0] - camera_x,
+            xyz[gaussian_idx * 3 + 1] - camera_y,
+            xyz[gaussian_idx * 3 + 2] - camera_z};
         const T r_view_dir_norm = rsqrt(
             view_dir[0] * view_dir[0] + view_dir[1] * view_dir[1] + view_dir[2] * view_dir[2]
         );
@@ -121,12 +122,19 @@ void precompute_rgb_from_sh_cuda(
     CHECK_VALID_INPUT(rgb);
 
     const int N = xyz.size(0);
+    TORCH_CHECK(xyz.size(1) == 3, "Input xyz should have 3 channels");
+    TORCH_CHECK(sh_coeff.size(0) == N, "N xyz and sh_coeff should match");
+    TORCH_CHECK(sh_coeff.size(1) == 3, "SH coefficients should have 3 channels");
     int num_sh_coeff;
     if (sh_coeff.dim() == 3) {
         num_sh_coeff = sh_coeff.size(2);
     } else {
         num_sh_coeff = 1;
     }
+    TORCH_CHECK(camera_T_world.size(0) == 4, "camera_T_world should be 4x4 transformation matrix");
+    TORCH_CHECK(camera_T_world.size(1) == 4, "camera_T_world should be 4x4 transformation matrix");
+    TORCH_CHECK(rgb.size(0) == N, "N xyz and rgb should match");
+    TORCH_CHECK(rgb.size(1) == 3, "Output rgb should have 3 channels");
 
     const int max_threads_per_block = 1024;
     const int num_blocks = (N + max_threads_per_block - 1) / max_threads_per_block;
@@ -134,11 +142,20 @@ void precompute_rgb_from_sh_cuda(
     dim3 blocksize(max_threads_per_block, 1, 1);
 
     if (xyz.dtype() == torch::kFloat32) {
+        CHECK_FLOAT_TENSOR(sh_coeff);
+        CHECK_FLOAT_TENSOR(camera_T_world);
+        CHECK_FLOAT_TENSOR(rgb);
+
+        const float camera_x = camera_T_world[0][3].item<float>();
+        const float camera_y = camera_T_world[1][3].item<float>();
+        const float camera_z = camera_T_world[2][3].item<float>();
         if (num_sh_coeff == 1) {
             precompute_rgb_from_sh_kernel<float, 1><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
                 sh_coeff.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<float>()
             );
@@ -146,7 +163,9 @@ void precompute_rgb_from_sh_cuda(
             precompute_rgb_from_sh_kernel<float, 4><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
                 sh_coeff.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<float>()
             );
@@ -154,7 +173,9 @@ void precompute_rgb_from_sh_cuda(
             precompute_rgb_from_sh_kernel<float, 9><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
                 sh_coeff.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<float>()
             );
@@ -162,7 +183,9 @@ void precompute_rgb_from_sh_cuda(
             precompute_rgb_from_sh_kernel<float, 16><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
                 sh_coeff.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<float>()
             );
@@ -170,11 +193,20 @@ void precompute_rgb_from_sh_cuda(
             AT_ERROR("Unsupported number of SH coefficients: ", num_sh_coeff);
         }
     } else if (xyz.dtype() == torch::kFloat64) {
+        CHECK_DOUBLE_TENSOR(sh_coeff);
+        CHECK_DOUBLE_TENSOR(camera_T_world);
+        CHECK_DOUBLE_TENSOR(rgb);
+
+        const double camera_x = camera_T_world[0][3].item<double>();
+        const double camera_y = camera_T_world[1][3].item<double>();
+        const double camera_z = camera_T_world[2][3].item<double>();
         if (num_sh_coeff == 1) {
             precompute_rgb_from_sh_kernel<double, 1><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
                 sh_coeff.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<double>()
             );
@@ -182,7 +214,9 @@ void precompute_rgb_from_sh_cuda(
             precompute_rgb_from_sh_kernel<double, 4><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
                 sh_coeff.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<double>()
             );
@@ -190,7 +224,9 @@ void precompute_rgb_from_sh_cuda(
             precompute_rgb_from_sh_kernel<double, 9><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
                 sh_coeff.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<double>()
             );
@@ -198,7 +234,9 @@ void precompute_rgb_from_sh_cuda(
             precompute_rgb_from_sh_kernel<double, 16><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
                 sh_coeff.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 N,
                 rgb.data_ptr<double>()
             );
@@ -223,6 +261,13 @@ void precompute_rgb_from_sh_backward_cuda(
     CHECK_VALID_INPUT(grad_sh);
 
     const int N = xyz.size(0);
+    TORCH_CHECK(xyz.size(1) == 3, "Input xyz should have 3 channels");
+    TORCH_CHECK(camera_T_world.size(0) == 4, "camera_T_world should be 4x4 transformation matrix");
+    TORCH_CHECK(camera_T_world.size(1) == 4, "camera_T_world should be 4x4 transformation matrix");
+    TORCH_CHECK(grad_rgb.size(0) == N, "N xyz and grad_rgb should match");
+    TORCH_CHECK(grad_rgb.size(1) == 3, "Input grad_rgb should have 3 channels");
+    TORCH_CHECK(grad_sh.size(0) == N, "N xyz and grad_sh should match");
+    TORCH_CHECK(grad_sh.size(1) == 3, "Output grad_sh should have 3 channels");
     int num_sh_coeff;
     if (grad_sh.dim() == 3) {
         num_sh_coeff = grad_sh.size(2);
@@ -236,10 +281,19 @@ void precompute_rgb_from_sh_backward_cuda(
     dim3 blocksize(max_threads_per_block, 1, 1);
 
     if (xyz.dtype() == torch::kFloat32) {
+        CHECK_FLOAT_TENSOR(camera_T_world);
+        CHECK_FLOAT_TENSOR(grad_rgb);
+        CHECK_FLOAT_TENSOR(grad_sh);
+
+        const float camera_x = camera_T_world[0][3].item<float>();
+        const float camera_y = camera_T_world[1][3].item<float>();
+        const float camera_z = camera_T_world[2][3].item<float>();
         if (num_sh_coeff == 1) {
             precompute_rgb_from_sh_backward_kernel<float, 1><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<float>(),
                 N,
                 grad_sh.data_ptr<float>()
@@ -247,7 +301,9 @@ void precompute_rgb_from_sh_backward_cuda(
         } else if (num_sh_coeff == 4) {
             precompute_rgb_from_sh_backward_kernel<float, 4><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<float>(),
                 N,
                 grad_sh.data_ptr<float>()
@@ -255,7 +311,9 @@ void precompute_rgb_from_sh_backward_cuda(
         } else if (num_sh_coeff == 9) {
             precompute_rgb_from_sh_backward_kernel<float, 9><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<float>(),
                 N,
                 grad_sh.data_ptr<float>()
@@ -263,7 +321,9 @@ void precompute_rgb_from_sh_backward_cuda(
         } else if (num_sh_coeff == 16) {
             precompute_rgb_from_sh_backward_kernel<float, 16><<<gridsize, blocksize>>>(
                 xyz.data_ptr<float>(),
-                camera_T_world.data_ptr<float>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<float>(),
                 N,
                 grad_sh.data_ptr<float>()
@@ -272,10 +332,19 @@ void precompute_rgb_from_sh_backward_cuda(
             AT_ERROR("Unsupported number of SH coefficients: ", num_sh_coeff);
         }
     } else if (xyz.dtype() == torch::kFloat64) {
+        CHECK_DOUBLE_TENSOR(camera_T_world);
+        CHECK_DOUBLE_TENSOR(grad_rgb);
+        CHECK_DOUBLE_TENSOR(grad_sh);
+
+        const double camera_x = camera_T_world[0][3].item<double>();
+        const double camera_y = camera_T_world[1][3].item<double>();
+        const double camera_z = camera_T_world[2][3].item<double>();
         if (num_sh_coeff == 1) {
             precompute_rgb_from_sh_backward_kernel<double, 1><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<double>(),
                 N,
                 grad_sh.data_ptr<double>()
@@ -283,7 +352,9 @@ void precompute_rgb_from_sh_backward_cuda(
         } else if (num_sh_coeff == 4) {
             precompute_rgb_from_sh_backward_kernel<double, 4><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<double>(),
                 N,
                 grad_sh.data_ptr<double>()
@@ -291,7 +362,9 @@ void precompute_rgb_from_sh_backward_cuda(
         } else if (num_sh_coeff == 9) {
             precompute_rgb_from_sh_backward_kernel<double, 9><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<double>(),
                 N,
                 grad_sh.data_ptr<double>()
@@ -299,7 +372,9 @@ void precompute_rgb_from_sh_backward_cuda(
         } else if (num_sh_coeff == 16) {
             precompute_rgb_from_sh_backward_kernel<double, 16><<<gridsize, blocksize>>>(
                 xyz.data_ptr<double>(),
-                camera_T_world.data_ptr<double>(),
+                camera_x,
+                camera_y,
+                camera_z,
                 grad_rgb.data_ptr<double>(),
                 N,
                 grad_sh.data_ptr<double>()
