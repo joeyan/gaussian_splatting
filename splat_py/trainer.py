@@ -58,10 +58,10 @@ class GSTrainer:
             device=self.gaussians.xyz.device,
         )
 
-    def reset_opacities(self):
-        print("\t\tResetting opacities")
-        self.gaussians.opacities = torch.nn.Parameter(
-            torch.ones_like(self.gaussians.opacities) * inverse_sigmoid(INITIAL_OPACITY)
+    def reset_opacity(self):
+        print("\t\tResetting opacity")
+        self.gaussians.opacity = torch.nn.Parameter(
+            torch.ones_like(self.gaussians.opacity) * inverse_sigmoid(INITIAL_OPACITY)
         )
         self.optimizer_manager.reset_opacity_exp_avg(self.gaussians)
         self.reset_grad_accum()
@@ -115,9 +115,9 @@ class GSTrainer:
         # create cloned gaussians
         cloned_xyz = self.gaussians.xyz[clone_mask, :].clone().detach()
         cloned_xyz -= xyz_grad_avg[clone_mask, :] * 0.01
-        cloned_quaternions = self.gaussians.quaternions[clone_mask, :].clone().detach()
-        cloned_scales = self.gaussians.scales[clone_mask, :].clone().detach()
-        cloned_opacities = self.gaussians.opacities[clone_mask].clone().detach()
+        cloned_quaternion = self.gaussians.quaternion[clone_mask, :].clone().detach()
+        cloned_scale = self.gaussians.scale[clone_mask, :].clone().detach()
+        cloned_opacity = self.gaussians.opacity[clone_mask].clone().detach()
         cloned_rgb = self.gaussians.rgb[clone_mask, :].clone().detach()
         if self.gaussians.sh is not None:
             cloned_sh = self.gaussians.sh[clone_mask, :].clone().detach()
@@ -138,14 +138,14 @@ class GSTrainer:
             self.gaussians.append(
                 cloned_xyz,
                 cloned_rgb,
-                cloned_opacities,
-                cloned_scales,
-                cloned_quaternions,
+                cloned_opacity,
+                cloned_scale,
+                cloned_quaternion,
                 cloned_sh,
             )
         else:
             self.gaussians.append(
-                cloned_xyz, cloned_rgb, cloned_opacities, cloned_scales, cloned_quaternions
+                cloned_xyz, cloned_rgb, cloned_opacity, cloned_scale, cloned_quaternion
             )
         self.optimizer_manager.add_gaussians_to_optimizer(
             self.gaussians, torch.sum(clone_mask).detach().cpu().numpy()
@@ -154,11 +154,11 @@ class GSTrainer:
     def split_gaussians(self, split_mask):
         samples = NUM_SPLIT_SAMPLES
         # create split gaussians
-        split_quaternions = (
-            self.gaussians.quaternions[split_mask, :].clone().detach().repeat(samples, 1)
+        split_quaternion = (
+            self.gaussians.quaternion[split_mask, :].clone().detach().repeat(samples, 1)
         )
-        split_scales = self.gaussians.scales[split_mask, :].clone().detach().repeat(samples, 1)
-        split_opacities = self.gaussians.opacities[split_mask].clone().detach().repeat(samples, 1)
+        split_scale = self.gaussians.scale[split_mask, :].clone().detach().repeat(samples, 1)
+        split_opacity = self.gaussians.opacity[split_mask].clone().detach().repeat(samples, 1)
         split_rgb = self.gaussians.rgb[split_mask, :].clone().detach().repeat(samples, 1)
         if self.gaussians.sh is not None:
             split_sh = self.gaussians.sh[split_mask, :].clone().detach().repeat(samples, 1, 1)
@@ -167,18 +167,18 @@ class GSTrainer:
         # centered random samples
         random_samples = torch.rand(split_mask.sum() * samples, 3, device=self.gaussians.xyz.device)
         # scale by scale factors
-        scale_factors = torch.exp(split_scales)
+        scale_factors = torch.exp(split_scale)
         random_samples = random_samples * scale_factors
-        # rotate by quaternions
-        split_quaternions = split_quaternions / torch.norm(split_quaternions, dim=1, keepdim=True)
-        split_rotations = quaternion_to_rotation_torch(split_quaternions)
+        # rotate by quaternion
+        split_quaternion = split_quaternion / torch.norm(split_quaternion, dim=1, keepdim=True)
+        split_rotations = quaternion_to_rotation_torch(split_quaternion)
 
         random_samples = torch.bmm(split_rotations, random_samples.unsqueeze(-1)).squeeze(-1)
         # translate by original mean locations
         split_xyz += random_samples
 
-        # update scales
-        split_scales = torch.log(torch.exp(split_scales) / SPLIT_SCALE_FACTOR)
+        # update scale
+        split_scale = torch.log(torch.exp(split_scale) / SPLIT_SCALE_FACTOR)
 
         # delete original split gaussians
         self.delete_gaussians(~split_mask)
@@ -186,11 +186,11 @@ class GSTrainer:
         # add split gaussians
         if self.gaussians.sh is not None:
             self.gaussians.append(
-                split_xyz, split_rgb, split_opacities, split_scales, split_quaternions, split_sh
+                split_xyz, split_rgb, split_opacity, split_scale, split_quaternion, split_sh
             )
         else:
             self.gaussians.append(
-                split_xyz, split_rgb, split_opacities, split_scales, split_quaternions
+                split_xyz, split_rgb, split_opacity, split_scale, split_quaternion
             )
         self.optimizer_manager.add_gaussians_to_optimizer(
             self.gaussians, torch.sum(split_mask).detach().cpu().numpy() * samples
@@ -203,7 +203,7 @@ class GSTrainer:
 
         # Step 1. Delete gaussians
         # low opacity
-        keep_mask = self.gaussians.opacities > inverse_sigmoid(DELETE_OPACITY_THRESHOLD)
+        keep_mask = self.gaussians.opacity > inverse_sigmoid(DELETE_OPACITY_THRESHOLD)
         keep_mask = keep_mask.squeeze(1)
         print("\tlow opacity mask: ", torch.sum(~keep_mask).detach().cpu().numpy())
         # no views or grad
@@ -237,7 +237,7 @@ class GSTrainer:
             uv_split_val,
         )
 
-        scale_max = self.gaussians.scales.exp().max(dim=-1).values
+        scale_max = self.gaussians.scale.exp().max(dim=-1).values
         clone_mask = densify_mask & (scale_max <= CLONE_SCALE_THRESHOLD)
         print("\tClone Mask: ", torch.sum(clone_mask).detach().cpu().numpy())
 
@@ -371,7 +371,7 @@ class GSTrainer:
                 and i < RESET_OPACITY_END
                 and i % RESET_OPACITY_INTERVAL == 0
             ):
-                self.reset_opacities()
+                self.reset_opacity()
 
             if USE_SH_COEFF and i > 0 and i % ADD_SH_BAND_INTERVAL == 0:
                 self.add_sh_band()

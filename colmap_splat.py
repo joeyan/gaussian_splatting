@@ -51,9 +51,9 @@ with SimpleTimer("Load Colmap Data"):
     else:
         gaussians = colmap_data.create_gaussians()
         gaussians.xyz = torch.nn.Parameter(gaussians.xyz)
-        gaussians.quaternions = torch.nn.Parameter(gaussians.quaternions)
-        gaussians.scales = torch.nn.Parameter(gaussians.scales)
-        gaussians.opacities = torch.nn.Parameter(gaussians.opacities)
+        gaussians.quaternion = torch.nn.Parameter(gaussians.quaternion)
+        gaussians.scale = torch.nn.Parameter(gaussians.scale)
+        gaussians.opacity = torch.nn.Parameter(gaussians.opacity)
         gaussians.rgb = torch.nn.Parameter(gaussians.rgb)
 
     images = colmap_data.get_images()

@@ -47,22 +47,22 @@ class GaussianSplattingDataset:
         self.verify_loaded_points()
 
         N = self.xyz.shape[0]
-        initial_opacities = torch.ones(N, 1) * inverse_sigmoid(INITIAL_OPACITY)
+        initial_opacity = torch.ones(N, 1) * inverse_sigmoid(INITIAL_OPACITY)
         # compute scale based on the density of the points around each point
-        initial_scales = compute_initial_scale_from_sparse_points(
+        initial_scale = compute_initial_scale_from_sparse_points(
             self.xyz,
             num_neighbors=INITIAL_SCALE_NUM_NEIGHBORS,
             neighbor_dist_to_scale_factor=INITIAL_SCALE_FACTOR,
         )
-        initial_quaternions = torch.zeros(N, 4)
-        initial_quaternions[:, 0] = 1.0
+        initial_quaternion = torch.zeros(N, 4)
+        initial_quaternion[:, 0] = 1.0
 
         return Gaussians(
             xyz=self.xyz.to(self.device),
             rgb=self.rgb.to(self.device),
-            opacities=initial_opacities.to(self.device),
-            scales=initial_scales.to(self.device),
-            quaternions=initial_quaternions.to(self.device),
+            opacity=initial_opacity.to(self.device),
+            scale=initial_scale.to(self.device),
+            quaternion=initial_quaternion.to(self.device),
         )
 
     def get_images(self):

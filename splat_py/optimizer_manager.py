@@ -17,12 +17,12 @@ class OptimizerManager:
             [
                 {"params": gaussians.xyz, "lr": BASE_LR * XYZ_LR_MULTIPLIER},
                 {
-                    "params": gaussians.quaternions,
+                    "params": gaussians.quaternion,
                     "lr": BASE_LR * QUAT_LR_MULTIPLIER,
                 },
-                {"params": gaussians.scales, "lr": BASE_LR * SCALE_LR_MULTIPLIER},
+                {"params": gaussians.scale, "lr": BASE_LR * SCALE_LR_MULTIPLIER},
                 {
-                    "params": gaussians.opacities,
+                    "params": gaussians.opacity,
                     "lr": BASE_LR * OPACITY_LR_MULTIPLIER,
                 },
                 {"params": gaussians.rgb, "lr": BASE_LR * RGB_LR_MULTIPLIER},
@@ -34,7 +34,7 @@ class OptimizerManager:
             )
 
     def reset_opacity_exp_avg(self, gaussians):
-        # reset exp_avg and exp_avg_sq for opacities
+        # reset exp_avg and exp_avg_sq for opacity
         old_optimizer_param = self.optimizer.param_groups[3]["params"][0]
         optimizer_param_state = self.optimizer.state[old_optimizer_param]
         del self.optimizer.state[old_optimizer_param]
@@ -45,7 +45,7 @@ class OptimizerManager:
         del self.optimizer.param_groups[3]["params"][0]
         del self.optimizer.param_groups[3]["params"]
 
-        self.optimizer.param_groups[3]["params"] = [gaussians.opacities]
+        self.optimizer.param_groups[3]["params"] = [gaussians.opacity]
         self.optimizer.state[3] = optimizer_param_state
 
     def add_sh_to_optimizer(self, gaussians):
@@ -83,9 +83,9 @@ class OptimizerManager:
 
     def delete_gaussians_from_optimizer(self, updated_gaussians, keep_mask):
         self.delete_param_from_optimizer(updated_gaussians.xyz, keep_mask, 0)
-        self.delete_param_from_optimizer(updated_gaussians.quaternions, keep_mask, 1)
-        self.delete_param_from_optimizer(updated_gaussians.scales, keep_mask, 2)
-        self.delete_param_from_optimizer(updated_gaussians.opacities, keep_mask, 3)
+        self.delete_param_from_optimizer(updated_gaussians.quaternion, keep_mask, 1)
+        self.delete_param_from_optimizer(updated_gaussians.scale, keep_mask, 2)
+        self.delete_param_from_optimizer(updated_gaussians.opacity, keep_mask, 3)
         self.delete_param_from_optimizer(updated_gaussians.rgb, keep_mask, 4)
         if updated_gaussians.sh is not None:
             self.delete_param_from_optimizer(updated_gaussians.sh, keep_mask, 5)
@@ -156,9 +156,9 @@ class OptimizerManager:
 
     def add_gaussians_to_optimizer(self, updated_gaussians, num_added):
         self.add_params_to_optimizer(updated_gaussians.xyz, num_added, 0)
-        self.add_params_to_optimizer(updated_gaussians.quaternions, num_added, 1)
-        self.add_params_to_optimizer(updated_gaussians.scales, num_added, 2)
-        self.add_params_to_optimizer(updated_gaussians.opacities, num_added, 3)
+        self.add_params_to_optimizer(updated_gaussians.quaternion, num_added, 1)
+        self.add_params_to_optimizer(updated_gaussians.scale, num_added, 2)
+        self.add_params_to_optimizer(updated_gaussians.opacity, num_added, 3)
         self.add_params_to_optimizer(updated_gaussians.rgb, num_added, 4)
         if updated_gaussians.sh is not None:
             self.add_params_to_optimizer(updated_gaussians.sh, num_added, 5)

@@ -43,26 +43,26 @@ def rasterize(gaussians, world_T_image, camera):
     if gaussians.sh is not None:
         culled_gaussians = Gaussians(
             xyz=gaussians.xyz[~culling_mask, :],
-            quaternions=gaussians.quaternions[~culling_mask, :],
-            scales=gaussians.scales[~culling_mask, :],
-            opacities=torch.sigmoid(
-                gaussians.opacities[~culling_mask]
-            ),  # apply sigmoid activation to opacities
+            quaternion=gaussians.quaternion[~culling_mask, :],
+            scale=gaussians.scale[~culling_mask, :],
+            opacity=torch.sigmoid(
+                gaussians.opacity[~culling_mask]
+            ),  # apply sigmoid activation to opacity
             rgb=gaussians.rgb[~culling_mask, :],
             sh=gaussians.sh[~culling_mask, :],
         )
     else:
         culled_gaussians = Gaussians(
             xyz=gaussians.xyz[~culling_mask, :],
-            quaternions=gaussians.quaternions[~culling_mask, :],
-            scales=gaussians.scales[~culling_mask, :],
-            opacities=torch.sigmoid(
-                gaussians.opacities[~culling_mask]
-            ),  # apply sigmoid activation to opacities
+            quaternion=gaussians.quaternion[~culling_mask, :],
+            scale=gaussians.scale[~culling_mask, :],
+            opacity=torch.sigmoid(
+                gaussians.opacity[~culling_mask]
+            ),  # apply sigmoid activation to opacity
             rgb=gaussians.rgb[~culling_mask, :],
         )
 
-    sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternions, culled_gaussians.scales)
+    sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternion, culled_gaussians.scale)
     J = ComputeProjectionJacobian.apply(xyz_camera_frame, camera.K)
     conic = ComputeConic.apply(sigma_world, J, world_T_image)
 
@@ -93,7 +93,7 @@ def rasterize(gaussians, world_T_image, camera):
 
     image = RenderImage.apply(
         render_rgb,
-        culled_gaussians.opacities,
+        culled_gaussians.opacity,
         uv,
         conic,
         rays,

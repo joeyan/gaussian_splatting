@@ -40,17 +40,17 @@ void camera_projection_backward_cuda(
 );
 
 void compute_sigma_world_cuda(
-    torch::Tensor quaternions,
-    torch::Tensor scales,
+    torch::Tensor quaternion,
+    torch::Tensor scale,
     torch::Tensor sigma_world
 );
 
 void compute_sigma_world_backward_cuda(
-    torch::Tensor quaternions,
-    torch::Tensor scales,
+    torch::Tensor quaternion,
+    torch::Tensor scale,
     torch::Tensor sigma_world_grad_out,
-    torch::Tensor quaternions_grad_in,
-    torch::Tensor scales_grad_in
+    torch::Tensor quaternion_grad_in,
+    torch::Tensor scale_grad_in
 );
 
 void compute_projection_jacobian_cuda(torch::Tensor xyz, torch::Tensor K, torch::Tensor J);

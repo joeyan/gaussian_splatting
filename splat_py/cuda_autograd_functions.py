@@ -36,29 +36,29 @@ class CameraPointProjection(torch.autograd.Function):
 
 class ComputeSigmaWorld(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, quaternions, scales):
+    def forward(ctx, quaternion, scale):
         sigma_world = torch.zeros(
-            quaternions.shape[0],
+            quaternion.shape[0],
             3,
             3,
-            dtype=quaternions.dtype,
-            device=quaternions.device,
+            dtype=quaternion.dtype,
+            device=quaternion.device,
         )
-        compute_sigma_world_cuda(quaternions, scales, sigma_world)
-        ctx.save_for_backward(quaternions, scales)
+        compute_sigma_world_cuda(quaternion, scale, sigma_world)
+        ctx.save_for_backward(quaternion, scale)
         return sigma_world
 
     @staticmethod
     def backward(ctx, grad_sigma_world):
-        quaternions, scales = ctx.saved_tensors
-        grad_quaternions = torch.zeros(
-            quaternions.shape, dtype=quaternions.dtype, device=quaternions.device
+        quaternion, scale = ctx.saved_tensors
+        grad_quaternion = torch.zeros(
+            quaternion.shape, dtype=quaternion.dtype, device=quaternion.device
         )
-        grad_scales = torch.zeros(scales.shape, dtype=scales.dtype, device=scales.device)
+        grad_scale = torch.zeros(scale.shape, dtype=scale.dtype, device=scale.device)
         compute_sigma_world_backward_cuda(
-            quaternions, scales, grad_sigma_world, grad_quaternions, grad_scales
+            quaternion, scale, grad_sigma_world, grad_quaternion, grad_scale
         )
-        return grad_quaternions, grad_scales
+        return grad_quaternion, grad_scale
 
 
 class ComputeProjectionJacobian(torch.autograd.Function):

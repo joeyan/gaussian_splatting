@@ -14,7 +14,7 @@ class TestSplatFull(unittest.TestCase):
         self.assertTrue(torch.cuda.is_available())
         self.device = torch.device("cuda")
         self.gaussians, self.camera, self.world_T_image = get_test_data(self.device)
-        self.gaussians.opacities = inverse_sigmoid_torch(self.gaussians.opacities)
+        self.gaussians.opacity = inverse_sigmoid_torch(self.gaussians.opacity)
 
     def test_splat_gpu(self):
         image, _, _ = rasterize(self.gaussians, self.world_T_image, self.camera)

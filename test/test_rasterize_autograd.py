@@ -54,7 +54,7 @@ class TestRasterizeAutograd(unittest.TestCase):
         ) = match_gaussians_to_tiles_gpu(
             self.uv.float(), self.tiles, self.conic.float(), mh_dist=3.0
         )
-        self.opacities = torch.ones(
+        self.opacity = torch.ones(
             self.uv.shape[0],
             1,
             dtype=torch.float64,
@@ -81,7 +81,7 @@ class TestRasterizeAutograd(unittest.TestCase):
             RenderImage.apply,
             (
                 rgb,
-                self.opacities,
+                self.opacity,
                 self.uv,
                 self.conic,
                 self.rays,
@@ -110,7 +110,7 @@ class TestRasterizeAutograd(unittest.TestCase):
             RenderImage.apply,
             (
                 sh_coeff_4,
-                self.opacities,
+                self.opacity,
                 self.uv,
                 self.conic,
                 self.rays,
@@ -139,7 +139,7 @@ class TestRasterizeAutograd(unittest.TestCase):
             RenderImage.apply,
             (
                 sh_coeff_9,
-                self.opacities,
+                self.opacity,
                 self.uv,
                 self.conic,
                 self.rays,
@@ -168,7 +168,7 @@ class TestRasterizeAutograd(unittest.TestCase):
             RenderImage.apply,
             (
                 sh_coeff_16,
-                self.opacities,
+                self.opacity,
                 self.uv,
                 self.conic,
                 self.rays,

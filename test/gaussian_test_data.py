@@ -22,8 +22,8 @@ def get_test_gaussians(device):
     rgb[5, :] = torch.tensor([0.0, 0.0, 0.5], dtype=torch.float32, device=device)
     rgb = rgb / 0.28209479177387814
 
-    opacities = torch.ones(xyz.shape[0], 1, dtype=torch.float32, device=device)
-    scales = torch.tensor(
+    opacity = torch.ones(xyz.shape[0], 1, dtype=torch.float32, device=device)
+    scale = torch.tensor(
         [
             [0.02, 0.03, 0.04],
             [0.01, 0.05, 0.02],
@@ -36,8 +36,8 @@ def get_test_gaussians(device):
         device=device,
     )
     # using exp activation
-    scales = torch.log(scales)
-    quaternions = torch.tensor(
+    scale = torch.log(scale)
+    quaternion = torch.tensor(
         [
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -49,7 +49,7 @@ def get_test_gaussians(device):
         dtype=torch.float32,
         device=device,
     )
-    return Gaussians(xyz, rgb, opacities, scales, quaternions)
+    return Gaussians(xyz, rgb, opacity, scale, quaternion)
 
 
 def get_test_camera(device):

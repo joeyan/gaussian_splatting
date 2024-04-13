@@ -68,17 +68,17 @@ class Gaussians(torch.nn.Module):
         self,
         xyz,  # Nx3 [x, y, z]
         rgb,  # Nx3 [r, g, b] normalized to [0, 1]
-        opacities,  # Nx1 [opacity] from [0, 1]
-        scales,  # Nx3 [sx, sy, sz]
-        quaternions,  # Nx4 [qw, qx, qy, qz]
+        opacity,  # Nx1 [opacity] from [0, 1]
+        scale,  # Nx3 [sx, sy, sz]
+        quaternion,  # Nx4 [qw, qx, qy, qz]
         sh=None,
     ):
         super().__init__()
         self.xyz = xyz
         self.rgb = rgb
-        self.opacities = opacities
-        self.scales = scales
-        self.quaternions = quaternions
+        self.opacity = opacity
+        self.scale = scale
+        self.quaternion = quaternion
         self.sh = sh
 
         self.verify_sizes()
@@ -92,40 +92,40 @@ class Gaussians(torch.nn.Module):
         if self.sh is not None:
             assert self.sh.shape[0] == num_gaussians
 
-        assert self.opacities.shape[0] == num_gaussians
-        assert self.scales.shape[0] == num_gaussians
-        assert self.quaternions.shape[0] == num_gaussians
+        assert self.opacity.shape[0] == num_gaussians
+        assert self.scale.shape[0] == num_gaussians
+        assert self.quaternion.shape[0] == num_gaussians
 
         assert self.xyz.shape[1] == 3
         assert self.rgb.shape[1] == 3
         if self.sh is not None:
             assert self.sh.shape[1] == 3
 
-        assert self.opacities.shape[1] == 1
-        assert self.scales.shape[1] == 3
-        assert self.quaternions.shape[1] == 4
+        assert self.opacity.shape[1] == 1
+        assert self.scale.shape[1] == 3
+        assert self.quaternion.shape[1] == 4
 
     def filter_in_place(self, keep_mask):
         self.xyz = torch.nn.Parameter(self.xyz.detach()[keep_mask, :])
         self.rgb = torch.nn.Parameter(self.rgb.detach()[keep_mask, :])
         if self.sh is not None:
             self.sh = torch.nn.Parameter(self.sh.detach()[keep_mask, :])
-        self.opacities = torch.nn.Parameter(self.opacities.detach()[keep_mask])
-        self.scales = torch.nn.Parameter(self.scales.detach()[keep_mask, :])
-        self.quaternions = torch.nn.Parameter(self.quaternions.detach()[keep_mask, :])
+        self.opacity = torch.nn.Parameter(self.opacity.detach()[keep_mask])
+        self.scale = torch.nn.Parameter(self.scale.detach()[keep_mask, :])
+        self.quaternion = torch.nn.Parameter(self.quaternion.detach()[keep_mask, :])
         self.verify_sizes()
 
-    def append(self, xyz, rgb, opacities, scales, quaternions, sh=None):
+    def append(self, xyz, rgb, opacity, scale, quaternion, sh=None):
         self.xyz = torch.nn.Parameter(torch.cat((self.xyz.detach(), xyz.detach()), dim=0))
         self.rgb = torch.nn.Parameter(torch.cat((self.rgb.detach(), rgb.detach()), dim=0))
         if sh is not None:
             self.sh = torch.nn.Parameter(torch.cat((self.sh.detach(), sh.detach()), dim=0))
-        self.opacities = torch.nn.Parameter(
-            torch.cat((self.opacities.detach(), opacities.detach()), dim=0)
+        self.opacity = torch.nn.Parameter(
+            torch.cat((self.opacity.detach(), opacity.detach()), dim=0)
         )
-        self.scales = torch.nn.Parameter(torch.cat((self.scales.detach(), scales.detach()), dim=0))
-        self.quaternions = torch.nn.Parameter(
-            torch.cat((self.quaternions.detach(), quaternions.detach()), dim=0)
+        self.scale = torch.nn.Parameter(torch.cat((self.scale.detach(), scale.detach()), dim=0))
+        self.quaternion = torch.nn.Parameter(
+            torch.cat((self.quaternion.detach(), quaternion.detach()), dim=0)
         )
         self.verify_sizes()
 

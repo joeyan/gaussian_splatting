@@ -40,7 +40,7 @@ def compute_initial_scale_from_sparse_points(points, num_neighbors, neighbor_dis
 
 def quaternion_to_rotation_torch(q):
     """'
-    Convert tensor of normalized quaternions [N, 4] in [w, x, y, z] format to rotation matrices
+    Convert tensor of normalized quaternion [N, 4] in [w, x, y, z] format to rotation matrices
     [N, 3, 3]
     """
     rot = [
