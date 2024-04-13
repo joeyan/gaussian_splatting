@@ -140,7 +140,10 @@ void compute_sigma_world_cuda(
         CHECK_DOUBLE_TENSOR(scale);
         CHECK_DOUBLE_TENSOR(sigma_world);
         compute_sigma_world_kernel<double><<<gridsize, blocksize>>>(
-            quaternion.data_ptr<double>(), scale.data_ptr<double>(), N, sigma_world.data_ptr<double>()
+            quaternion.data_ptr<double>(),
+            scale.data_ptr<double>(),
+            N,
+            sigma_world.data_ptr<double>()
         );
     } else {
         AT_ERROR("Inputs must be float32 or float64");
