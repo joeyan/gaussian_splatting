@@ -172,12 +172,12 @@ void compute_projection_jacobian_backward_cuda(
 // https://discuss.pytorch.org/t/too-many-resources-requested-for-launch-when-use-gradcheck/9761
 template <typename T>
 __launch_bounds__(1024) __global__ void compute_sigma_world_backward_kernel(
-    const T* __restrict__ quaternions,
-    const T* __restrict__ scales,
+    const T* __restrict__ quaternion,
+    const T* __restrict__ scale,
     const T* __restrict__ sigma_world_grad_out,
     const int N,
-    T* quaternions_grad_in,
-    T* scales_grad_in
+    T* quaternion_grad_in,
+    T* scale_grad_in
 ) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= N) {
@@ -185,20 +185,20 @@ __launch_bounds__(1024) __global__ void compute_sigma_world_backward_kernel(
     }
     // compute scale
     T S[9];
-    S[0] = exp(scales[i * 3 + 0]);
+    S[0] = exp(scale[i * 3 + 0]);
     S[1] = 0;
     S[2] = 0;
     S[3] = 0;
-    S[4] = exp(scales[i * 3 + 1]);
+    S[4] = exp(scale[i * 3 + 1]);
     S[5] = 0;
     S[6] = 0;
     S[7] = 0;
-    S[8] = exp(scales[i * 3 + 2]);
+    S[8] = exp(scale[i * 3 + 2]);
 
-    T qw = quaternions[i * 4 + 0];
-    T qx = quaternions[i * 4 + 1];
-    T qy = quaternions[i * 4 + 2];
-    T qz = quaternions[i * 4 + 3];
+    T qw = quaternion[i * 4 + 0];
+    T qx = quaternion[i * 4 + 1];
+    T qy = quaternion[i * 4 + 2];
+    T qz = quaternion[i * 4 + 3];
 
     T norm_q = sqrt(qw * qw + qx * qx + qy * qy + qz * qz);
     T qw_norm = qw / norm_q;
@@ -271,9 +271,9 @@ __launch_bounds__(1024) __global__ void compute_sigma_world_backward_kernel(
     grad_S[8] += gradSRR[8];
 
     // write out scale gradients
-    scales_grad_in[i * 3 + 0] = grad_S[0] * exp(scales[i * 3 + 0]);
-    scales_grad_in[i * 3 + 1] = grad_S[4] * exp(scales[i * 3 + 1]);
-    scales_grad_in[i * 3 + 2] = grad_S[8] * exp(scales[i * 3 + 2]);
+    scale_grad_in[i * 3 + 0] = grad_S[0] * exp(scale[i * 3 + 0]);
+    scale_grad_in[i * 3 + 1] = grad_S[4] * exp(scale[i * 3 + 1]);
+    scale_grad_in[i * 3 + 2] = grad_S[8] * exp(scale[i * 3 + 2]);
 
     // compute gradient for normalized quaternion
     T grad_q_norm[4];
@@ -296,52 +296,52 @@ __launch_bounds__(1024) __global__ void compute_sigma_world_backward_kernel(
     // apply gradient for quaternion normalization
     T q_norm_cubed = norm_q * norm_q * norm_q; // (x^2 + y^2 + z^2 + w^2)^(3/2)
 
-    quaternions_grad_in[i * 4 + 0] = (1.0 / norm_q - qw * qw / q_norm_cubed) * grad_q_norm[0] -
-                                     qw * qx / q_norm_cubed * grad_q_norm[1] -
-                                     qw * qy / q_norm_cubed * grad_q_norm[2] -
-                                     qw * qz / q_norm_cubed * grad_q_norm[3];
-    quaternions_grad_in[i * 4 + 1] = -qw * qx / q_norm_cubed * grad_q_norm[0] +
-                                     (1.0 / norm_q - qx * qx / q_norm_cubed) * grad_q_norm[1] -
-                                     qx * qy / q_norm_cubed * grad_q_norm[2] -
-                                     qx * qz / q_norm_cubed * grad_q_norm[3];
-    quaternions_grad_in[i * 4 + 2] = -qw * qy / q_norm_cubed * grad_q_norm[0] -
-                                     qx * qy / q_norm_cubed * grad_q_norm[1] +
-                                     (1.0 / norm_q - qy * qy / q_norm_cubed) * grad_q_norm[2] -
-                                     qy * qz / q_norm_cubed * grad_q_norm[3];
-    quaternions_grad_in[i * 4 + 3] = -qw * qz / q_norm_cubed * grad_q_norm[0] -
-                                     qx * qz / q_norm_cubed * grad_q_norm[1] -
-                                     qy * qz / q_norm_cubed * grad_q_norm[2] +
-                                     (1.0 / norm_q - qz * qz / q_norm_cubed) * grad_q_norm[3];
+    quaternion_grad_in[i * 4 + 0] = (1.0 / norm_q - qw * qw / q_norm_cubed) * grad_q_norm[0] -
+                                    qw * qx / q_norm_cubed * grad_q_norm[1] -
+                                    qw * qy / q_norm_cubed * grad_q_norm[2] -
+                                    qw * qz / q_norm_cubed * grad_q_norm[3];
+    quaternion_grad_in[i * 4 + 1] = -qw * qx / q_norm_cubed * grad_q_norm[0] +
+                                    (1.0 / norm_q - qx * qx / q_norm_cubed) * grad_q_norm[1] -
+                                    qx * qy / q_norm_cubed * grad_q_norm[2] -
+                                    qx * qz / q_norm_cubed * grad_q_norm[3];
+    quaternion_grad_in[i * 4 + 2] = -qw * qy / q_norm_cubed * grad_q_norm[0] -
+                                    qx * qy / q_norm_cubed * grad_q_norm[1] +
+                                    (1.0 / norm_q - qy * qy / q_norm_cubed) * grad_q_norm[2] -
+                                    qy * qz / q_norm_cubed * grad_q_norm[3];
+    quaternion_grad_in[i * 4 + 3] = -qw * qz / q_norm_cubed * grad_q_norm[0] -
+                                    qx * qz / q_norm_cubed * grad_q_norm[1] -
+                                    qy * qz / q_norm_cubed * grad_q_norm[2] +
+                                    (1.0 / norm_q - qz * qz / q_norm_cubed) * grad_q_norm[3];
 }
 
 void compute_sigma_world_backward_cuda(
-    torch::Tensor quaternions,
-    torch::Tensor scales,
+    torch::Tensor quaternion,
+    torch::Tensor scale,
     torch::Tensor sigma_world_grad_out,
-    torch::Tensor quaternions_grad_in,
-    torch::Tensor scales_grad_in
+    torch::Tensor quaternion_grad_in,
+    torch::Tensor scale_grad_in
 ) {
-    CHECK_VALID_INPUT(quaternions);
-    CHECK_VALID_INPUT(scales);
+    CHECK_VALID_INPUT(quaternion);
+    CHECK_VALID_INPUT(scale);
     CHECK_VALID_INPUT(sigma_world_grad_out);
-    CHECK_VALID_INPUT(quaternions_grad_in);
-    CHECK_VALID_INPUT(scales_grad_in);
+    CHECK_VALID_INPUT(quaternion_grad_in);
+    CHECK_VALID_INPUT(scale_grad_in);
 
-    const int N = quaternions.size(0);
-    TORCH_CHECK(quaternions.size(1) == 4, "quaternions must be of shape Nx4");
-    TORCH_CHECK(scales.size(0) == N && scales.size(1) == 3, "scales must be of shape Nx3");
+    const int N = quaternion.size(0);
+    TORCH_CHECK(quaternion.size(1) == 4, "quaternion must be of shape Nx4");
+    TORCH_CHECK(scale.size(0) == N && scale.size(1) == 3, "scale must be of shape Nx3");
     TORCH_CHECK(
         sigma_world_grad_out.size(0) == N && sigma_world_grad_out.size(1) == 3 &&
             sigma_world_grad_out.size(2) == 3,
         "sigma_world_grad_out must be of shape Nx3x3"
     );
     TORCH_CHECK(
-        quaternions_grad_in.size(0) == N && quaternions_grad_in.size(1) == 4,
-        "quaternions_grad_in must be of shape Nx4"
+        quaternion_grad_in.size(0) == N && quaternion_grad_in.size(1) == 4,
+        "quaternion_grad_in must be of shape Nx4"
     );
     TORCH_CHECK(
-        scales_grad_in.size(0) == N && scales_grad_in.size(1) == 3,
-        "scales_grad_in must be of shape Nx3"
+        scale_grad_in.size(0) == N && scale_grad_in.size(1) == 3,
+        "scale_grad_in must be of shape Nx3"
     );
 
     const int max_threads_per_block = 1024;
@@ -349,31 +349,31 @@ void compute_sigma_world_backward_cuda(
     dim3 gridsize(num_blocks, 1, 1);
     dim3 blocksize(max_threads_per_block, 1, 1);
 
-    if (quaternions.dtype() == torch::kFloat32) {
-        CHECK_FLOAT_TENSOR(scales);
+    if (quaternion.dtype() == torch::kFloat32) {
+        CHECK_FLOAT_TENSOR(scale);
         CHECK_FLOAT_TENSOR(sigma_world_grad_out);
-        CHECK_FLOAT_TENSOR(quaternions_grad_in);
-        CHECK_FLOAT_TENSOR(scales_grad_in);
+        CHECK_FLOAT_TENSOR(quaternion_grad_in);
+        CHECK_FLOAT_TENSOR(scale_grad_in);
         compute_sigma_world_backward_kernel<float><<<gridsize, blocksize>>>(
-            quaternions.data_ptr<float>(),
-            scales.data_ptr<float>(),
+            quaternion.data_ptr<float>(),
+            scale.data_ptr<float>(),
             sigma_world_grad_out.data_ptr<float>(),
             N,
-            quaternions_grad_in.data_ptr<float>(),
-            scales_grad_in.data_ptr<float>()
+            quaternion_grad_in.data_ptr<float>(),
+            scale_grad_in.data_ptr<float>()
         );
-    } else if (quaternions.dtype() == torch::kFloat64) {
-        CHECK_DOUBLE_TENSOR(scales);
+    } else if (quaternion.dtype() == torch::kFloat64) {
+        CHECK_DOUBLE_TENSOR(scale);
         CHECK_DOUBLE_TENSOR(sigma_world_grad_out);
-        CHECK_DOUBLE_TENSOR(quaternions_grad_in);
-        CHECK_DOUBLE_TENSOR(scales_grad_in);
+        CHECK_DOUBLE_TENSOR(quaternion_grad_in);
+        CHECK_DOUBLE_TENSOR(scale_grad_in);
         compute_sigma_world_backward_kernel<double><<<gridsize, blocksize>>>(
-            quaternions.data_ptr<double>(),
-            scales.data_ptr<double>(),
+            quaternion.data_ptr<double>(),
+            scale.data_ptr<double>(),
             sigma_world_grad_out.data_ptr<double>(),
             N,
-            quaternions_grad_in.data_ptr<double>(),
-            scales_grad_in.data_ptr<double>()
+            quaternion_grad_in.data_ptr<double>(),
+            scale_grad_in.data_ptr<double>()
         );
     } else {
         AT_ERROR("Inputs must be float32 or float64");

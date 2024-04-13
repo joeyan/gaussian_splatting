@@ -65,7 +65,7 @@ class ProjectionTest(unittest.TestCase):
         )
 
     def test_compute_sigma_world(self):
-        sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternions, self.gaussians.scales)
+        sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternion, self.gaussians.scale)
 
         self.assertEqual(sigma_world.shape, (6, 3, 3))
         # check first sigma_world
@@ -107,7 +107,7 @@ class ProjectionTest(unittest.TestCase):
 
     def test_compute_conic(self):
         # compute inputs (tested in previous tests)
-        sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternions, self.gaussians.scales)
+        sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternion, self.gaussians.scale)
         xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
         jacobian = ComputeProjectionJacobian.apply(xyz_camera_frame, self.camera.K)
 

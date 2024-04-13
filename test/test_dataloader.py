@@ -37,12 +37,12 @@ class TestColmapData(unittest.TestCase):
         self.assertEqual(gaussians.xyz.shape[1], 3)
         self.assertEqual(gaussians.rgb.shape[0], 138766)
         self.assertEqual(gaussians.rgb.shape[1], 3)
-        self.assertEqual(gaussians.opacities.shape[0], 138766)
-        self.assertEqual(gaussians.opacities.shape[1], 1)
-        self.assertEqual(gaussians.scales.shape[0], 138766)
-        self.assertEqual(gaussians.scales.shape[1], 3)
-        self.assertEqual(gaussians.quaternions.shape[0], 138766)
-        self.assertEqual(gaussians.quaternions.shape[1], 4)
+        self.assertEqual(gaussians.opacity.shape[0], 138766)
+        self.assertEqual(gaussians.opacity.shape[1], 1)
+        self.assertEqual(gaussians.scale.shape[0], 138766)
+        self.assertEqual(gaussians.scale.shape[1], 3)
+        self.assertEqual(gaussians.quaternion.shape[0], 138766)
+        self.assertEqual(gaussians.quaternion.shape[1], 4)
 
         self.assertAlmostEqual(gaussians.xyz[0, 0].item(), 5.048415184)
         self.assertAlmostEqual(gaussians.xyz[0, 1].item(), 1.673997640)
@@ -52,16 +52,16 @@ class TestColmapData(unittest.TestCase):
         self.assertAlmostEqual(gaussians.rgb[0, 1].item(), 0.48655596375465393)
         self.assertAlmostEqual(gaussians.rgb[0, 2].item(), 0.06950799375772476)
 
-        self.assertAlmostEqual(gaussians.opacities[0, 0].item(), -1.3862943649)
+        self.assertAlmostEqual(gaussians.opacity[0, 0].item(), -1.3862943649)
 
-        self.assertAlmostEqual(gaussians.scales[0, 0].item(), -3.722839117050171)
-        self.assertAlmostEqual(gaussians.scales[0, 1].item(), -3.722839117050171)
-        self.assertAlmostEqual(gaussians.scales[0, 2].item(), -3.722839117050171)
+        self.assertAlmostEqual(gaussians.scale[0, 0].item(), -3.722839117050171)
+        self.assertAlmostEqual(gaussians.scale[0, 1].item(), -3.722839117050171)
+        self.assertAlmostEqual(gaussians.scale[0, 2].item(), -3.722839117050171)
 
-        self.assertAlmostEqual(gaussians.quaternions[0, 0].item(), 1.0)
-        self.assertAlmostEqual(gaussians.quaternions[0, 1].item(), 0.0)
-        self.assertAlmostEqual(gaussians.quaternions[0, 2].item(), 0.0)
-        self.assertAlmostEqual(gaussians.quaternions[0, 3].item(), 0.0)
+        self.assertAlmostEqual(gaussians.quaternion[0, 0].item(), 1.0)
+        self.assertAlmostEqual(gaussians.quaternion[0, 1].item(), 0.0)
+        self.assertAlmostEqual(gaussians.quaternion[0, 2].item(), 0.0)
+        self.assertAlmostEqual(gaussians.quaternion[0, 3].item(), 0.0)
 
     def test_load_capture_info(self):
         """Test loading Images, Cameras"""

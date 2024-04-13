@@ -306,15 +306,24 @@ void render_tiles_backward_cuda(
 
     int image_height = num_splats_per_pixel.size(0);
     int image_width = num_splats_per_pixel.size(1);
-    TORCH_CHECK(
-        view_dir_by_pixel.size(0) == image_height,
-        "view_dir_by_pixel must have the same size as the image"
-    );
-    TORCH_CHECK(
-        view_dir_by_pixel.size(1) == image_width,
-        "view_dir_by_pixel must have the same size as the image"
-    );
-    TORCH_CHECK(view_dir_by_pixel.size(2) == 3, "view_dir_by_pixel must have 3 channels");
+    int num_sh_coeff;
+    if (rgb.dim() == 3) {
+        num_sh_coeff = rgb.size(2);
+    } else {
+        num_sh_coeff = 1;
+    }
+
+    if (num_sh_coeff > 1) {
+        TORCH_CHECK(
+            view_dir_by_pixel.size(0) == image_height,
+            "view_dir_by_pixel must have the same size as the image"
+        );
+        TORCH_CHECK(
+            view_dir_by_pixel.size(1) == image_width,
+            "view_dir_by_pixel must have the same size as the image"
+        );
+        TORCH_CHECK(view_dir_by_pixel.size(2) == 3, "view_dir_by_pixel must have 3 channels");
+    }
 
     int num_tiles_x = (image_width + 16 - 1) / 16;
     int num_tiles_y = (image_height + 16 - 1) / 16;
@@ -351,12 +360,6 @@ void render_tiles_backward_cuda(
     dim3 block_size(16, 16, 1);
     dim3 grid_size(num_tiles_x, num_tiles_y, 1);
 
-    int num_sh_coeff;
-    if (rgb.dim() == 3) {
-        num_sh_coeff = rgb.size(2);
-    } else {
-        num_sh_coeff = 1;
-    }
     if (uvs.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(opacity);
         CHECK_FLOAT_TENSOR(rgb);

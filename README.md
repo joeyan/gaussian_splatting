@@ -19,25 +19,30 @@ Here are some comparisons with the with the official implementation (copied from
 |--------------|-------------|------|------|-------------|------------------|
 | Official-30k | Garden 1/4x | 27.41| 0.87 |             | ~35-45min (A6000)|
 | Ours-30k     | Garden 1/4x | 26.86| 0.85 | 2.78M       | ~21min (RTX4090) |
-| Official-30k | Counter 1/2x| 28.70| 0.90 |             |                  |
+| Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
+| Ours-7k      | Garden 1/4x | 25.80| 0.80 | 1.61M       | ~3min  (RTX4090) |
+| Official-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
 | Ours-30k     | Counter 1/2x| 28.60| 0.90 | 2.01M       | ~26min (RTX4090) |
+| Official-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
+| Ours-7k      | Counter 1/2x| 27.42| 0.89 | 1.40M       | ~5min  (RTX4090) |
 | Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
 | Ours-30k     | Bonsai  1/2x| 31.45| 0.94 | 0.84M       | ~18min (RTX4090) |
 | Official-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
 | Ours-7k      | Bonsai 1/2x | 29.98| 0.93 | 1.16M       | ~4min  (RTX4090) |
-| Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k      | Garden 1/4x | 25.39| 0.78 | 0.88M       | ~3min  (RTX4090) |
-
+| Official-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
+| Ours-30k     | Room 1/2x   | 31.52| 0.92 | 1.84M       | ~21min (RTX4090) |
+| Official-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
+| Ours-7k      | Room 1/2x   | 29.13| 0.90 | 1.01M       | ~3min  (RTX4090) |
 
 *The training time is not directly comparable between the different GPUs. The RTX4090 is faster than the A6000. The training speed between the two methods should be similar.
-
-The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
-
- The discrepancy in PSNR are most likely due to differences in the adaptive control algorithm and hyperparameter tuning. 
 
 A comparison from one of the test images in the `garden` dataset. The official implementation image appears to be more saturated since the image is extracted from the published pdf. The branch in the exploded view and the wall is reconstructed more crisply in our implementation but the official implementation performs better on the trees and bushes.
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/2dd7f43a-ae30-46de-93f6-fc8e6e918a0d)
 
+
+The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
+
+ The discrepancy in PSNR are most likely due to differences in the adaptive control algorithm and tuning.
 
 
 ## Installation

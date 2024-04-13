@@ -17,7 +17,7 @@ from splat_py.tile_culling import (
 )
 
 
-def splat(gaussians, world_T_image, camera):
+def rasterize(gaussians, world_T_image, camera):
     xyz_camera_frame = transform_points_torch(gaussians.xyz, world_T_image)
     uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
 
@@ -43,26 +43,26 @@ def splat(gaussians, world_T_image, camera):
     if gaussians.sh is not None:
         culled_gaussians = Gaussians(
             xyz=gaussians.xyz[~culling_mask, :],
-            quaternions=gaussians.quaternions[~culling_mask, :],
-            scales=gaussians.scales[~culling_mask, :],
-            opacities=torch.sigmoid(
-                gaussians.opacities[~culling_mask]
-            ),  # apply sigmoid activation to opacities
+            quaternion=gaussians.quaternion[~culling_mask, :],
+            scale=gaussians.scale[~culling_mask, :],
+            opacity=torch.sigmoid(
+                gaussians.opacity[~culling_mask]
+            ),  # apply sigmoid activation to opacity
             rgb=gaussians.rgb[~culling_mask, :],
             sh=gaussians.sh[~culling_mask, :],
         )
     else:
         culled_gaussians = Gaussians(
             xyz=gaussians.xyz[~culling_mask, :],
-            quaternions=gaussians.quaternions[~culling_mask, :],
-            scales=gaussians.scales[~culling_mask, :],
-            opacities=torch.sigmoid(
-                gaussians.opacities[~culling_mask]
-            ),  # apply sigmoid activation to opacities
+            quaternion=gaussians.quaternion[~culling_mask, :],
+            scale=gaussians.scale[~culling_mask, :],
+            opacity=torch.sigmoid(
+                gaussians.opacity[~culling_mask]
+            ),  # apply sigmoid activation to opacity
             rgb=gaussians.rgb[~culling_mask, :],
         )
 
-    sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternions, culled_gaussians.scales)
+    sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternion, culled_gaussians.scale)
     J = ComputeProjectionJacobian.apply(xyz_camera_frame, camera.K)
     conic = ComputeConic.apply(sigma_world, J, world_T_image)
 
@@ -77,7 +77,7 @@ def splat(gaussians, world_T_image, camera):
     sorted_gaussian_idx_by_splat_idx = sort_gaussians(
         xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
     )
-    rays = compute_rays_in_world_frame(camera, world_T_image)
+    rays = torch.zeros(1, 1, 1, dtype=gaussians.xyz.dtype, device=gaussians.xyz.device)
     if culled_gaussians.sh is not None:
         sh_coeffs = torch.cat((culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2)
         if USE_SH_PRECOMPUTE:
@@ -86,12 +86,14 @@ def splat(gaussians, world_T_image, camera):
             )
         else:
             render_rgb = sh_coeffs
+            # actually need to compute rays here
+            rays = compute_rays_in_world_frame(camera, world_T_image)
     else:
         render_rgb = culled_gaussians.rgb
 
     image = RenderImage.apply(
         render_rgb,
-        culled_gaussians.opacities,
+        culled_gaussians.opacity,
         uv,
         conic,
         rays,
@@ -99,4 +101,4 @@ def splat(gaussians, world_T_image, camera):
         sorted_gaussian_idx_by_splat_idx,
         torch.tensor([camera.height, camera.width], device=uv.device),
     )
-    return image, culling_mask
+    return image, culling_mask, uv

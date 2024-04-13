@@ -55,8 +55,8 @@ void camera_projection_cuda(torch::Tensor xyz, torch::Tensor K, torch::Tensor uv
 
 template <typename T>
 __global__ void compute_sigma_world_kernel(
-    const T* __restrict__ quaternions,
-    const T* __restrict__ scales,
+    const T* __restrict__ quaternion,
+    const T* __restrict__ scale,
     const int N,
     T* sigma_world
 ) {
@@ -64,10 +64,10 @@ __global__ void compute_sigma_world_kernel(
     if (i >= N) {
         return;
     }
-    T qw = quaternions[i * 4 + 0];
-    T qx = quaternions[i * 4 + 1];
-    T qy = quaternions[i * 4 + 2];
-    T qz = quaternions[i * 4 + 3];
+    T qw = quaternion[i * 4 + 0];
+    T qx = quaternion[i * 4 + 1];
+    T qy = quaternion[i * 4 + 2];
+    T qz = quaternion[i * 4 + 3];
 
     T norm = sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
 
@@ -87,9 +87,9 @@ __global__ void compute_sigma_world_kernel(
     T r21 = 2 * qy * qz + 2 * qx * qw;
     T r22 = 1 - 2 * qx * qx - 2 * qy * qy;
 
-    T sx = exp(scales[i * 3 + 0]);
-    T sy = exp(scales[i * 3 + 1]);
-    T sz = exp(scales[i * 3 + 2]);
+    T sx = exp(scale[i * 3 + 0]);
+    T sy = exp(scale[i * 3 + 1]);
+    T sz = exp(scale[i * 3 + 2]);
 
     T sx_sq = sx * sx;
     T sy_sq = sy * sy;
@@ -109,17 +109,17 @@ __global__ void compute_sigma_world_kernel(
 }
 
 void compute_sigma_world_cuda(
-    torch::Tensor quaternions,
-    torch::Tensor scales,
+    torch::Tensor quaternion,
+    torch::Tensor scale,
     torch::Tensor sigma_world
 ) {
-    CHECK_VALID_INPUT(quaternions);
-    CHECK_VALID_INPUT(scales);
+    CHECK_VALID_INPUT(quaternion);
+    CHECK_VALID_INPUT(scale);
     CHECK_VALID_INPUT(sigma_world);
 
-    const int N = quaternions.size(0);
-    TORCH_CHECK(quaternions.size(1) == 4, "quaternions must have shape Nx4");
-    TORCH_CHECK(scales.size(0) == N, "scales must have shape Nx1");
+    const int N = quaternion.size(0);
+    TORCH_CHECK(quaternion.size(1) == 4, "quaternion must have shape Nx4");
+    TORCH_CHECK(scale.size(0) == N, "scale must have shape Nx1");
     TORCH_CHECK(sigma_world.size(0) == N, "sigma_world must have shape Nx3x3");
     TORCH_CHECK(sigma_world.size(1) == 3, "sigma_world must have shape Nx3x3");
     TORCH_CHECK(sigma_world.size(2) == 3, "sigma_world must have shape Nx3x3");
@@ -130,21 +130,18 @@ void compute_sigma_world_cuda(
     dim3 gridsize(num_blocks, 1, 1);
     dim3 blocksize(max_threads_per_block, 1, 1);
 
-    if (quaternions.dtype() == torch::kFloat32) {
-        CHECK_FLOAT_TENSOR(scales);
+    if (quaternion.dtype() == torch::kFloat32) {
+        CHECK_FLOAT_TENSOR(scale);
         CHECK_FLOAT_TENSOR(sigma_world);
         compute_sigma_world_kernel<float><<<gridsize, blocksize>>>(
-            quaternions.data_ptr<float>(),
-            scales.data_ptr<float>(),
-            N,
-            sigma_world.data_ptr<float>()
+            quaternion.data_ptr<float>(), scale.data_ptr<float>(), N, sigma_world.data_ptr<float>()
         );
-    } else if (quaternions.dtype() == torch::kFloat64) {
-        CHECK_DOUBLE_TENSOR(scales);
+    } else if (quaternion.dtype() == torch::kFloat64) {
+        CHECK_DOUBLE_TENSOR(scale);
         CHECK_DOUBLE_TENSOR(sigma_world);
         compute_sigma_world_kernel<double><<<gridsize, blocksize>>>(
-            quaternions.data_ptr<double>(),
-            scales.data_ptr<double>(),
+            quaternion.data_ptr<double>(),
+            scale.data_ptr<double>(),
             N,
             sigma_world.data_ptr<double>()
         );

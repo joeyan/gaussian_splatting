@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import unittest
 
-from splat_py.splat import splat
+from splat_py.rasterize import rasterize
 from splat_py.utils import inverse_sigmoid_torch
 
 from gaussian_test_data import get_test_data
@@ -14,12 +14,12 @@ class TestSplatFull(unittest.TestCase):
         self.assertTrue(torch.cuda.is_available())
         self.device = torch.device("cuda")
         self.gaussians, self.camera, self.world_T_image = get_test_data(self.device)
-        self.gaussians.opacities = inverse_sigmoid_torch(self.gaussians.opacities)
+        self.gaussians.opacity = inverse_sigmoid_torch(self.gaussians.opacity)
 
     def test_splat_gpu(self):
-        image, _ = splat(self.gaussians, self.world_T_image, self.camera)
+        image, _, _ = rasterize(self.gaussians, self.world_T_image, self.camera)
         debug_image = image.clip(0, 1).detach().cpu().numpy()
-        cv2.imwrite("test_splat.png", (debug_image * 255).astype(np.uint8)[..., ::-1])
+        cv2.imwrite("/tmp/test_splat.png", (debug_image * 255).astype(np.uint8)[..., ::-1])
 
         # near red gaussian center
         self.assertAlmostEqual(image[340, 348, 0].item(), 0.47698545455932617, places=5)

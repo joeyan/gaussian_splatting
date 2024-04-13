@@ -33,7 +33,7 @@ class TestAutogradFunctions(unittest.TestCase):
             device=self.device,
             requires_grad=False,
         )
-        self.quaternions = torch.tensor(
+        self.quaternion = torch.tensor(
             [
                 [0.8, 0.2, 0.2, 0.2],
                 [0.714, -0.002, -0.664, 0.221],
@@ -43,7 +43,7 @@ class TestAutogradFunctions(unittest.TestCase):
             device=self.device,
             requires_grad=True,
         )
-        self.scales = torch.tensor(
+        self.scale = torch.tensor(
             [
                 [0.02, 0.03, 0.04],
                 [0.09, 0.03, 0.01],
@@ -82,7 +82,7 @@ class TestAutogradFunctions(unittest.TestCase):
     def test_compute_sigma_world(self):
         test = torch.autograd.gradcheck(
             ComputeSigmaWorld.apply,
-            (self.quaternions, self.scales),
+            (self.quaternion, self.scale),
             raise_exception=True,
         )
         self.assertTrue(test)
@@ -92,16 +92,16 @@ class TestAutogradFunctions(unittest.TestCase):
             1,
             3,
             3,
-            dtype=self.quaternions.dtype,
-            device=self.quaternions.device,
+            dtype=self.quaternion.dtype,
+            device=self.quaternion.device,
             requires_grad=True,
         )
         projection_jacobian = torch.rand(
             1,
             2,
             3,
-            dtype=self.quaternions.dtype,
-            device=self.quaternions.device,
+            dtype=self.quaternion.dtype,
+            device=self.quaternion.device,
             requires_grad=True,
         )
         test = torch.autograd.gradcheck(
