@@ -74,7 +74,7 @@ sudo apt install clang-format
 Running `lint.sh` will run both `black` and `clang-format`.
 
 
-## Verifying Install
+## Training on Mip-Nerf 360 Scenes
 
 1. Download the [Mip-NeRF 360](https://jonbarron.info/mipnerf360/) dataset and unzip
 
@@ -82,10 +82,19 @@ Running `lint.sh` will run both `black` and `clang-format`.
 wget http://storage.googleapis.com/gresearch/refraw360/360_v2.zip && unzip 360_v2.zip
 ```
 
-2. Update the `DATASET_PATH` in `splat_py/constants.py` to `garden` with `DOWNSAMPLE_FACTOR = 4`
 
-3. Run `colmap_splat.py`
+2. Run the training script:
+```
+python colmap_splat.py 7k --dataset_path <path to dataset> --downsample_factor 4
+``` 
 
+To run the high-quality version use `30k` instead of `7k` The `dataset_path` argument refers to the top-level folder for each dataset (`garden`, `kitchen` etc). The paper uses `--downsample_factor 4` for the outdoor scenes and `--downsample_factor 2` for the indoor scenes.
+
+
+For more options:
+```
+python colmap_splat.py 7k --help
+```
 
 To run all unit tests:
 

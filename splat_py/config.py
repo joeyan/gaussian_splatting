@@ -32,7 +32,7 @@ class yamlEnabled(object):
 class SplatConfig:
     """Path to dataset directory"""
 
-    dataset_path: str = "/home/joe/Downloads/garden"
+    dataset_path: str = "garden"
     """downsample factor for the images - if applicable"""
     downsample_factor: int = 4
     """output directory for saving the results"""
