@@ -1,36 +1,44 @@
 import torch
 
-from splat_py.constants import *
-
 
 class OptimizerManager:
     """
     Manages adding/deleting gaussians and updating SH Bands
     """
 
-    def __init__(self, gaussians):
+    def __init__(self, gaussians, config):
+        self.config = config
         self.setup_optimizer(gaussians)
 
     def setup_optimizer(self, gaussians):
         # add new params to optimizer
         self.optimizer = torch.optim.Adam(
             [
-                {"params": gaussians.xyz, "lr": BASE_LR * XYZ_LR_MULTIPLIER},
+                {
+                    "params": gaussians.xyz,
+                    "lr": self.config.base_lr * self.config.xyz_lr_multiplier,
+                },
                 {
                     "params": gaussians.quaternion,
-                    "lr": BASE_LR * QUAT_LR_MULTIPLIER,
+                    "lr": self.config.base_lr * self.config.quat_lr_multiplier,
                 },
-                {"params": gaussians.scale, "lr": BASE_LR * SCALE_LR_MULTIPLIER},
+                {
+                    "params": gaussians.scale,
+                    "lr": self.config.base_lr * self.config.scale_lr_multiplier,
+                },
                 {
                     "params": gaussians.opacity,
-                    "lr": BASE_LR * OPACITY_LR_MULTIPLIER,
+                    "lr": self.config.base_lr * self.config.opacity_lr_multiplier,
                 },
-                {"params": gaussians.rgb, "lr": BASE_LR * RGB_LR_MULTIPLIER},
+                {
+                    "params": gaussians.rgb,
+                    "lr": self.config.base_lr * self.config.rgb_lr_multiplier,
+                },
             ],
         )
         if gaussians.sh is not None:
             self.optimizer.add_param_group(
-                {"params": gaussians.sh, "lr": BASE_LR * SH_LR_MULTIPLIER},
+                {"params": gaussians.sh, "lr": self.config.base_lr * self.config.sh_lr_multiplier},
             )
 
     def reset_opacity_exp_avg(self, gaussians):
@@ -50,7 +58,7 @@ class OptimizerManager:
 
     def add_sh_to_optimizer(self, gaussians):
         self.optimizer.add_param_group(
-            {"params": gaussians.sh, "lr": BASE_LR * SH_LR_MULTIPLIER},
+            {"params": gaussians.sh, "lr": self.config.base_lr * self.config.sh_lr_multiplier},
         )
 
     def add_sh_band_to_optimizer(self, gaussians):

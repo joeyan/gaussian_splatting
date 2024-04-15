@@ -4,7 +4,6 @@ from splat_cuda import (
     compute_tiles_cuda,
     compute_splat_to_gaussian_id_vector_cuda,
 )
-from splat_py.structs import SimpleTimer
 
 
 def match_gaussians_to_tiles_gpu(
@@ -19,37 +18,34 @@ def match_gaussians_to_tiles_gpu(
     )
     num_gaussians_per_tile = torch.zeros(tiles.tile_count, 1, dtype=torch.int32, device=uvs.device)
 
-    with SimpleTimer("\t\tGPU compute tiles"):
-        compute_tiles_cuda(
-            uvs,
-            conic,
-            tiles.x_tiles_count,
-            tiles.y_tiles_count,
-            mh_dist,
-            gaussian_indices_per_tile,
-            num_gaussians_per_tile,
-        )
+    compute_tiles_cuda(
+        uvs,
+        conic,
+        tiles.x_tiles_count,
+        tiles.y_tiles_count,
+        mh_dist,
+        gaussian_indices_per_tile,
+        num_gaussians_per_tile,
+    )
 
-    with SimpleTimer("\t\tCreate outputs for GPU Tile Vectorization"):
-        # create start/end indices
-        splat_start_end_idx_by_tile_idx = torch.zeros(
-            tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
-        )
-        splat_start_end_idx_by_tile_idx[1:] = torch.cumsum(num_gaussians_per_tile.squeeze(), dim=0)
+    # create start/end indices
+    splat_start_end_idx_by_tile_idx = torch.zeros(
+        tiles.tile_count + 1, dtype=torch.int32, device=uvs.device
+    )
+    splat_start_end_idx_by_tile_idx[1:] = torch.cumsum(num_gaussians_per_tile.squeeze(), dim=0)
 
     num_splats = splat_start_end_idx_by_tile_idx[-1]
     # create gaussian to tile vector
     gaussian_idx_by_splat_idx = torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
     tile_idx_by_splat_idx = torch.ones(num_splats, dtype=torch.int32, device=uvs.device) * -1
 
-    with SimpleTimer("\t\tGPU Tile Vectorization"):
-        compute_splat_to_gaussian_id_vector_cuda(
-            gaussian_indices_per_tile,
-            num_gaussians_per_tile,
-            splat_start_end_idx_by_tile_idx,
-            gaussian_idx_by_splat_idx,
-            tile_idx_by_splat_idx,
-        )
+    compute_splat_to_gaussian_id_vector_cuda(
+        gaussian_indices_per_tile,
+        num_gaussians_per_tile,
+        splat_start_end_idx_by_tile_idx,
+        gaussian_idx_by_splat_idx,
+        tile_idx_by_splat_idx,
+    )
     return (
         gaussian_idx_by_splat_idx,
         splat_start_end_idx_by_tile_idx,

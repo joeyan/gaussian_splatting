@@ -2,22 +2,7 @@ import time
 import numpy as np
 import torch
 
-from splat_py.constants import PRINT_DEBUG_TIMING
-
 TILE_EDGE_LENGTH_PX = 16
-
-
-class SimpleTimer:
-    def __init__(self, name):
-        self.name = name
-
-    def __enter__(self):
-        self.start = time.time()
-
-    def __exit__(self, type, value, traceback):
-        end = time.time()
-        if PRINT_DEBUG_TIMING:
-            print(f"{self.name}: {(end - self.start) * 1000} ms")
 
 
 class GSMetrics:

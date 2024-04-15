@@ -3,9 +3,8 @@ import numpy as np
 import torch
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 
-from splat_py.constants import *
 from splat_py.optimizer_manager import OptimizerManager
-from splat_py.structs import SimpleTimer, GSMetrics
+from splat_py.structs import GSMetrics
 from splat_py.rasterize import rasterize
 from splat_py.utils import (
     inverse_sigmoid,
@@ -13,13 +12,14 @@ from splat_py.utils import (
 )
 
 
-class GSTrainer:
-    def __init__(self, gaussians, images, cameras):
+class SplatTrainer:
+    def __init__(self, gaussians, images, cameras, config):
         self.gaussians = gaussians
         self.images = images
         self.cameras = cameras
+        self.config = config
 
-        self.optimizer_manager = OptimizerManager(gaussians)
+        self.optimizer_manager = OptimizerManager(gaussians, self.config)
         self.metrics = GSMetrics()
         self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.gaussians.xyz.device)
 
@@ -30,13 +30,13 @@ class GSTrainer:
     def setup_test_train_split(self):
         num_images = len(self.images)
         all_images = np.arange(num_images)
-        self.test_split = np.arange(0, num_images, TEST_SPLIT_RATIO)
+        self.test_split = np.arange(0, num_images, self.config.test_split_ratio)
         self.train_split = np.array(list(set(all_images) - set(self.test_split)))
 
     def setup_test_images(self):
         for image_idx in range(len(self.images)):
             self.images[image_idx].image = (
-                self.images[image_idx].image.to(torch.float32) / SATURATED_PIXEL_VALUE
+                self.images[image_idx].image.to(torch.float32) / self.config.saturated_pixel_value
             )
             self.images[image_idx].image = self.images[image_idx].image.to(torch.device("cuda"))
 
@@ -61,7 +61,8 @@ class GSTrainer:
     def reset_opacity(self):
         print("\t\tResetting opacity")
         self.gaussians.opacity = torch.nn.Parameter(
-            torch.ones_like(self.gaussians.opacity) * inverse_sigmoid(INITIAL_OPACITY)
+            torch.ones_like(self.gaussians.opacity)
+            * inverse_sigmoid(self.config.reset_opacity_value)
         )
         self.optimizer_manager.reset_opacity_exp_avg(self.gaussians)
         self.reset_grad_accum()
@@ -69,7 +70,7 @@ class GSTrainer:
     def add_sh_band(self):
         num_gaussians = self.gaussians.xyz.shape[0]
 
-        if self.gaussians.sh is None and MAX_SH_BAND > 0:
+        if self.gaussians.sh is None and self.config.max_sh_band > 0:
             new_sh = torch.zeros(
                 num_gaussians,
                 3,
@@ -79,7 +80,7 @@ class GSTrainer:
             )
             self.gaussians.sh = torch.nn.Parameter(new_sh)
             self.optimizer_manager.add_sh_to_optimizer(self.gaussians)
-        elif self.gaussians.sh.shape[2] == 3 and MAX_SH_BAND > 1:
+        elif self.gaussians.sh.shape[2] == 3 and self.config.max_sh_band > 1:
             new_sh = torch.zeros(
                 num_gaussians,
                 3,
@@ -90,7 +91,7 @@ class GSTrainer:
             new_sh[:, :, :3] = self.gaussians.sh
             self.gaussians.sh = torch.nn.Parameter(new_sh)
             self.optimizer_manager.add_sh_band_to_optimizer(self.gaussians)
-        elif self.gaussians.sh.shape[2] == 8 and MAX_SH_BAND > 2:
+        elif self.gaussians.sh.shape[2] == 8 and self.config.max_sh_band > 2:
             new_sh = torch.zeros(
                 num_gaussians,
                 3,
@@ -152,7 +153,7 @@ class GSTrainer:
         )
 
     def split_gaussians(self, split_mask):
-        samples = NUM_SPLIT_SAMPLES
+        samples = self.config.num_split_samples
         # create split gaussians
         split_quaternion = (
             self.gaussians.quaternion[split_mask, :].clone().detach().repeat(samples, 1)
@@ -178,7 +179,7 @@ class GSTrainer:
         split_xyz += random_samples
 
         # update scale
-        split_scale = torch.log(torch.exp(split_scale) / SPLIT_SCALE_FACTOR)
+        split_scale = torch.log(torch.exp(split_scale) / self.config.split_scale_factor)
 
         # delete original split gaussians
         self.delete_gaussians(~split_mask)
@@ -197,13 +198,13 @@ class GSTrainer:
         )
 
     def adaptive_density_control(self):
-        if not (USE_DELETE or USE_CLONE or USE_SPLIT):
+        if not (self.config.use_delete or self.config.use_clone or self.config.use_split):
             return
         print("Adaptive_density control update")
 
         # Step 1. Delete gaussians
         # low opacity
-        keep_mask = self.gaussians.opacity > inverse_sigmoid(DELETE_OPACITY_THRESHOLD)
+        keep_mask = self.gaussians.opacity > inverse_sigmoid(self.config.delete_opacity_threshold)
         keep_mask = keep_mask.squeeze(1)
         print("\tlow opacity mask: ", torch.sum(~keep_mask).detach().cpu().numpy())
         # no views or grad
@@ -216,7 +217,7 @@ class GSTrainer:
 
         delete_count = torch.sum(~keep_mask).detach().cpu().numpy()
         print("\tDeleting: ", delete_count)
-        if (delete_count > 0) and USE_DELETE:
+        if (delete_count > 0) and self.config.use_delete:
             self.delete_gaussians(keep_mask)
 
         # Step 2. Densify gaussians
@@ -225,10 +226,10 @@ class GSTrainer:
 
         uv_grad_avg_norm = torch.norm(uv_grad_avg, dim=1)
 
-        if USE_FRACTIONAL_DENSIFICATION:
-            uv_split_val = torch.quantile(uv_grad_avg_norm, UV_GRAD_PERCENTILE).item()
+        if self.config.use_fractional_densification:
+            uv_split_val = torch.quantile(uv_grad_avg_norm, self.config.uv_grad_percentile).item()
         else:
-            uv_split_val = UV_GRAD_TRHRESHOLD
+            uv_split_val = self.config.uv_grad_threshold
         densify_mask = uv_grad_avg_norm > uv_split_val
         print(
             "\tDensify mask: ",
@@ -238,25 +239,25 @@ class GSTrainer:
         )
 
         scale_max = self.gaussians.scale.exp().max(dim=-1).values
-        clone_mask = densify_mask & (scale_max <= CLONE_SCALE_THRESHOLD)
+        clone_mask = densify_mask & (scale_max <= self.config.clone_scale_threshold)
         print("\tClone Mask: ", torch.sum(clone_mask).detach().cpu().numpy())
 
         # Step 2.1 clone gaussians
-        if clone_mask.any() and USE_CLONE:
+        if clone_mask.any() and self.config.use_clone:
             self.clone_gaussians(clone_mask, xyz_grad_avg)
             # keep masks up to date
             densify_mask = torch.cat([densify_mask, densify_mask[clone_mask]], dim=0)
             scale_max = torch.cat([scale_max, scale_max[clone_mask]], dim=0)
 
-        split_mask = densify_mask & (scale_max > CLONE_SCALE_THRESHOLD)
+        split_mask = densify_mask & (scale_max > self.config.clone_scale_threshold)
 
-        scale_split = torch.quantile(scale_max, SCALE_NORM_PERCENTILE).item()
+        scale_split = torch.quantile(scale_max, self.config.scale_norm_percentile).item()
         too_big_mask = scale_max > scale_split
         split_mask = split_mask | too_big_mask
 
         print("\tSplit Mask: ", torch.sum(split_mask).detach().cpu().numpy())
         # Step 2.2 split gaussians
-        if split_mask.any() and USE_SPLIT:
+        if split_mask.any() and self.config.use_split:
             self.split_gaussians(split_mask)
 
         self.reset_grad_accum()
@@ -273,7 +274,15 @@ class GSTrainer:
                     test_image,
                     _,
                     _,
-                ) = rasterize(self.gaussians, test_world_T_image, test_camera)
+                ) = rasterize(
+                    self.gaussians,
+                    test_world_T_image,
+                    test_camera,
+                    near_thresh=self.config.near_thresh,
+                    cull_mask_padding=self.config.cull_mask_padding,
+                    mh_dist=self.config.mh_dist,
+                    use_sh_precompute=self.config.use_sh_precompute,
+                )
                 gt_image = self.images[test_img_idx].image
                 l2_loss = torch.nn.functional.mse_loss(test_image.clip(0, 1), gt_image)
                 psnr = -10 * torch.log10(l2_loss).item()
@@ -289,15 +298,26 @@ class GSTrainer:
                 if save_test_images:
                     debug_image = test_image.clip(0, 1).detach().cpu().numpy()
                     cv2.imwrite(
-                        "{}/iter{}_test_image_{}.png".format(OUTPUT_DIR, iter, test_img_idx),
-                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
+                        "{}/iter{}_test_image_{}.png".format(
+                            self.config.output_dir, iter, test_img_idx
+                        ),
+                        (debug_image * self.config.saturated_pixel_value).astype(np.uint8)[
+                            ..., ::-1
+                        ],
                     )
 
         return torch.tensor(test_psnrs), torch.tensor(test_ssim)
 
     def splat_and_compute_loss(self, image_idx, world_T_image, camera):
-        with SimpleTimer("Splat Gaussians"):
-            image, culling_mask, uv = rasterize(self.gaussians, world_T_image, camera)
+        image, culling_mask, uv = rasterize(
+            self.gaussians,
+            world_T_image,
+            camera,
+            near_thresh=self.config.near_thresh,
+            cull_mask_padding=self.config.cull_mask_padding,
+            mh_dist=self.config.mh_dist,
+            use_sh_precompute=self.config.use_sh_precompute,
+        )
         uv.retain_grad()
 
         gt_image = self.images[image_idx].image
@@ -312,11 +332,9 @@ class GSTrainer:
             image.unsqueeze(0).permute(0, 3, 1, 2),
             gt_image.unsqueeze(0).permute(0, 3, 1, 2),
         )
-        loss = (1.0 - SSIM_RATIO) * l1_loss + SSIM_RATIO * ssim_loss
-        with SimpleTimer("Backward"):
-            loss.backward()
-        with SimpleTimer("Optimizer Step"):
-            self.optimizer_manager.optimizer.step()
+        loss = (1.0 - self.config.ssim_ratio) * l1_loss + self.config.ssim_ratio * ssim_loss
+        loss.backward()
+        self.optimizer_manager.optimizer.step()
 
         # scale uv grad back to world coordinates - this way, uv grad is consistent across multiple cameras
         uv_grad = uv.grad.detach()
@@ -330,7 +348,7 @@ class GSTrainer:
         return image, psnr
 
     def train(self):
-        for i in range(NUM_ITERS):
+        for i in range(self.config.num_iters):
             image_idx = np.random.choice(self.train_split)
             world_T_image = self.images[image_idx].world_T_image
             camera = self.cameras[self.images[image_idx].camera_id]
@@ -341,7 +359,7 @@ class GSTrainer:
             self.metrics.train_psnr.append(psnr.item())
             self.metrics.num_gaussians.append(self.gaussians.xyz.shape[0])
 
-            if i % PRINT_INTERVAL == 0:
+            if i % self.config.print_interval == 0:
                 print(
                     "Iter: {}, PSNR: {}, N: {}".format(
                         i, psnr.detach().cpu().numpy(), self.gaussians.xyz.shape[0]
@@ -350,7 +368,7 @@ class GSTrainer:
 
             # make sure to perform test split eval before adaptive control
             # if adaptive control occurs in the same iteration, test psnr will be low
-            if i % TEST_EVAL_INTERVAL == 0:
+            if i % self.config.test_eval_interval == 0:
                 test_psnrs, test_ssims = self.compute_test_psnr()
                 self.metrics.test_psnr.append(test_psnrs.mean().item())
                 print(
@@ -360,29 +378,28 @@ class GSTrainer:
                 )
 
             if (
-                i > ADAPTIVE_CONTROL_START
-                and i % ADAPTIVE_CONTROL_INVERVAL == 0
-                and i < ADAPTIVE_CONTROL_END
+                i > self.config.adaptive_control_start
+                and i % self.config.adaptive_control_interval == 0
+                and i < self.config.adaptive_control_end
             ):
                 self.adaptive_density_control()
 
             if (
-                i > RESET_OPACTIY_START
-                and i < RESET_OPACITY_END
-                and i % RESET_OPACITY_INTERVAL == 0
+                i > self.config.reset_opacity_start
+                and i < self.config.reset_opacity_end
+                and i % self.config.reset_opacity_interval == 0
             ):
                 self.reset_opacity()
 
-            if USE_SH_COEFF and i > 0 and i % ADD_SH_BAND_INTERVAL == 0:
+            if self.config.use_sh_coeff and i > 0 and i % self.config.add_sh_band_interval == 0:
                 self.add_sh_band()
 
-            if i % SAVE_DEBUG_IMAGE_INTERVAL == 0:
-                with SimpleTimer("Save Images"):
-                    debug_image = image.clip(0, 1).detach().cpu().numpy()
-                    cv2.imwrite(
-                        "{}/iter{}_image_{}.png".format(OUTPUT_DIR, i, image_idx),
-                        (debug_image * SATURATED_PIXEL_VALUE).astype(np.uint8)[..., ::-1],
-                    )
+            if i % self.config.save_debug_image_interval == 0:
+                debug_image = image.clip(0, 1).detach().cpu().numpy()
+                cv2.imwrite(
+                    "{}/iter{}_image_{}.png".format(self.config.output_dir, i, image_idx),
+                    (debug_image * self.config.saturated_pixel_value).astype(np.uint8)[..., ::-1],
+                )
         final_psnrs, final_ssim = self.compute_test_psnr(save_test_images=True, iter=i)
         print(
             "Final PSNR: {}, SSIM: {}".format(final_psnrs.mean().item(), final_ssim.mean().item())
