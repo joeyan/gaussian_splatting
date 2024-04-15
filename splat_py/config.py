@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import tyro
 
 
 @dataclass
@@ -87,3 +88,18 @@ class SplatConfig:
     # split options
     split_scale_factor: float = 1.6
     num_split_samples: int = 2
+
+
+# allow user to choose from 7k or 30k config as base configuration
+SplatConfigs = tyro.extras.subcommand_type_from_defaults(
+    {
+        "7k": SplatConfig(),  # default config is 7k
+        "30k": SplatConfig(
+            num_iters=30000,
+            adaptive_control_start=1500,
+            adaptive_control_end=27500,
+            adaptive_control_interval=300,
+            reset_opacity_end=27500,
+        ),
+    }
+)

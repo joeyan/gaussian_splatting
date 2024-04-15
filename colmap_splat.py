@@ -2,10 +2,11 @@ import os
 import torch
 import time
 
+import tyro
 import numpy as np
 import plotext as plt
 
-from splat_py.config import SplatConfig
+from splat_py.config import SplatConfigs
 from splat_py.dataloader import ColmapData
 from splat_py.trainer import SplatTrainer
 
@@ -36,7 +37,7 @@ def plot_metrics(metrics, config):
     plt.show()
 
 
-config = SplatConfig()
+config = tyro.cli(SplatConfigs)
 
 if not os.path.exists(config.output_dir):
     os.makedirs(config.output_dir)

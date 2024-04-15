@@ -400,6 +400,11 @@ class SplatTrainer:
                     "{}/iter{}_image_{}.png".format(self.config.output_dir, i, image_idx),
                     (debug_image * self.config.saturated_pixel_value).astype(np.uint8)[..., ::-1],
                 )
+            if i > 0 and i % self.config.checkpoint_interval == 0:
+                torch.save(
+                    self.gaussians, "{}/gaussians_iter_{}.pt".format(self.config.output_dir, i)
+                )
+
         final_psnrs, final_ssim = self.compute_test_psnr(save_test_images=True, iter=i)
         print(
             "Final PSNR: {}, SSIM: {}".format(final_psnrs.mean().item(), final_ssim.mean().item())
