@@ -1,10 +1,11 @@
 import os
-import torch
 import time
 
-import tyro
 import numpy as np
 import plotext as plt
+import torch
+import tyro
+import yaml
 
 from splat_py.config import SplatConfigs
 from splat_py.dataloader import ColmapData
@@ -38,6 +39,8 @@ def plot_metrics(metrics, config):
 
 
 config = tyro.cli(SplatConfigs)
+
+yaml.dump(config, open(os.path.join(config.output_dir, "config.yaml"), "w"))
 
 if not os.path.exists(config.output_dir):
     os.makedirs(config.output_dir)

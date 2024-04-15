@@ -69,8 +69,9 @@ class SplatTrainer:
 
     def add_sh_band(self):
         num_gaussians = self.gaussians.xyz.shape[0]
-
-        if self.gaussians.sh is None and self.config.max_sh_band > 0:
+        if self.config.max_sh_band == 0:
+            return
+        elif self.gaussians.sh is None:
             new_sh = torch.zeros(
                 num_gaussians,
                 3,
@@ -332,7 +333,7 @@ class SplatTrainer:
             image.unsqueeze(0).permute(0, 3, 1, 2),
             gt_image.unsqueeze(0).permute(0, 3, 1, 2),
         )
-        loss = (1.0 - self.config.ssim_ratio) * l1_loss + self.config.ssim_ratio * ssim_loss
+        loss = (1.0 - self.config.ssim_frac) * l1_loss + self.config.ssim_frac * ssim_loss
         loss.backward()
         self.optimizer_manager.optimizer.step()
 
@@ -391,7 +392,7 @@ class SplatTrainer:
             ):
                 self.reset_opacity()
 
-            if self.config.use_sh_coeff and i > 0 and i % self.config.add_sh_band_interval == 0:
+            if i > 0 and i % self.config.add_sh_band_interval == 0:
                 self.add_sh_band()
 
             if i % self.config.save_debug_image_interval == 0:
