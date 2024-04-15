@@ -2,7 +2,7 @@ import os
 import cv2
 import torch
 
-from splat_py.constants import *
+from splat_py.config import SplatConfig
 from splat_py.read_colmap import (
     read_images_binary,
     read_points3D_binary,
@@ -28,8 +28,8 @@ class GaussianSplattingDataset:
 
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, config):
+        self.config = config
 
     def verify_loaded_points(self):
         """
@@ -47,12 +47,13 @@ class GaussianSplattingDataset:
         self.verify_loaded_points()
 
         N = self.xyz.shape[0]
-        initial_opacity = torch.ones(N, 1) * inverse_sigmoid(INITIAL_OPACITY)
+        initial_opacity = torch.ones(N, 1) * inverse_sigmoid(self.config.initial_opacity)
         # compute scale based on the density of the points around each point
         initial_scale = compute_initial_scale_from_sparse_points(
             self.xyz,
-            num_neighbors=INITIAL_SCALE_NUM_NEIGHBORS,
-            neighbor_dist_to_scale_factor=INITIAL_SCALE_FACTOR,
+            num_neighbors=self.config.initial_scale_num_neighbors,
+            neighbor_dist_to_scale_factor=self.config.initial_scale_factor,
+            max_initial_scale=self.config.max_initial_scale,
         )
         initial_quaternion = torch.zeros(N, 4)
         initial_quaternion[:, 0] = 1.0
@@ -100,9 +101,13 @@ class ColmapData(GaussianSplattingDataset):
     """
 
     def __init__(
-        self, colmap_directory_path: str, device: torch.device, downsample_factor: int
+        self,
+        colmap_directory_path: str,
+        device: torch.device,
+        downsample_factor: int,
+        config: SplatConfig,
     ) -> None:
-        super().__init__()
+        super().__init__(config)
 
         self.colmap_directory_path = colmap_directory_path
         self.device = device

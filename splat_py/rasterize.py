@@ -1,6 +1,5 @@
 import torch
 
-from splat_py.constants import *
 from splat_py.utils import transform_points_torch, compute_rays_in_world_frame
 from splat_py.cuda_autograd_functions import (
     CameraPointProjection,
@@ -17,7 +16,9 @@ from splat_py.tile_culling import (
 )
 
 
-def rasterize(gaussians, world_T_image, camera):
+def rasterize(
+    gaussians, world_T_image, camera, near_thresh, cull_mask_padding, mh_dist, use_sh_precompute
+):
     xyz_camera_frame = transform_points_torch(gaussians.xyz, world_T_image)
     uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
 
@@ -27,13 +28,13 @@ def rasterize(gaussians, world_T_image, camera):
         dtype=torch.bool,
         device=gaussians.xyz.device,
     )
-    culling_mask = culling_mask | (xyz_camera_frame[:, 2] < NEAR_THRESH)
+    culling_mask = culling_mask | (xyz_camera_frame[:, 2] < near_thresh)
     culling_mask = (
         culling_mask
-        | (uv[:, 0] < -1 * CULL_MASK_PADDING)
-        | (uv[:, 0] > camera.width + CULL_MASK_PADDING)
-        | (uv[:, 1] < -1 * CULL_MASK_PADDING)
-        | (uv[:, 1] > camera.height + CULL_MASK_PADDING)
+        | (uv[:, 0] < -1 * cull_mask_padding)
+        | (uv[:, 0] > camera.width + cull_mask_padding)
+        | (uv[:, 1] < -1 * cull_mask_padding)
+        | (uv[:, 1] > camera.height + cull_mask_padding)
     )
 
     # cull gaussians outside of camera frustrum
@@ -72,7 +73,7 @@ def rasterize(gaussians, world_T_image, camera):
         gaussian_idx_by_splat_idx,
         splat_start_end_idx_by_tile_idx,
         tile_idx_by_splat_idx,
-    ) = match_gaussians_to_tiles_gpu(uv, tiles, conic, mh_dist=MH_DIST)
+    ) = match_gaussians_to_tiles_gpu(uv, tiles, conic, mh_dist=mh_dist)
 
     sorted_gaussian_idx_by_splat_idx = sort_gaussians(
         xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
@@ -80,7 +81,7 @@ def rasterize(gaussians, world_T_image, camera):
     rays = torch.zeros(1, 1, 1, dtype=gaussians.xyz.dtype, device=gaussians.xyz.device)
     if culled_gaussians.sh is not None:
         sh_coeffs = torch.cat((culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2)
-        if USE_SH_PRECOMPUTE:
+        if use_sh_precompute:
             render_rgb = PrecomputeRGBFromSH.apply(
                 sh_coeffs, culled_gaussians.xyz, torch.inverse(world_T_image).contiguous()
             )

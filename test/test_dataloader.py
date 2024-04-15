@@ -1,17 +1,22 @@
 import unittest
 import torch
 
-from splat_py.constants import DATASET_PATH
+from splat_py.config import SplatConfig
 from splat_py.dataloader import ColmapData
+
+TEST_DATASET_PATH = "/home/joe/Downloads/garden"
 
 
 class TestColmapData(unittest.TestCase):
     """Test Colmap dataloader"""
 
     def setUp(self):
-        self.colmap_directory_path = DATASET_PATH
+        self.colmap_directory_path = TEST_DATASET_PATH
+        self.config = SplatConfig()
         self.device = torch.device("cpu")
-        self.colmap_data = ColmapData(self.colmap_directory_path, self.device, downsample_factor=8)
+        self.colmap_data = ColmapData(
+            self.colmap_directory_path, self.device, downsample_factor=8, config=self.config
+        )
 
     def test_init(self):
         """Test Data Loading"""

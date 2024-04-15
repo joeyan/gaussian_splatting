@@ -13,3 +13,4 @@ torchgeometry==0.1.2
 torchmetrics==1.2.1
 torchvision==0.16.2
 triton==2.1.0
+tyro==0.6.3
