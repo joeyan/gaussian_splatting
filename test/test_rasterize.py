@@ -13,7 +13,7 @@ class TestRasterize(unittest.TestCase):
     def setUp(self):
         self.assertTrue(torch.cuda.is_available())
         self.device = torch.device("cuda")
-        self.gaussians, self.camera, self.world_T_image = get_test_data(self.device)
+        self.gaussians, self.camera, self.camera_T_world = get_test_data(self.device)
         self.gaussians.opacity = inverse_sigmoid_torch(self.gaussians.opacity)
 
     def test_rasterize_no_sh(self):
@@ -24,7 +24,7 @@ class TestRasterize(unittest.TestCase):
 
         image, _, _ = rasterize(
             self.gaussians,
-            self.world_T_image,
+            self.camera_T_world,
             self.camera,
             near_thresh,
             cull_mask_padding,
@@ -57,7 +57,7 @@ class TestRasterize(unittest.TestCase):
 
         image, _, _ = rasterize(
             self.gaussians,
-            self.world_T_image,
+            self.camera_T_world,
             self.camera,
             near_thresh,
             cull_mask_padding,
@@ -91,7 +91,7 @@ class TestRasterize(unittest.TestCase):
 
         image, _, _ = rasterize(
             self.gaussians,
-            self.world_T_image,
+            self.camera_T_world,
             self.camera,
             near_thresh,
             cull_mask_padding,

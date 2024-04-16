@@ -21,11 +21,11 @@ class Image:
         self,
         image,  # loaded image [HxWx3], 8bit, RGB
         camera_id,  # camera id associated with the image
-        world_T_image,  # world to camera transform matrix [4x4]
+        camera_T_world,  # world to camera transform matrix [4x4]
     ):
         self.image = image
         self.camera_id = camera_id
-        self.world_T_image = world_T_image
+        self.camera_T_world = camera_T_world
 
 
 class Camera:

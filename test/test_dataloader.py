@@ -75,10 +75,10 @@ class TestColmapData(unittest.TestCase):
         self.assertEqual(images[0].image.shape[0], 420)
         self.assertEqual(images[0].image.shape[1], 648)
         self.assertEqual(images[0].camera_id, 1)
-        self.assertEqual(images[0].world_T_image.shape[0], 4)
-        self.assertEqual(images[0].world_T_image.shape[1], 4)
+        self.assertEqual(images[0].camera_T_world.shape[0], 4)
+        self.assertEqual(images[0].camera_T_world.shape[1], 4)
 
-        expected_world_T_image = torch.tensor(
+        expected_camera_T_world = torch.tensor(
             [
                 [0.9999, 0.0089, 0.0073, -0.3283],
                 [-0.0106, 0.9568, 0.2905, -1.9260],
@@ -88,7 +88,9 @@ class TestColmapData(unittest.TestCase):
             dtype=torch.float32,
         )
 
-        self.assertTrue(torch.allclose(images[0].world_T_image, expected_world_T_image, atol=1e-4))
+        self.assertTrue(
+            torch.allclose(images[0].camera_T_world, expected_camera_T_world, atol=1e-4)
+        )
 
         cameras = self.colmap_data.get_cameras()
         self.assertEqual(len(cameras), 1)

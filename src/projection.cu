@@ -214,7 +214,7 @@ template <typename T>
 __global__ void compute_conic_kernel(
     const T* __restrict__ sigma_world,
     const T* __restrict__ J,
-    const T* __restrict__ world_T_image,
+    const T* __restrict__ camera_T_world,
     const int N,
     T* conic
 ) {
@@ -224,15 +224,15 @@ __global__ void compute_conic_kernel(
     }
     // get rotation matrix
     T W[9];
-    W[0] = world_T_image[0];
-    W[1] = world_T_image[1];
-    W[2] = world_T_image[2];
-    W[3] = world_T_image[4];
-    W[4] = world_T_image[5];
-    W[5] = world_T_image[6];
-    W[6] = world_T_image[8];
-    W[7] = world_T_image[9];
-    W[8] = world_T_image[10];
+    W[0] = camera_T_world[0];
+    W[1] = camera_T_world[1];
+    W[2] = camera_T_world[2];
+    W[3] = camera_T_world[4];
+    W[4] = camera_T_world[5];
+    W[5] = camera_T_world[6];
+    W[6] = camera_T_world[8];
+    W[7] = camera_T_world[9];
+    W[8] = camera_T_world[10];
 
     // compute JW = J * W)
     T JW[6];
@@ -259,12 +259,12 @@ __global__ void compute_conic_kernel(
 void compute_conic_cuda(
     torch::Tensor sigma_world,
     torch::Tensor J,
-    torch::Tensor world_T_image,
+    torch::Tensor camera_T_world,
     torch::Tensor conic
 ) {
     CHECK_VALID_INPUT(sigma_world);
     CHECK_VALID_INPUT(J);
-    CHECK_VALID_INPUT(world_T_image);
+    CHECK_VALID_INPUT(camera_T_world);
     CHECK_VALID_INPUT(conic);
 
     const int N = sigma_world.size(0);
@@ -273,8 +273,8 @@ void compute_conic_cuda(
     TORCH_CHECK(J.size(0) == N, "J must have shape Nx2x3");
     TORCH_CHECK(J.size(1) == 2, "J must have shape Nx2x3");
     TORCH_CHECK(J.size(2) == 3, "J must have shape Nx2x3");
-    TORCH_CHECK(world_T_image.size(0) == 4, "world_T_image must have shape 4x4");
-    TORCH_CHECK(world_T_image.size(1) == 4, "world_T_image must have shape 4x4");
+    TORCH_CHECK(camera_T_world.size(0) == 4, "camera_T_world must have shape 4x4");
+    TORCH_CHECK(camera_T_world.size(1) == 4, "camera_T_world must have shape 4x4");
     TORCH_CHECK(conic.size(0) == N, "conic must have shape Nx3");
     TORCH_CHECK(conic.size(1) == 3, "conic must have shape Nx3");
 
@@ -285,23 +285,23 @@ void compute_conic_cuda(
 
     if (sigma_world.dtype() == torch::kFloat32) {
         CHECK_FLOAT_TENSOR(J);
-        CHECK_FLOAT_TENSOR(world_T_image);
+        CHECK_FLOAT_TENSOR(camera_T_world);
         CHECK_FLOAT_TENSOR(conic);
         compute_conic_kernel<float><<<gridsize, blocksize>>>(
             sigma_world.data_ptr<float>(),
             J.data_ptr<float>(),
-            world_T_image.data_ptr<float>(),
+            camera_T_world.data_ptr<float>(),
             N,
             conic.data_ptr<float>()
         );
     } else if (sigma_world.dtype() == torch::kFloat64) {
         CHECK_DOUBLE_TENSOR(J);
-        CHECK_DOUBLE_TENSOR(world_T_image);
+        CHECK_DOUBLE_TENSOR(camera_T_world);
         CHECK_DOUBLE_TENSOR(conic);
         compute_conic_kernel<double><<<gridsize, blocksize>>>(
             sigma_world.data_ptr<double>(),
             J.data_ptr<double>(),
-            world_T_image.data_ptr<double>(),
+            camera_T_world.data_ptr<double>(),
             N,
             conic.data_ptr<double>()
         );

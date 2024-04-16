@@ -40,10 +40,10 @@ def plot_metrics(metrics, config):
 
 config = tyro.cli(SplatConfigs)
 
-yaml.dump(config, open(os.path.join(config.output_dir, "config.yaml"), "w"))
-
 if not os.path.exists(config.output_dir):
     os.makedirs(config.output_dir)
+# save a copy of the config
+yaml.dump(config, open(os.path.join(config.output_dir, "config.yaml"), "w"))
 
 torch.manual_seed(0)
 colmap_data = ColmapData(
@@ -73,7 +73,7 @@ trainer.train()
 end = time.time()
 
 # save gaussians
-torch.save(gaussians, os.path.join(config.output_dir, "gaussians.pt"))
+torch.save(gaussians, os.path.join(config.output_dir, "gaussians_final.pt"))
 
 # training time
 seconds = end - start

@@ -268,7 +268,7 @@ class SplatTrainer:
             test_psnrs = []
             test_ssim = []
             for test_img_idx in self.test_split:
-                test_world_T_image = self.images[test_img_idx].world_T_image
+                test_camera_T_world = self.images[test_img_idx].camera_T_world
                 test_camera = self.cameras[self.images[test_img_idx].camera_id]
 
                 (
@@ -277,7 +277,7 @@ class SplatTrainer:
                     _,
                 ) = rasterize(
                     self.gaussians,
-                    test_world_T_image,
+                    test_camera_T_world,
                     test_camera,
                     near_thresh=self.config.near_thresh,
                     cull_mask_padding=self.config.cull_mask_padding,
@@ -309,10 +309,10 @@ class SplatTrainer:
 
         return torch.tensor(test_psnrs), torch.tensor(test_ssim)
 
-    def splat_and_compute_loss(self, image_idx, world_T_image, camera):
+    def splat_and_compute_loss(self, image_idx, camera_T_world, camera):
         image, culling_mask, uv = rasterize(
             self.gaussians,
-            world_T_image,
+            camera_T_world,
             camera,
             near_thresh=self.config.near_thresh,
             cull_mask_padding=self.config.cull_mask_padding,
@@ -351,12 +351,12 @@ class SplatTrainer:
     def train(self):
         for i in range(self.config.num_iters):
             image_idx = np.random.choice(self.train_split)
-            world_T_image = self.images[image_idx].world_T_image
+            camera_T_world = self.images[image_idx].camera_T_world
             camera = self.cameras[self.images[image_idx].camera_id]
 
             self.optimizer_manager.optimizer.zero_grad()
 
-            image, psnr = self.splat_and_compute_loss(image_idx, world_T_image, camera)
+            image, psnr = self.splat_and_compute_loss(image_idx, camera_T_world, camera)
             self.metrics.train_psnr.append(psnr.item())
             self.metrics.num_gaussians.append(self.gaussians.xyz.shape[0])
 

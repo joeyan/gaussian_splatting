@@ -17,9 +17,9 @@ from splat_py.tile_culling import (
 
 
 def rasterize(
-    gaussians, world_T_image, camera, near_thresh, cull_mask_padding, mh_dist, use_sh_precompute
+    gaussians, camera_T_world, camera, near_thresh, cull_mask_padding, mh_dist, use_sh_precompute
 ):
-    xyz_camera_frame = transform_points_torch(gaussians.xyz, world_T_image)
+    xyz_camera_frame = transform_points_torch(gaussians.xyz, camera_T_world)
     uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
 
     # perform frustrum culling
@@ -65,7 +65,7 @@ def rasterize(
 
     sigma_world = ComputeSigmaWorld.apply(culled_gaussians.quaternion, culled_gaussians.scale)
     J = ComputeProjectionJacobian.apply(xyz_camera_frame, camera.K)
-    conic = ComputeConic.apply(sigma_world, J, world_T_image)
+    conic = ComputeConic.apply(sigma_world, J, camera_T_world)
 
     # perform tile culling
     tiles = Tiles(camera.height, camera.width, uv.device)
@@ -83,12 +83,12 @@ def rasterize(
         sh_coeffs = torch.cat((culled_gaussians.rgb.unsqueeze(dim=2), culled_gaussians.sh), dim=2)
         if use_sh_precompute:
             render_rgb = PrecomputeRGBFromSH.apply(
-                sh_coeffs, culled_gaussians.xyz, torch.inverse(world_T_image).contiguous()
+                sh_coeffs, culled_gaussians.xyz, torch.inverse(camera_T_world).contiguous()
             )
         else:
             render_rgb = sh_coeffs
             # actually need to compute rays here
-            rays = compute_rays_in_world_frame(camera, world_T_image)
+            rays = compute_rays_in_world_frame(camera, camera_T_world)
     else:
         render_rgb = culled_gaussians.rgb
 

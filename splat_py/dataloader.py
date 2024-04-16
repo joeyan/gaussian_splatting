@@ -144,15 +144,15 @@ class ColmapData(GaussianSplattingDataset):
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
             # load transform
-            world_T_image = torch.eye(4)
-            world_T_image[:3, :3] = torch.tensor(qvec2rotmat(image_info.qvec), dtype=torch.float32)
-            world_T_image[:3, 3] = torch.tensor(image_info.tvec, dtype=torch.float32)
+            camera_T_world = torch.eye(4)
+            camera_T_world[:3, :3] = torch.tensor(qvec2rotmat(image_info.qvec), dtype=torch.float32)
+            camera_T_world[:3, 3] = torch.tensor(image_info.tvec, dtype=torch.float32)
 
             self.images.append(
                 Image(
                     image=torch.from_numpy(image).to(torch.uint8).to(self.device),
                     camera_id=image_info.camera_id,
-                    world_T_image=world_T_image.to(self.device),
+                    camera_T_world=camera_T_world.to(self.device),
                 )
             )
 

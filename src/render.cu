@@ -16,7 +16,7 @@ __global__ void render_tiles_kernel(
     const int* __restrict__ gaussian_idx_by_splat_idx,
     const int image_width,
     const int image_height,
-    bool use_fast_exp,
+    const bool use_fast_exp,
     int* num_splats_per_pixel,
     T* __restrict__ final_weight_per_pixel,
     T* __restrict__ image

@@ -65,14 +65,14 @@ void compute_projection_jacobian_backward_cuda(
 void compute_conic_cuda(
     torch::Tensor sigma_world,
     torch::Tensor J,
-    torch::Tensor world_T_image,
+    torch::Tensor camera_T_world,
     torch::Tensor conic
 );
 
 void compute_conic_backward_cuda(
     torch::Tensor sigma_world,
     torch::Tensor J,
-    torch::Tensor world_T_image,
+    torch::Tensor camera_T_world,
     torch::Tensor conic_grad_out,
     torch::Tensor sigma_world_grad_in,
     torch::Tensor J_grad_in
@@ -108,6 +108,17 @@ void precompute_rgb_from_sh_backward_cuda(
     const torch::Tensor camera_T_world,
     const torch::Tensor grad_rgb,
     torch::Tensor grad_sh
+);
+
+void render_depth_cuda(
+    torch::Tensor xyz_camera_frame,
+    torch::Tensor uvs,
+    torch::Tensor opacity,
+    torch::Tensor conic,
+    torch::Tensor splat_start_end_idx_by_tile_idx,
+    torch::Tensor gaussian_idx_by_splat_idx,
+    const float alpha_threshold,
+    torch::Tensor depth_image
 );
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -155,4 +166,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         &precompute_rgb_from_sh_backward_cuda,
         "precompute rgb from sh per gaussian backward"
     );
+    m.def("render_depth_cuda", &render_depth_cuda, "Render depth CUDA");
 }

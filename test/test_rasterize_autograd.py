@@ -22,8 +22,8 @@ class TestRasterizeAutograd(unittest.TestCase):
             device=self.device,
         )
         self.camera = Camera(60, 40, K)
-        self.world_T_image = torch.eye(4, dtype=torch.float64, device=self.device)
-        self.rays = compute_rays_in_world_frame(self.camera, self.world_T_image)
+        self.camera_T_world = torch.eye(4, dtype=torch.float64, device=self.device)
+        self.rays = compute_rays_in_world_frame(self.camera, self.camera_T_world)
 
         self.uv = torch.tensor(
             [
