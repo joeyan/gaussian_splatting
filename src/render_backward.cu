@@ -18,6 +18,7 @@ __global__ void render_tiles_backward_kernel(
     const T* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
     const int* __restrict__ gaussian_idx_by_splat_idx,
+    const T* __restrict__ background_rgb,
     const int* __restrict__ num_splats_per_pixel,
     const T* __restrict__ final_weight_per_pixel,
     const T* __restrict__ grad_image,
@@ -169,6 +170,14 @@ __global__ void render_tiles_backward_kernel(
                 if (i < num_splats_this_pixel - 1) {
                     weight = weight * reciprocal_one_minus_alpha;
                 }
+                // if this is the first iteration and background blending was used, update
+                // color_accum with the background contribution
+                if (i == num_splats_this_pixel - 1 && weight > 0.0) {
+                    #pragma unroll
+                    for (int channel = 0; channel < 3; channel++) {
+                        color_accum[channel] += background_rgb[channel] * weight;
+                    }
+                }
 
                 T grad_rgb_local[3];
                 #pragma unroll
@@ -273,6 +282,7 @@ void render_tiles_backward_cuda(
     torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
+    torch::Tensor background_rgb,
     torch::Tensor num_splats_per_pixel,
     torch::Tensor final_weight_per_pixel,
     torch::Tensor grad_image,
@@ -288,6 +298,7 @@ void render_tiles_backward_cuda(
     CHECK_VALID_INPUT(view_dir_by_pixel);
     CHECK_VALID_INPUT(splat_start_end_idx_by_tile_idx);
     CHECK_VALID_INPUT(gaussian_idx_by_splat_idx);
+    CHECK_VALID_INPUT(background_rgb);
     CHECK_VALID_INPUT(num_splats_per_pixel);
     CHECK_VALID_INPUT(final_weight_per_pixel);
     CHECK_VALID_INPUT(grad_image);
@@ -367,6 +378,7 @@ void render_tiles_backward_cuda(
         CHECK_FLOAT_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        CHECK_FLOAT_TENSOR(background_rgb);
         CHECK_INT_TENSOR(num_splats_per_pixel);
         CHECK_FLOAT_TENSOR(final_weight_per_pixel);
         CHECK_FLOAT_TENSOR(grad_image);
@@ -383,6 +395,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<float>(),
                 grad_image.data_ptr<float>(),
@@ -403,6 +416,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<float>(),
                 grad_image.data_ptr<float>(),
@@ -424,6 +438,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<float>(),
                 grad_image.data_ptr<float>(),
@@ -444,6 +459,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<float>(),
                 grad_image.data_ptr<float>(),
@@ -465,6 +481,7 @@ void render_tiles_backward_cuda(
         CHECK_DOUBLE_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        CHECK_DOUBLE_TENSOR(background_rgb);
         CHECK_INT_TENSOR(num_splats_per_pixel);
         CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
         CHECK_DOUBLE_TENSOR(grad_image);
@@ -481,6 +498,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<double>(),
                 grad_image.data_ptr<double>(),
@@ -501,6 +519,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<double>(),
                 grad_image.data_ptr<double>(),
@@ -521,6 +540,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<double>(),
                 grad_image.data_ptr<double>(),
@@ -541,6 +561,7 @@ void render_tiles_backward_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 num_splats_per_pixel.data_ptr<int>(),
                 final_weight_per_pixel.data_ptr<double>(),
                 grad_image.data_ptr<double>(),

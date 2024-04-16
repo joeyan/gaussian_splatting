@@ -14,6 +14,7 @@ __global__ void render_tiles_kernel(
     const T* __restrict__ view_dir_by_pixel,
     const int* __restrict__ splat_start_end_idx_by_tile_idx,
     const int* __restrict__ gaussian_idx_by_splat_idx,
+    const T* __restrict__ background_rgb,
     const int image_width,
     const int image_height,
     const bool use_fast_exp,
@@ -159,6 +160,16 @@ __global__ void render_tiles_kernel(
         }     // valid pixel check
     }         // end chunk loop
 
+    // if the pixel is not fully saturated, blend the background color in
+    if (valid_pixel && alpha_accum < 1.0) {
+        const T background_weight = 1.0 - alpha_accum; // background has opacity of 1.0
+        #pragma unroll
+        for (int channel = 0; channel < 3; channel++) {
+            _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] +=
+                background_rgb[channel] * background_weight;
+        }
+    }
+
     // copy back to global memory
     __syncthreads(); // wait for splatting to complete
     if (valid_pixel) {
@@ -181,6 +192,7 @@ void render_tiles_cuda(
     torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
+    torch::Tensor background_rgb,
     torch::Tensor num_splats_per_pixel,
     torch::Tensor final_weight_per_pixel,
     torch::Tensor rendered_image
@@ -192,6 +204,7 @@ void render_tiles_cuda(
     CHECK_VALID_INPUT(view_dir_by_pixel);
     CHECK_VALID_INPUT(splat_start_end_idx_by_tile_idx);
     CHECK_VALID_INPUT(gaussian_idx_by_splat_idx);
+    CHECK_VALID_INPUT(background_rgb);
     CHECK_VALID_INPUT(num_splats_per_pixel);
     CHECK_VALID_INPUT(final_weight_per_pixel);
     CHECK_VALID_INPUT(rendered_image);
@@ -239,6 +252,7 @@ void render_tiles_cuda(
         CHECK_FLOAT_TENSOR(view_dir_by_pixel);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        CHECK_FLOAT_TENSOR(background_rgb);
         CHECK_INT_TENSOR(num_splats_per_pixel);
         CHECK_FLOAT_TENSOR(final_weight_per_pixel);
         CHECK_FLOAT_TENSOR(rendered_image);
@@ -252,6 +266,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 image_width,
                 image_height,
                 true,
@@ -268,6 +283,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 image_width,
                 image_height,
                 true,
@@ -284,6 +300,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 image_width,
                 image_height,
                 true,
@@ -300,6 +317,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<float>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<float>(),
                 image_width,
                 image_height,
                 true,
@@ -316,6 +334,7 @@ void render_tiles_cuda(
         CHECK_DOUBLE_TENSOR(conic);
         CHECK_INT_TENSOR(splat_start_end_idx_by_tile_idx);
         CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
+        CHECK_DOUBLE_TENSOR(background_rgb);
         CHECK_INT_TENSOR(num_splats_per_pixel);
         CHECK_DOUBLE_TENSOR(final_weight_per_pixel);
         CHECK_DOUBLE_TENSOR(rendered_image);
@@ -328,6 +347,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 image_width,
                 image_height,
                 false,
@@ -344,6 +364,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 image_width,
                 image_height,
                 false,
@@ -360,6 +381,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 image_width,
                 image_height,
                 false,
@@ -376,6 +398,7 @@ void render_tiles_cuda(
                 view_dir_by_pixel.data_ptr<double>(),
                 splat_start_end_idx_by_tile_idx.data_ptr<int>(),
                 gaussian_idx_by_splat_idx.data_ptr<int>(),
+                background_rgb.data_ptr<double>(),
                 image_width,
                 image_height,
                 false,

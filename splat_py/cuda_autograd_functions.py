@@ -149,6 +149,8 @@ class RenderImage(torch.autograd.Function):
         final_weight_per_pixel = torch.zeros(
             image_size[0], image_size[1], dtype=rgb.dtype, device=rgb.device
         )
+        background_rgb = torch.ones(3, dtype=rgb.dtype, device=rgb.device)
+
         render_tiles_cuda(
             uvs,
             opacity,
@@ -157,6 +159,7 @@ class RenderImage(torch.autograd.Function):
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
+            background_rgb,
             num_splats_per_pixel,
             final_weight_per_pixel,
             rendered_image,
@@ -169,6 +172,7 @@ class RenderImage(torch.autograd.Function):
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
+            background_rgb,
             num_splats_per_pixel,
             final_weight_per_pixel,
         )
@@ -184,6 +188,7 @@ class RenderImage(torch.autograd.Function):
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
+            background_rgb,
             num_splats_per_pixel,
             final_weight_per_pixel,
         ) = ctx.saved_tensors
@@ -202,6 +207,7 @@ class RenderImage(torch.autograd.Function):
             rays,
             splat_start_end_idx_by_tile_idx,
             sorted_gaussian_idx_by_splat_idx,
+            background_rgb,
             num_splats_per_pixel,
             final_weight_per_pixel,
             grad_rendered_image,
