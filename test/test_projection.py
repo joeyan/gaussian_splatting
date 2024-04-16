@@ -16,10 +16,10 @@ class ProjectionTest(unittest.TestCase):
     def setUp(self):
         self.assertTrue(torch.cuda.is_available())
         self.device = torch.device("cuda")
-        self.gaussians, self.camera, self.world_T_image = get_test_data(self.device)
+        self.gaussians, self.camera, self.camera_T_world = get_test_data(self.device)
 
     def test_project_points(self):
-        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
+        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.camera_T_world)
 
         self.assertAlmostEqual(xyz_camera_frame[0, 0].item(), 0.6602, places=4)
         self.assertAlmostEqual(xyz_camera_frame[0, 1].item(), -1.1849998, places=4)
@@ -93,7 +93,7 @@ class ProjectionTest(unittest.TestCase):
         self.assertAlmostEqual(sigma_world[4, 2, 2].item(), 3.5965507, places=4)
 
     def test_compute_projection_jacobian(self):
-        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
+        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.camera_T_world)
 
         jacobian = ComputeProjectionJacobian.apply(xyz_camera_frame, self.camera.K)
 
@@ -108,11 +108,11 @@ class ProjectionTest(unittest.TestCase):
     def test_compute_conic(self):
         # compute inputs (tested in previous tests)
         sigma_world = ComputeSigmaWorld.apply(self.gaussians.quaternion, self.gaussians.scale)
-        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.world_T_image)
+        xyz_camera_frame = transform_points_torch(self.gaussians.xyz, self.camera_T_world)
         jacobian = ComputeProjectionJacobian.apply(xyz_camera_frame, self.camera.K)
 
         # compute conic
-        conic = ComputeConic.apply(sigma_world, jacobian, self.world_T_image)
+        conic = ComputeConic.apply(sigma_world, jacobian, self.camera_T_world)
 
         self.assertEqual(conic.shape, (6, 3))
         self.assertAlmostEqual(conic[3, 0].item(), 664.28760, places=4)

@@ -23,7 +23,7 @@ __global__ void render_tiles_backward_kernel(
     const T* __restrict__ grad_image,
     const int image_width,
     const int image_height,
-    bool use_fast_exp,
+    const bool use_fast_exp,
     T* __restrict__ grad_rgb,     // N_gaussians x 3
     T* __restrict__ grad_opacity, // N_gaussians x 1
     T* __restrict__ grad_uv,      // N_gaussians x 2

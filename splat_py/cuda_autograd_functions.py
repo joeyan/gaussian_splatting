@@ -83,21 +83,21 @@ class ComputeProjectionJacobian(torch.autograd.Function):
 
 class ComputeConic(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, sigma_world, J, world_T_image):
+    def forward(ctx, sigma_world, J, camera_T_world):
         conic = torch.zeros(J.shape[0], 3, dtype=sigma_world.dtype, device=sigma_world.device)
-        compute_conic_cuda(sigma_world, J, world_T_image, conic)
-        ctx.save_for_backward(sigma_world, world_T_image, J)
+        compute_conic_cuda(sigma_world, J, camera_T_world, conic)
+        ctx.save_for_backward(sigma_world, camera_T_world, J)
         return conic
 
     @staticmethod
     def backward(ctx, grad_conic):
-        sigma_world, world_T_image, J = ctx.saved_tensors
+        sigma_world, camera_T_world, J = ctx.saved_tensors
         grad_sigma_world = torch.zeros(
             sigma_world.shape, dtype=sigma_world.dtype, device=sigma_world.device
         )
         grad_J = torch.zeros(J.shape, dtype=J.dtype, device=J.device)
         compute_conic_backward_cuda(
-            sigma_world, J, world_T_image, grad_conic, grad_sigma_world, grad_J
+            sigma_world, J, camera_T_world, grad_conic, grad_sigma_world, grad_J
         )
         return grad_sigma_world, grad_J, None
 

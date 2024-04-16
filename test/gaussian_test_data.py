@@ -66,7 +66,7 @@ def get_test_camera(device):
     return Camera(640, 480, K)
 
 
-def get_test_world_T_image(device):
+def get_test_camera_T_world(device):
     return torch.tensor(
         [
             [0.9999, 0.0089, 0.0073, -0.3283],
@@ -82,5 +82,5 @@ def get_test_world_T_image(device):
 def get_test_data(device):
     gaussians = get_test_gaussians(device)
     camera = get_test_camera(device)
-    world_T_image = get_test_world_T_image(device)
-    return gaussians, camera, world_T_image
+    camera_T_world = get_test_camera_T_world(device)
+    return gaussians, camera, camera_T_world

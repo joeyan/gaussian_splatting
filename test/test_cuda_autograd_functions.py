@@ -53,7 +53,7 @@ class TestAutogradFunctions(unittest.TestCase):
             device=self.device,
             requires_grad=True,
         )
-        self.world_T_image = torch.tensor(
+        self.camera_T_world = torch.tensor(
             [
                 [0.9999, 0.0089, 0.0073, -0.3283],
                 [-0.0106, 0.9568, 0.2905, -1.9260],
@@ -106,7 +106,7 @@ class TestAutogradFunctions(unittest.TestCase):
         )
         test = torch.autograd.gradcheck(
             ComputeConic.apply,
-            (sigma_world, projection_jacobian, self.world_T_image),
+            (sigma_world, projection_jacobian, self.camera_T_world),
             raise_exception=True,
         )
         self.assertTrue(test)

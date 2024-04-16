@@ -8,7 +8,7 @@ from splat_py.utils import (
     compute_rays,
     compute_rays_in_world_frame,
 )
-from gaussian_test_data import get_test_camera, get_test_world_T_image
+from gaussian_test_data import get_test_camera, get_test_camera_T_world
 
 
 class TestUtils(unittest.TestCase):
@@ -72,8 +72,8 @@ class TestUtils(unittest.TestCase):
         # get test data
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         camera = get_test_camera(device)
-        world_T_image = get_test_world_T_image(device)
-        rays = compute_rays_in_world_frame(camera, world_T_image)
+        camera_T_world = get_test_camera_T_world(device)
+        rays = compute_rays_in_world_frame(camera, camera_T_world)
         self.assertEqual(rays.shape, (480, 640, 3))
 
         # check some values
