@@ -149,7 +149,7 @@ class RenderImage(torch.autograd.Function):
         final_weight_per_pixel = torch.zeros(
             image_size[0], image_size[1], dtype=rgb.dtype, device=rgb.device
         )
-        background_rgb = torch.ones(3, dtype=rgb.dtype, device=rgb.device)
+        background_rgb = torch.ones(3, dtype=rgb.dtype, device=rgb.device) * 0.5
 
         render_tiles_cuda(
             uvs,

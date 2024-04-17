@@ -172,10 +172,13 @@ __global__ void render_tiles_backward_kernel(
                 }
                 // if this is the first iteration and background blending was used, update
                 // color_accum with the background contribution
-                if (i == num_splats_this_pixel - 1 && weight > 0.0) {
-                    #pragma unroll
-                    for (int channel = 0; channel < 3; channel++) {
-                        color_accum[channel] += background_rgb[channel] * weight;
+                if (i == num_splats_this_pixel - 1) {
+                    const T background_weight = 1.0 - (alpha * weight + 1.0 - weight);
+                    if (background_weight > 0.001) {
+                        #pragma unroll
+                        for (int channel = 0; channel < 3; channel++) {
+                            color_accum[channel] += background_rgb[channel] * background_weight;
+                        }
                     }
                 }
 

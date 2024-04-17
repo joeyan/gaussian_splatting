@@ -104,9 +104,6 @@ __global__ void render_tiles_kernel(
             int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
             int num_splats_this_chunk = chunk_end - chunk_start;
             for (int i = 0; i < num_splats_this_chunk; i++) {
-                if (alpha_accum > 0.9999) {
-                    break;
-                }
                 const T u_mean = _uvs[i * 2 + 0];
                 const T v_mean = _uvs[i * 2 + 1];
 
@@ -156,17 +153,19 @@ __global__ void render_tiles_kernel(
                 }
                 alpha_accum += weight;
                 num_splats++;
+                if (alpha_accum > 0.9999) {
+                    break;
+                }
             } // end splat loop
         }     // valid pixel check
     }         // end chunk loop
 
-    // if the pixel is not fully saturated, blend the background color in
-    if (valid_pixel && alpha_accum < 1.0) {
-        const T background_weight = 1.0 - alpha_accum; // background has opacity of 1.0
+    // add background if the pixel is not saturated
+    if (valid_pixel && alpha_accum < 0.999) {
         #pragma unroll
         for (int channel = 0; channel < 3; channel++) {
             _image[(threadIdx.y * 16 + threadIdx.x) * 3 + channel] +=
-                background_rgb[channel] * background_weight;
+                background_rgb[channel] * (1.0 - alpha_accum);
         }
     }
 
