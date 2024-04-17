@@ -104,6 +104,9 @@ __global__ void render_tiles_kernel(
             int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
             int num_splats_this_chunk = chunk_end - chunk_start;
             for (int i = 0; i < num_splats_this_chunk; i++) {
+                if (alpha_accum > 0.9999) {
+                    break;
+                }
                 const T u_mean = _uvs[i * 2 + 0];
                 const T v_mean = _uvs[i * 2 + 1];
 
@@ -153,9 +156,6 @@ __global__ void render_tiles_kernel(
                 }
                 alpha_accum += weight;
                 num_splats++;
-                if (alpha_accum > 0.9999) {
-                    break;
-                }
             } // end splat loop
         }     // valid pixel check
     }         // end chunk loop
@@ -217,6 +217,8 @@ void render_tiles_cuda(
     TORCH_CHECK(conic.size(0) == N, "Conic must have the same number of elements as uvs");
     TORCH_CHECK(conic.size(1) == 3, "Conic must be Nx3");
     TORCH_CHECK(rendered_image.size(2) == 3, "Image must be HxWx3");
+    TORCH_CHECK(background_rgb.dim() == 1, "Background RGB must be 1D");
+    TORCH_CHECK(background_rgb.size(0) == 3, "Background RGB must have 3 elements");
 
     int image_height = rendered_image.size(0);
     int image_width = rendered_image.size(1);

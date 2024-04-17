@@ -317,6 +317,8 @@ void render_tiles_backward_cuda(
     TORCH_CHECK(rgb.size(1) == 3, "rgb must have 3 channels");
     TORCH_CHECK(conic.size(0) == N, "conic must have the same size as uvs");
     TORCH_CHECK(conic.size(1) == 3, "conic must have 3 channels");
+    TORCH_CHECK(background_rgb.dim() == 1, "Background RGB must be 1D");
+    TORCH_CHECK(background_rgb.size(0) == 3, "Background RGB must have 3 elements");
 
     int image_height = num_splats_per_pixel.size(0);
     int image_width = num_splats_per_pixel.size(1);
