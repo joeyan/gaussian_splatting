@@ -33,7 +33,6 @@ __global__ void render_depth_kernel(
     const int block_size = blockDim.x * blockDim.y;
 
     float alpha_accum = 0.0;
-    float alpha_weight = 0.0;
 
     // shared memory copies of inputs
     __shared__ int _gaussian_idx_by_splat_idx[CHUNK_SIZE];
@@ -95,7 +94,6 @@ __global__ void render_depth_kernel(
                     const float norm_prob = __expf(-0.5 * mh_sq);
                     alpha = _opacity[i] * norm_prob;
                 }
-                alpha_weight = 1.0 - alpha_accum;
                 const float weight = alpha * (1.0 - alpha_accum);
                 alpha_accum += weight;
 

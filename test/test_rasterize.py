@@ -8,6 +8,8 @@ from splat_py.utils import inverse_sigmoid_torch
 
 from gaussian_test_data import get_test_data
 
+SAVE_DEBUG = False
+
 
 class TestRasterize(unittest.TestCase):
     def setUp(self):
@@ -22,6 +24,7 @@ class TestRasterize(unittest.TestCase):
         mh_dist = 3.0
         use_sh_precompute = True
 
+        background_rgb = torch.zeros(3, device=self.device, dtype=self.gaussians.rgb.dtype)
         image, _, _ = rasterize(
             self.gaussians,
             self.camera_T_world,
@@ -30,11 +33,13 @@ class TestRasterize(unittest.TestCase):
             cull_mask_padding,
             mh_dist,
             use_sh_precompute,
+            background_rgb,
         )
-        debug_image = image.clip(0, 1).detach().cpu().numpy()
-        cv2.imwrite(
-            "/tmp/test_rasterize_no_sh.png", (debug_image * 255).astype(np.uint8)[..., ::-1]
-        )
+        if SAVE_DEBUG:
+            debug_image = image.clip(0, 1).detach().cpu().numpy()
+            cv2.imwrite(
+                "/tmp/test_rasterize_no_sh.png", (debug_image * 255).astype(np.uint8)[..., ::-1]
+            )
 
         # near red gaussian center
         self.assertAlmostEqual(image[340, 348, 0].item(), 0.47698545455932617, places=5)
@@ -54,7 +59,7 @@ class TestRasterize(unittest.TestCase):
         self.gaussians.sh = (
             torch.ones((self.gaussians.xyz.shape[0], 3, 15), device=self.device) * 0.1
         )
-
+        background_rgb = torch.zeros(3, device=self.device, dtype=self.gaussians.rgb.dtype)
         image, _, _ = rasterize(
             self.gaussians,
             self.camera_T_world,
@@ -63,12 +68,14 @@ class TestRasterize(unittest.TestCase):
             cull_mask_padding,
             mh_dist,
             use_sh_precompute,
+            background_rgb,
         )
-        debug_image = image.clip(0, 1).detach().cpu().numpy()
-        cv2.imwrite(
-            "/tmp/test_rasterize_full_sh_use_precompute.png",
-            (debug_image * 255).astype(np.uint8)[..., ::-1],
-        )
+        if SAVE_DEBUG:
+            debug_image = image.clip(0, 1).detach().cpu().numpy()
+            cv2.imwrite(
+                "/tmp/test_rasterize_full_sh_use_precompute.png",
+                (debug_image * 255).astype(np.uint8)[..., ::-1],
+            )
 
         # near red gaussian center
         self.assertAlmostEqual(image[340, 348, 0].item(), 0.5362688899040222, places=5)
@@ -89,6 +96,7 @@ class TestRasterize(unittest.TestCase):
             torch.ones((self.gaussians.xyz.shape[0], 3, 15), device=self.device) * 0.1
         )
 
+        background_rgb = torch.zeros(3, device=self.device, dtype=self.gaussians.rgb.dtype)
         image, _, _ = rasterize(
             self.gaussians,
             self.camera_T_world,
@@ -97,12 +105,14 @@ class TestRasterize(unittest.TestCase):
             cull_mask_padding,
             mh_dist,
             use_sh_precompute,
+            background_rgb,
         )
-        debug_image = image.clip(0, 1).detach().cpu().numpy()
-        cv2.imwrite(
-            "/tmp/test_rasterize_full_sh_use_per_pixel_viewdir.png",
-            (debug_image * 255).astype(np.uint8)[..., ::-1],
-        )
+        if SAVE_DEBUG:
+            debug_image = image.clip(0, 1).detach().cpu().numpy()
+            cv2.imwrite(
+                "/tmp/test_rasterize_full_sh_use_per_pixel_viewdir.png",
+                (debug_image * 255).astype(np.uint8)[..., ::-1],
+            )
 
         # near red gaussian center
         self.assertAlmostEqual(image[340, 348, 0].item(), 0.5328576564788818, places=5)

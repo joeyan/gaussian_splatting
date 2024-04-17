@@ -17,7 +17,14 @@ from splat_py.tile_culling import (
 
 
 def rasterize(
-    gaussians, camera_T_world, camera, near_thresh, cull_mask_padding, mh_dist, use_sh_precompute
+    gaussians,
+    camera_T_world,
+    camera,
+    near_thresh,
+    cull_mask_padding,
+    mh_dist,
+    use_sh_precompute,
+    background_rgb,
 ):
     xyz_camera_frame = transform_points_torch(gaussians.xyz, camera_T_world)
     uv = CameraPointProjection.apply(xyz_camera_frame, camera.K)
@@ -101,5 +108,6 @@ def rasterize(
         splat_start_end_idx_by_tile_idx,
         sorted_gaussian_idx_by_splat_idx,
         torch.tensor([camera.height, camera.width], device=uv.device),
+        background_rgb,
     )
     return image, culling_mask, uv

@@ -8,6 +8,7 @@ void render_tiles_cuda(
     torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
+    torch::Tensor background_rgb,
     torch::Tensor num_splats_per_pixel,
     torch::Tensor final_weight_per_pixel,
     torch::Tensor rendered_image
@@ -21,6 +22,7 @@ void render_tiles_backward_cuda(
     torch::Tensor view_dir_by_pixel,
     torch::Tensor splat_start_end_idx_by_tile_idx,
     torch::Tensor gaussian_idx_by_splat_idx,
+    torch::Tensor background_rgb,
     torch::Tensor num_splats_per_pixel,
     torch::Tensor final_weight_per_pixel,
     torch::Tensor grad_image,

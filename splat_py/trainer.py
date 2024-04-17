@@ -283,6 +283,9 @@ class SplatTrainer:
                     cull_mask_padding=self.config.cull_mask_padding,
                     mh_dist=self.config.mh_dist,
                     use_sh_precompute=self.config.use_sh_precompute,
+                    background_rgb=torch.zeros(
+                        3, device=self.gaussians.xyz.device, dtype=self.gaussians.xyz.dtype
+                    ),
                 )
                 gt_image = self.images[test_img_idx].image
                 l2_loss = torch.nn.functional.mse_loss(test_image.clip(0, 1), gt_image)
@@ -309,7 +312,7 @@ class SplatTrainer:
 
         return torch.tensor(test_psnrs), torch.tensor(test_ssim)
 
-    def splat_and_compute_loss(self, image_idx, camera_T_world, camera):
+    def splat_and_compute_loss(self, image_idx, camera_T_world, camera, background_rgb):
         image, culling_mask, uv = rasterize(
             self.gaussians,
             camera_T_world,
@@ -318,6 +321,7 @@ class SplatTrainer:
             cull_mask_padding=self.config.cull_mask_padding,
             mh_dist=self.config.mh_dist,
             use_sh_precompute=self.config.use_sh_precompute,
+            background_rgb=background_rgb,
         )
         uv.retain_grad()
 
@@ -356,7 +360,18 @@ class SplatTrainer:
 
             self.optimizer_manager.optimizer.zero_grad()
 
-            image, psnr = self.splat_and_compute_loss(image_idx, camera_T_world, camera)
+            background_rgb = torch.zeros(
+                3, device=self.gaussians.xyz.device, dtype=self.gaussians.xyz.dtype
+            )
+            if self.config.use_background and i < self.config.use_background_end:
+                background_rgb = (
+                    torch.ones(3, device=self.gaussians.xyz.device, dtype=self.gaussians.xyz.dtype)
+                    * float(i % 255)
+                    / 255.0
+                )
+            image, psnr = self.splat_and_compute_loss(
+                image_idx, camera_T_world, camera, background_rgb=background_rgb
+            )
             self.metrics.train_psnr.append(psnr.item())
             self.metrics.num_gaussians.append(self.gaussians.xyz.shape[0])
 
