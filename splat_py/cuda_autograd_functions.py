@@ -139,6 +139,7 @@ class RenderImage(torch.autograd.Function):
         splat_start_end_idx_by_tile_idx,
         sorted_gaussian_idx_by_splat_idx,
         image_size,
+        background_rgb,
     ):
         rendered_image = torch.zeros(
             image_size[0], image_size[1], 3, dtype=rgb.dtype, device=rgb.device
@@ -149,7 +150,6 @@ class RenderImage(torch.autograd.Function):
         final_weight_per_pixel = torch.zeros(
             image_size[0], image_size[1], dtype=rgb.dtype, device=rgb.device
         )
-        background_rgb = torch.ones(3, dtype=rgb.dtype, device=rgb.device) * 0.5
 
         render_tiles_cuda(
             uvs,
@@ -216,4 +216,4 @@ class RenderImage(torch.autograd.Function):
             grad_uv,
             grad_conic,
         )
-        return grad_rgb, grad_opacity, grad_uv, grad_conic, None, None, None, None
+        return grad_rgb, grad_opacity, grad_uv, grad_conic, None, None, None, None, None

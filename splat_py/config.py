@@ -92,10 +92,15 @@ class SplatConfig:
     """select every nth image for the test split - 8 is same as GS and Mip-Nerf 360 papers"""
     test_split_ratio: int = 8
 
+    """use background color"""
+    use_background: bool = True
+    """background color end interval"""
+    use_background_end: int = 5000
+
     """interval to reset all opacities to a fixed value"""
     reset_opacity_interval: int = 3001
     """opacity value to reset to"""
-    reset_opacity_value: float = 0.15
+    reset_opacity_value: float = 0.20
     """start iteration for reset opacity"""
     reset_opacity_start: int = 1050
     """end iteration for reset opacity"""
@@ -155,6 +160,7 @@ SplatConfigs = tyro.extras.subcommand_type_from_defaults(
             adaptive_control_end=27500,
             adaptive_control_interval=300,
             reset_opacity_end=27500,
+            use_background_end=27500,
         ),
     }
 )

@@ -77,6 +77,9 @@ class TestRasterizeAutograd(unittest.TestCase):
         rgb[0, 0] = 0.0
         rgb[1, 1] = 0.0
 
+        background_rgb = (
+            torch.ones(3, dtype=torch.float64, device=self.device, requires_grad=False) * 0.5
+        )
         test = torch.autograd.gradcheck(
             RenderImage.apply,
             (
@@ -88,6 +91,42 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,
                 image_size,
+                background_rgb,
+            ),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
+    def test_rasterize_image_grad_SH_0_no_background(self):
+        image_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
+        rgb = (
+            torch.ones(
+                self.uv.shape[0],
+                3,
+                dtype=torch.float64,
+                device=self.device,
+                requires_grad=True,
+            )
+            * 0.5
+        )
+        rgb[0, 0] = 0.0
+        rgb[1, 1] = 0.0
+
+        background_rgb = torch.zeros(
+            3, dtype=torch.float64, device=self.device, requires_grad=False
+        )
+        test = torch.autograd.gradcheck(
+            RenderImage.apply,
+            (
+                rgb,
+                self.opacity,
+                self.uv,
+                self.conic,
+                self.rays,
+                self.splat_start_end_idx_by_tile_idx,
+                self.gaussian_indices_per_tile,
+                image_size,
+                background_rgb,
             ),
             raise_exception=True,
         )
@@ -106,6 +145,9 @@ class TestRasterizeAutograd(unittest.TestCase):
             )
             * 0.5
         )
+        background_rgb = (
+            torch.ones(3, dtype=torch.float64, device=self.device, requires_grad=False) * 0.5
+        )
         test = torch.autograd.gradcheck(
             RenderImage.apply,
             (
@@ -117,6 +159,40 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,
                 test_size,
+                background_rgb,
+            ),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
+    def test_rasterize_image_grad_SH_4_no_background(self):
+        test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
+        sh_coeff_4 = (
+            torch.ones(
+                self.uv.shape[0],
+                3,
+                4,
+                dtype=torch.float64,
+                device=self.device,
+                requires_grad=True,
+            )
+            * 0.5
+        )
+        background_rgb = torch.zeros(
+            3, dtype=torch.float64, device=self.device, requires_grad=False
+        )
+        test = torch.autograd.gradcheck(
+            RenderImage.apply,
+            (
+                sh_coeff_4,
+                self.opacity,
+                self.uv,
+                self.conic,
+                self.rays,
+                self.splat_start_end_idx_by_tile_idx,
+                self.gaussian_indices_per_tile,
+                test_size,
+                background_rgb,
             ),
             raise_exception=True,
         )
@@ -135,6 +211,9 @@ class TestRasterizeAutograd(unittest.TestCase):
             )
             * 0.5
         )
+        background_rgb = (
+            torch.ones(3, dtype=torch.float64, device=self.device, requires_grad=False) * 0.5
+        )
         test = torch.autograd.gradcheck(
             RenderImage.apply,
             (
@@ -146,6 +225,40 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,
                 test_size,
+                background_rgb,
+            ),
+            raise_exception=True,
+        )
+        self.assertTrue(test)
+
+    def test_rasterize_image_grad_SH_9_no_background(self):
+        test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
+        sh_coeff_9 = (
+            torch.ones(
+                self.uv.shape[0],
+                3,
+                9,
+                dtype=torch.float64,
+                device=self.device,
+                requires_grad=True,
+            )
+            * 0.5
+        )
+        background_rgb = torch.zeros(
+            3, dtype=torch.float64, device=self.device, requires_grad=False
+        )
+        test = torch.autograd.gradcheck(
+            RenderImage.apply,
+            (
+                sh_coeff_9,
+                self.opacity,
+                self.uv,
+                self.conic,
+                self.rays,
+                self.splat_start_end_idx_by_tile_idx,
+                self.gaussian_indices_per_tile,
+                test_size,
+                background_rgb,
             ),
             raise_exception=True,
         )
@@ -164,6 +277,9 @@ class TestRasterizeAutograd(unittest.TestCase):
             )
             * 0.5
         )
+        background_rgb = (
+            torch.ones(3, dtype=torch.float64, device=self.device, requires_grad=False) * 0.5
+        )
         test = torch.autograd.gradcheck(
             RenderImage.apply,
             (
@@ -175,6 +291,41 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.splat_start_end_idx_by_tile_idx,
                 self.gaussian_indices_per_tile,
                 test_size,
+                background_rgb,
+            ),
+            raise_exception=True,
+            atol=3e-5,
+        )
+        self.assertTrue(test)
+
+    def test_rasterize_image_grad_SH_16_no_background(self):
+        test_size = torch.tensor([40, 60], dtype=torch.int, device=self.device)
+        sh_coeff_16 = (
+            torch.ones(
+                self.uv.shape[0],
+                3,
+                16,
+                dtype=torch.float64,
+                device=self.device,
+                requires_grad=True,
+            )
+            * 0.5
+        )
+        background_rgb = torch.zeros(
+            3, dtype=torch.float64, device=self.device, requires_grad=False
+        )
+        test = torch.autograd.gradcheck(
+            RenderImage.apply,
+            (
+                sh_coeff_16,
+                self.opacity,
+                self.uv,
+                self.conic,
+                self.rays,
+                self.splat_start_end_idx_by_tile_idx,
+                self.gaussian_indices_per_tile,
+                test_size,
+                background_rgb,
             ),
             raise_exception=True,
             atol=3e-5,
