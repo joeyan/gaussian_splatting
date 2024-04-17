@@ -33,6 +33,14 @@ class SplatTrainer:
         self.test_split = np.arange(0, num_images, self.config.test_split_ratio)
         self.train_split = np.array(list(set(all_images) - set(self.test_split)))
 
+        # setup for sampling the train split using torch.multinomial
+        self.train_split = torch.tensor(
+            self.train_split, dtype=torch.int, device=self.gaussians.xyz.device
+        )
+        self.train_prob = torch.ones(
+            len(self.train_split), dtype=torch.float32, device=self.gaussians.xyz.device
+        ) / len(self.train_split)
+
     def setup_test_images(self):
         for image_idx in range(len(self.images)):
             self.images[image_idx].image = (
@@ -354,7 +362,9 @@ class SplatTrainer:
 
     def train(self):
         for i in range(self.config.num_iters):
-            image_idx = np.random.choice(self.train_split)
+            image_idx = self.train_split[
+                torch.multinomial(self.train_prob, num_samples=1, replacement=False).item()
+            ]
             camera_T_world = self.images[image_idx].camera_T_world
             camera = self.cameras[self.images[image_idx].camera_id]
 
