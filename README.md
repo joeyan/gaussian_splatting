@@ -36,8 +36,16 @@ Here are some comparisons with the with the official implementation (copied from
 
 *The training time is not directly comparable between the different GPUs. The RTX4090 is faster than the A6000. The training speed between the two methods should be similar.
 
-A comparison from one of the test images in the `garden` dataset. The official implementation image appears to be more saturated since the image is extracted from the published pdf. The branch in the exploded view and the wall is reconstructed more crisply in our implementation but the official implementation performs better on the trees and bushes.
-![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/2dd7f43a-ae30-46de-93f6-fc8e6e918a0d)
+A comparison from one of the test images in the `garden` dataset. The official implementation and ground truth images appear to be more saturated since they are screen captures of the pdf.
+
+Ours - 30k:
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/075c6fd3-b92b-4733-9ac6-370a4cde8d9a)
+
+Official Inria implementation - 30k:
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/1460b7eb-a28c-43ed-b8e2-a2695f6ab805)
+
+Ground truth:
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/e3c1f0c2-3f36-41dc-8441-df856399e987)
 
 
 The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
