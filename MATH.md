@@ -473,4 +473,21 @@ And simplifying:
 
 $$ \nabla{\alpha_m} = \nabla{C_{image}}\left(C_mw_m  -  \frac{\sum_{i=m+1}^{n}C_i\alpha_{i} w_i }{1 - \alpha_{m}} \right)$$
 
+The numerator of the fraction is now the accumulated color from the current gaussian to the last gaussian.
 
+$$ \sum_{i=m+1}^{n}C_i\alpha_{i} w_i $$
+
+By computing the gradients from back to front the weight and accumulated color can be efficiently computed by saving the final weight in the forward pass.
+
+Starting with: 
+
+$$ C_{accum} = 0$$
+$$ w_i = w_{final} $$ 
+
+At each iteration:
+$$ \nabla{C_{i}} = \nabla{C_{image}} \alpha_{i} w_{i} $$
+$$ \nabla{\alpha_i} = \nabla{C_{image}}\left(C_iw_i  -  \frac{C_{accum} }{1 - \alpha_{i}} \right)$$
+
+Updating accumulated color and weight for the next step:
+$$ C_{accum} = C_{accum} + C_i\alpha_{i} w_i$$
+$$ w_{i - 1} = \frac{w_i}{1 -\alpha_i}
