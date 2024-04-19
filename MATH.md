@@ -447,8 +447,30 @@ $$ w_{n+1} = (1 - \alpha_n) w_{n} $$
 
 Revisiting the alpha compositing example:
 
-$$ C_{image} = C_{0} \alpha_{0} + C_{1}\alpha_{1}w_1 + C_{2}\alpha_{2}w_2 ... $$
+$$ C_{image} = \sum_{i=0}^{n}C_i\alpha_{i}w_i $$ 
 
+For any gaussian $m$, the gradient of $\alpha_m$ does not depend on any gaussians where $m > i$:
 
+$$ \nabla{\alpha_m} = \nabla{C_{image}}\left(C_mw_m  +  \sum_{i=m+1}^{n}C_i\alpha_{i} \frac{\partial{w_i}}{\partial{\alpha_m}} \right)$$
+
+Another way to think about $w_i$:
+
+$$ w_i = (1 - \alpha_{i-1})(1 - \alpha_{i-2}) .... (1 - \alpha_0) $$
+
+By multiplying out the $1-\alpha_m$ term:
+
+$$ w_i = \frac{w_i}{1 - \alpha_m} + \frac{-\alpha_m w_i}{1 - \alpha_m}$$
+
+The first term $\frac{w_i}{1 - \alpha_m}$ is not dependent on $\alpha_m$ so the partial derivative is:
+
+$$ \frac{\partial{w_i}}{\alpha_m} = \frac{-w_i}{1 - \alpha_{m}} $$
+
+Substituting back in:
+
+$$ \nabla{\alpha_m} = \nabla{C_{image}}\left(C_mw_m  +  \sum_{i=m+1}^{n}C_i\alpha_{i} \frac{-w_i}{1 - \alpha_{m}} \right)$$
+
+And simplifying:
+
+$$ \nabla{\alpha_m} = \nabla{C_{image}}\left(C_mw_m  -  \frac{\sum_{i=m+1}^{n}C_i\alpha_{i} w_i }{1 - \alpha_{m}} \right)$$
 
 
