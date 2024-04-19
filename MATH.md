@@ -159,11 +159,15 @@ This example image shows 3 gaussians splatted on the image. The green boxes are 
 #### Alpha Compositing
 The RGB value of each pixel is computed by $\alpha$ blending the gaussians from front-to-back. The rgb values of each pixel can be computed with:
 
-$$C(u, v) = \sum_{i=1}^{N} w_{i}c_{i}$$
+$$C(u, v) = \sum_{i=1}^{N} \alpha_{i}c_{i}w_{i}$$
 
-$$ w_{i} = \alpha_i g_{i}(u, v) (1 - \sum_{j=0}^{i-1}w_{j})$$ 
+$$ w_{i} =  (1 - \sum_{j=0}^{i-1}\alpha_{j}w_j )$$
 
-Where $c_{i}$ and $\alpha_i$ are the color and opacity of the $i^{th}$ gaussian and $g_{i}(u, v)$ is the probabilty of the the $i^{th}$ gaussian at the pixel coordinates $u, v$. 
+$$ w_0 = 1 $$
+
+$$ \alpha_{i} = o_i g_{i}(u, v)$$
+ 
+Where $c_{i}$ and $o_i$ are the color and opacity of the $i^{th}$ gaussian and $g_{i}(u, v)$ is the probabilty of the the $i^{th}$ gaussian at the pixel coordinates $u, v$. 
 
 
 ## Backward Pass
@@ -334,7 +338,7 @@ $$ \nabla{W} = (2\Sigma_{3D}(JW)^{T} \nabla{\Sigma_{2D}}J)^T = 2J^T\nabla{\Sigma
 $$ \nabla{J} = (2W\Sigma_{3D}(JW)^{T} \nabla{\Sigma_{2D}})^T = 2\nabla{\Sigma_{2D}}JW\Sigma_{3D}W^T$$ 
 
 
-#### Evalutating the Gaussian
+#### Evaluating the Gaussian
 The unnormalized probability of the Gaussian function:
 
 
@@ -377,10 +381,74 @@ $$ \nabla{c} = - \nabla{d_M^2}\left(\frac{a \left(a v^{2} - 2 b u v + c u^{2}\ri
 
 
 
-The gradient of $d_M^2$ is easily computed from the the probability density at $(u, v)$:
+The gradient of $d_M^2$ is computed from the the probability density at $(u, v)$:
 
 $$ \nabla{d_M^2} = - \frac{1}{2}\nabla{g(u, v)}g(u, v) = -\frac{1}{2}\nabla{g(u, v)}exp\left( - \frac{1}{2} d_M^2\right) $$ 
 
 
 #### Alpha Compositing
+For the first compositing step: 
+
+$$ C_{image} = C_{0} \alpha_{0} + C_{1}\alpha_{1}(1 - \alpha_{0}) $$
+
+The gradients for the gaussian colors:
+
+$$ \nabla{C_0} = \nabla{C_{image}} \alpha_{0} $$
+
+$$ \nabla{C_1} = \nabla{C_{image}} \alpha_{1} (1 - \alpha_{0}) $$
+
+The gradients for $\alpha$: 
+
+$$ \nabla{\alpha_{0}} = \nabla{C_{image}} (C_{0} - C_{1}\alpha_{1}) $$ 
+
+$$ \nabla{\alpha_{1}} = \nabla{C_{image}} C_{1} (1 - \alpha_{0})   $$
+
+Now adding in a third gaussian:
+
+$$ C_{image} = C_{0} \alpha_{0} + C_{1}\alpha_{1}(1 - \alpha_{0}) + C_{2}\alpha_{2}(1 - (\alpha_{0} + \alpha_{1}(1 - \alpha_{0}))) $$
+
+The color gradients for the first two gaussians remain the same. For the third gaussian:
+
+$$ \nabla{C_{2}} = \nabla{C_{image}}\alpha_{2}(1 - (\alpha_{0} + \alpha_{1}(1 - \alpha_{0})) $$
+
+The gradients change for all three alpha values:
+
+$$ \nabla{\alpha_{0}} = \nabla{C_{image}} (C_{0} - C_{1}\alpha_{1} - C_{2}\alpha_{2}(1 + \alpha_{1}) ) $$ 
+
+$$ \nabla{\alpha_{1}} = \nabla{C_{image}} (C_{1} (1 - \alpha_{0}) - C_{2} \alpha_{2}(1 - \alpha_{0}))  $$
+
+$$ \nabla{\alpha_{2}} = \nabla{C_{image}} C_{2} (1 - (\alpha_{0} + \alpha_{1}(1 - \alpha_{0})) $$
+
+Using the patterns in the above steps, the gradients for compositing N gaussians can be computed. For the color gradient, this is straightforward when computing $\nabla{C_{n}}$ iteratively starting from $n=0$:
+
+$$ \nabla{C_{n}} = \nabla{C_{image}} \alpha_{n} w_{n} $$
+
+$$ w_{n} =  (1 - \sum_{i=0}^{n-1}\alpha_{i}w_i )$$
+
+$$ w_0 = 1 $$
+
+The $\alpha$ gradients are trickier as $\nabla{\alpha_0}$ and $\nabla{\alpha_n}$ are both dependent on all $\alpha$ values. The final $\alpha$ value is the easiest to calculate:
+
+$$ \nabla{\alpha_n} = \nabla{C_{image}} C_{n} w_n $$
+
+The final weight can also be easily saved at the end of the forward pass. It is also possible to compute the previous/next weight:
+
+$$ w_n = 1 - w_{n-1} $$
+
+$$ w_{n+1} = 1 - (w_{n-1} + \alpha_{n} w_n) = 1 - w_{n-1} - \alpha_{n}w_{n} $$
+
+Substituting in $w_{n}$ and regrouping:
+
+$$ w_{n+1} = 1 - w_{n-1} - \alpha_{n}(1 - w_{n-1}) = 1 - w_{n-1} - \alpha_n + \alpha_n w_{n-1} = (1- \alpha_n)(1-w_{n-1})$$
+
+Substituting $w_{n}$ back out:
+
+$$ w_{n+1} = (1 - \alpha_n) w_{n} $$
+
+Revisiting the alpha compositing example:
+
+$$ C_{image} = C_{0} \alpha_{0} + C_{1}\alpha_{1}w_1 + C_{2}\alpha_{2}w_2 ... $$
+
+
+
 
