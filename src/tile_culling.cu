@@ -20,17 +20,17 @@ __global__ void compute_tiles_kernel(
         return;
     }
 
-    float a = conic[gaussian_idx * 3];
-    float b = conic[gaussian_idx * 3 + 1] / 2.0;
-    float c = conic[gaussian_idx * 3 + 2];
+    const float a = conic[gaussian_idx * 3] + 0.25f;
+    const float b = conic[gaussian_idx * 3 + 1] / 2.0f;
+    const float c = conic[gaussian_idx * 3 + 2] + 0.25f;
 
     // compute major axis radius of ellipse
-    float left = (a + c) / 2;
-    float right = sqrtf((a - c) * (a - c) / 4 + b * b);
-    float lambda1 = left + right;
-    float lambda2 = left - right;
+    const float left = (a + c) / 2;
+    const float right = sqrtf((a - c) * (a - c) / 4.0f + b * b);
+    const float lambda1 = left + right;
+    const float lambda2 = left - right;
 
-    float r_major = mh_dist * sqrtf(lambda1);
+    const float r_major = mh_dist * sqrtf(lambda1);
 
     // Use square AABB for small gaussians, use OBB for large gaussians
     if (r_major < 32.0f) {
