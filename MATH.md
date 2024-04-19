@@ -482,12 +482,17 @@ By computing the gradients from back to front the weight and accumulated color c
 Starting with: 
 
 $$ C_{accum} = 0$$
+
 $$ w_i = w_{final} $$ 
 
 At each iteration:
+
 $$ \nabla{C_{i}} = \nabla{C_{image}} \alpha_{i} w_{i} $$
+
 $$ \nabla{\alpha_i} = \nabla{C_{image}}\left(C_iw_i  -  \frac{C_{accum} }{1 - \alpha_{i}} \right)$$
 
 Updating accumulated color and weight for the next step:
+
 $$ C_{accum} = C_{accum} + C_i\alpha_{i} w_i$$
+
 $$ w_{i - 1} = \frac{w_i}{1 -\alpha_i}
