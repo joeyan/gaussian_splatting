@@ -15,26 +15,25 @@ Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This
 Here are some comparisons with the with the official implementation (copied from "Per-Scene Error Metrics").
 
 
-| Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
+| Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration   |
 |--------------|-------------|------|------|-------------|------------------|
-| Official-30k | Garden 1/4x | 27.41| 0.87 |             | ~35-45min (A6000)|
-| Ours-30k     | Garden 1/4x | 26.86| 0.85 | 2.78M       | ~21min (RTX4090) |
+| Official-30k | Garden 1/4x | 27.41| 0.87 |             |                  |
+| Ours-30k     | Garden 1/4x | 26.80| 0.84 | 2.64M       | 22:57  (RTX4090) |
 | Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k      | Garden 1/4x | 25.80| 0.80 | 1.61M       | ~3min  (RTX4090) |
+| Ours-7k      | Garden 1/4x | 25.77| 0.80 | 1.48M       | 3:39   (RTX4090) |
 | Official-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
 | Ours-30k     | Counter 1/2x| 28.60| 0.90 | 2.01M       | ~26min (RTX4090) |
 | Official-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
-| Ours-7k      | Counter 1/2x| 27.42| 0.89 | 1.40M       | ~5min  (RTX4090) |
+| Ours-7k      | Counter 1/2x| 27.57| 0.89 | 1.33M       | 5:03   (RTX4090) |
 | Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
-| Ours-30k     | Bonsai  1/2x| 31.45| 0.94 | 0.84M       | ~18min (RTX4090) |
+| Ours-30k     | Bonsai  1/2x| 32.15| 0.94 | 2.60M       | 31:00  (RTX4090) |
 | Official-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
-| Ours-7k      | Bonsai 1/2x | 29.98| 0.93 | 1.16M       | ~4min  (RTX4090) |
+| Ours-7k      | Bonsai 1/2x | 30.16| 0.93 | 1.87M       | 5:12   (RTX4090) |
 | Official-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
-| Ours-30k     | Room 1/2x   | 31.52| 0.92 | 1.84M       | ~21min (RTX4090) |
+| Ours-30k     | Room 1/2x   | 31.68| 0.92 | 1.48M       | 23:21  (RTX4090) |
 | Official-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
-| Ours-7k      | Room 1/2x   | 29.13| 0.90 | 1.01M       | ~3min  (RTX4090) |
+| Ours-7k      | Room 1/2x   | 30.28| 0.91 | 1.02M       | 3:46   (RTX4090) |
 
-*The training time is not directly comparable between the different GPUs. The RTX4090 is faster than the A6000. The training speed between the two methods should be similar.
 
 A comparison from one of the test images in the `garden` dataset. The official implementation and ground truth images appear to be more saturated since they are screen captures of the pdf.
 

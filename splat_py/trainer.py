@@ -206,7 +206,7 @@ class SplatTrainer:
             self.gaussians, torch.sum(split_mask).detach().cpu().numpy() * samples
         )
 
-    def adaptive_density_control(self):
+    def adaptive_density_control(self, iter):
         if not (self.config.use_delete or self.config.use_clone or self.config.use_split):
             return
         print("Adaptive_density control update")
@@ -235,8 +235,19 @@ class SplatTrainer:
 
         uv_grad_avg_norm = torch.norm(uv_grad_avg, dim=1)
 
+        n_gaussians = self.gaussians.xyz.shape[0]
+
         if self.config.use_fractional_densification:
-            uv_split_val = torch.quantile(uv_grad_avg_norm, self.config.uv_grad_percentile).item()
+            if self.config.use_adaptive_fractional_densification:
+                scale_factor = (
+                    float(self.config.adaptive_control_end - iter)
+                    / float(self.config.adaptive_control_end - self.config.adaptive_control_start)
+                    * 2.0
+                )
+            else:
+                scale_factor = 1.0
+            uv_percentile = 1.0 - (1.0 - self.config.uv_grad_percentile) * scale_factor
+            uv_split_val = torch.quantile(uv_grad_avg_norm, uv_percentile).item()
         else:
             uv_split_val = self.config.uv_grad_threshold
         densify_mask = uv_grad_avg_norm > uv_split_val
@@ -260,7 +271,17 @@ class SplatTrainer:
 
         split_mask = densify_mask & (scale_max > self.config.clone_scale_threshold)
 
-        scale_split = torch.quantile(scale_max, self.config.scale_norm_percentile).item()
+        if self.config.use_adaptive_fractional_densification:
+            scale_factor = (
+                float(self.config.adaptive_control_end - iter)
+                / float(self.config.adaptive_control_end - self.config.adaptive_control_start)
+                * 2.0
+            )
+        else:
+            scale_factor = 1.0
+        scale_percentile = 1.0 - (1.0 - self.config.scale_norm_percentile) * scale_factor
+
+        scale_split = torch.quantile(scale_max, scale_percentile).item()
         too_big_mask = scale_max > scale_split
         split_mask = split_mask | too_big_mask
 
@@ -362,13 +383,23 @@ class SplatTrainer:
 
     def train(self):
         for i in range(self.config.num_iters):
+
+            self.optimizer_manager.optimizer.zero_grad()
+            # compute test PSNR right after zero grad to minimize memory usage
+            if i % self.config.test_eval_interval == 0:
+                test_psnrs, test_ssims = self.compute_test_psnr()
+                self.metrics.test_psnr.append(test_psnrs.mean().item())
+                print(
+                    "\t\t\t\t\t\tTEST SPLIT PSNR: {}, SSIM: {}".format(
+                        test_psnrs.mean().item(), test_ssims.mean().item()
+                    )
+                )
+
             image_idx = self.train_split[
                 torch.multinomial(self.train_prob, num_samples=1, replacement=False).item()
             ]
             camera_T_world = self.images[image_idx].camera_T_world
             camera = self.cameras[self.images[image_idx].camera_id]
-
-            self.optimizer_manager.optimizer.zero_grad()
 
             background_rgb = torch.zeros(
                 3, device=self.gaussians.xyz.device, dtype=self.gaussians.xyz.dtype
@@ -392,23 +423,12 @@ class SplatTrainer:
                     )
                 )
 
-            # make sure to perform test split eval before adaptive control
-            # if adaptive control occurs in the same iteration, test psnr will be low
-            if i % self.config.test_eval_interval == 0:
-                test_psnrs, test_ssims = self.compute_test_psnr()
-                self.metrics.test_psnr.append(test_psnrs.mean().item())
-                print(
-                    "\t\t\t\t\t\tTEST SPLIT PSNR: {}, SSIM: {}".format(
-                        test_psnrs.mean().item(), test_ssims.mean().item()
-                    )
-                )
-
             if (
                 i > self.config.adaptive_control_start
                 and i % self.config.adaptive_control_interval == 0
                 and i < self.config.adaptive_control_end
             ):
-                self.adaptive_density_control()
+                self.adaptive_density_control(i)
 
             if (
                 i > self.config.reset_opacity_start
@@ -427,10 +447,11 @@ class SplatTrainer:
                     (debug_image * self.config.saturated_pixel_value).astype(np.uint8)[..., ::-1],
                 )
             if i > 0 and i % self.config.checkpoint_interval == 0:
-                torch.save(
-                    self.gaussians, "{}/gaussians_iter_{}.pt".format(self.config.output_dir, i)
-                )
-
+                with torch.no_grad():
+                    torch.save(
+                        self.gaussians,
+                        "{}/gaussians_iter_{}.pt".format(self.config.output_dir, i),
+                    )
         final_psnrs, final_ssim = self.compute_test_psnr(save_test_images=True, iter=i)
         print(
             "Final PSNR: {}, SSIM: {}".format(final_psnrs.mean().item(), final_ssim.mean().item())
