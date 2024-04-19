@@ -495,4 +495,4 @@ Updating accumulated color and weight for the next step:
 
 $$ C_{accum} = C_{accum} + C_i\alpha_{i} w_i$$
 
-$$ w_{i - 1} = \frac{w_i}{1 -\alpha_i}
+$$ w_{i - 1} = \frac{w_i}{1 -\alpha_i} $$
