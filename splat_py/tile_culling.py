@@ -3,8 +3,9 @@ import torch
 from splat_cuda import (
     compute_tiles_cuda,
     compute_splat_to_gaussian_id_vector_cuda,
-    get_sorted_gaussian_list
+    get_sorted_gaussian_list,
 )
+
 
 def get_splats(
     uvs,

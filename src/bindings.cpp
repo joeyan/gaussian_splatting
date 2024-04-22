@@ -168,11 +168,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         &compute_splat_to_gaussian_id_vector_cuda,
         "compute tile to gaussian vector CUDA"
     );
-    m.def(
-        "get_sorted_gaussian_list",
-        &get_sorted_gaussian_list,
-        "get sorted gaussian list"
-    );
+    m.def("get_sorted_gaussian_list", &get_sorted_gaussian_list, "get sorted gaussian list");
     m.def(
         "precompute_rgb_from_sh_cuda",
         &precompute_rgb_from_sh_cuda,

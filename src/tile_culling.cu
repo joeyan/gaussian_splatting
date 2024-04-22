@@ -484,7 +484,8 @@ __global__ void compute_tiles_kernel_new(
             atomicAdd(num_gaussians_per_tile + tile_idx, 1);
             if (n_tiles < max_tiles_per_gaussian) {
                 // write tile index
-                tile_indices_per_gaussian[gaussian_idx * max_tiles_per_gaussian + n_tiles] = tile_idx;
+                tile_indices_per_gaussian[gaussian_idx * max_tiles_per_gaussian + n_tiles] =
+                    tile_idx;
                 n_tiles++;
             } else {
                 break;
@@ -501,7 +502,6 @@ __global__ void compute_tiles_kernel_new(
         num_tiles_per_gaussian[gaussian_idx] = 0;
     }
 }
-
 
 __global__ void generate_gaussian_and_sort_list_kernel(
     const float* __restrict__ xyz_camera_frame,
@@ -536,7 +536,6 @@ __global__ void generate_gaussian_and_sort_list_kernel(
     }
 }
 
-
 std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
     const int max_tiles_per_gaussian,
     torch::Tensor uvs,
@@ -564,9 +563,12 @@ std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
     printf("before create tensors\n");
 
     // create tensors for output
-    torch::Tensor tile_indices_per_gaussian = torch::zeros({N, max_tiles_per_gaussian}, torch::dtype(torch::kInt32).device(uvs.device()));
-    torch::Tensor num_tiles_per_gaussian = torch::zeros({N}, torch::dtype(torch::kInt32).device(uvs.device()));
-    torch::Tensor num_gaussians_per_tile = torch::zeros({n_tiles_x * n_tiles_y}, torch::dtype(torch::kInt32).device(uvs.device()));
+    torch::Tensor tile_indices_per_gaussian =
+        torch::zeros({N, max_tiles_per_gaussian}, torch::dtype(torch::kInt32).device(uvs.device()));
+    torch::Tensor num_tiles_per_gaussian =
+        torch::zeros({N}, torch::dtype(torch::kInt32).device(uvs.device()));
+    torch::Tensor num_gaussians_per_tile =
+        torch::zeros({n_tiles_x * n_tiles_y}, torch::dtype(torch::kInt32).device(uvs.device()));
 
     printf("created tensors\n");
 
@@ -588,24 +590,33 @@ std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
 
     // create intermediate values
     torch::Tensor cumsum = num_tiles_per_gaussian.cumsum(0);
-    torch::Tensor splat_start_end_idx_by_gaussian_idx = torch::cat({torch::zeros({1}, torch::dtype(torch::kInt32).device(uvs.device())), cumsum.to(torch::kInt32)}, 0);
+    torch::Tensor splat_start_end_idx_by_gaussian_idx = torch::cat(
+        {torch::zeros({1}, torch::dtype(torch::kInt32).device(uvs.device())),
+         cumsum.to(torch::kInt32)},
+        0
+    );
     CHECK_INT_TENSOR(splat_start_end_idx_by_gaussian_idx);
 
-
     for (int i = 0; i < splat_start_end_idx_by_gaussian_idx.size(0); i++) {
-        printf("splat_start_end_idx_by_gaussian_idx[%d]: %d\n", i, splat_start_end_idx_by_gaussian_idx[i].item<int>());
+        printf(
+            "splat_start_end_idx_by_gaussian_idx[%d]: %d\n",
+            i,
+            splat_start_end_idx_by_gaussian_idx[i].item<int>()
+        );
     }
 
     printf("after slice\n");
 
     const int num_splats = splat_start_end_idx_by_gaussian_idx[N].item<int>();
-    
+
     // max_depth + 1.0
     const float tile_idx_key_multiplier = xyz_camera_frame.select(1, 2).max().item<float>() + 1.0f;
 
     // outputs
-    torch::Tensor gaussian_idx_by_splat_idx = torch::zeros({num_splats}, torch::dtype(torch::kInt32).device(uvs.device()));
-    torch::Tensor sort_keys = torch::zeros({num_splats}, torch::dtype(torch::kFloat32).device(uvs.device()));
+    torch::Tensor gaussian_idx_by_splat_idx =
+        torch::zeros({num_splats}, torch::dtype(torch::kInt32).device(uvs.device()));
+    torch::Tensor sort_keys =
+        torch::zeros({num_splats}, torch::dtype(torch::kFloat32).device(uvs.device()));
 
     printf("created second intermediate values\n");
 
@@ -633,8 +644,12 @@ std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
     torch::Tensor sorted_gaussians = gaussian_idx_by_splat_idx.index_select(0, sorted_indices);
 
     // compute indices for each tile
-    torch::Tensor num_gaussians_per_tile_cumsum= num_gaussians_per_tile.cumsum(0);
-    torch::Tensor splat_start_end_idx_by_tile_idx = torch::cat({torch::zeros({1}, torch::dtype(torch::kInt32).device(uvs.device())), num_gaussians_per_tile_cumsum.to(torch::kInt32)}, 0);
+    torch::Tensor num_gaussians_per_tile_cumsum = num_gaussians_per_tile.cumsum(0);
+    torch::Tensor splat_start_end_idx_by_tile_idx = torch::cat(
+        {torch::zeros({1}, torch::dtype(torch::kInt32).device(uvs.device())),
+         num_gaussians_per_tile_cumsum.to(torch::kInt32)},
+        0
+    );
 
     return std::make_tuple(sorted_gaussians, splat_start_end_idx_by_tile_idx);
 }
