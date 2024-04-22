@@ -46,7 +46,6 @@ class SplatTrainer:
             self.images[image_idx].image = (
                 self.images[image_idx].image.to(torch.float32) / self.config.saturated_pixel_value
             )
-            self.images[image_idx].image = self.images[image_idx].image.to(torch.device("cuda"))
 
     def reset_grad_accum(self):
         # reset grad accumulators
@@ -316,7 +315,8 @@ class SplatTrainer:
                         3, device=self.gaussians.xyz.device, dtype=self.gaussians.xyz.dtype
                     ),
                 )
-                gt_image = self.images[test_img_idx].image
+                gt_image = self.images[test_img_idx].image.to(torch.device("cuda"))
+
                 l2_loss = torch.nn.functional.mse_loss(test_image.clip(0, 1), gt_image)
                 psnr = -10 * torch.log10(l2_loss).item()
 
@@ -354,7 +354,7 @@ class SplatTrainer:
         )
         uv.retain_grad()
 
-        gt_image = self.images[image_idx].image
+        gt_image = self.images[image_idx].image.to(torch.device("cuda"))
         l1_loss = torch.nn.functional.l1_loss(image, gt_image)
 
         # for debug only
