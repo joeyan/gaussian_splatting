@@ -90,6 +90,16 @@ void compute_tiles_cuda(
     torch::Tensor num_gaussians_per_tile
 );
 
+std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
+    const int max_tiles_per_gaussian,
+    torch::Tensor uvs,
+    torch::Tensor xyz_camera_frame,
+    torch::Tensor conic,
+    const int n_tiles_x,
+    const int n_tiles_y,
+    const float mh_dist
+);
+
 void compute_splat_to_gaussian_id_vector_cuda(
     torch::Tensor gaussian_indices_per_tile,
     torch::Tensor num_gaussians_per_tile,
@@ -157,6 +167,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "compute_splat_to_gaussian_id_vector_cuda",
         &compute_splat_to_gaussian_id_vector_cuda,
         "compute tile to gaussian vector CUDA"
+    );
+    m.def(
+        "get_sorted_gaussian_list",
+        &get_sorted_gaussian_list,
+        "get sorted gaussian list"
     );
     m.def(
         "precompute_rgb_from_sh_cuda",

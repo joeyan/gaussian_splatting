@@ -3,7 +3,25 @@ import torch
 from splat_cuda import (
     compute_tiles_cuda,
     compute_splat_to_gaussian_id_vector_cuda,
+    get_sorted_gaussian_list
 )
+
+def get_splats(
+    uvs,
+    tiles,
+    conic,
+    xyz_camera_frame,
+    mh_dist,
+):
+    return get_sorted_gaussian_list(
+        512,
+        uvs,
+        xyz_camera_frame,
+        conic,
+        tiles.x_tiles_count,
+        tiles.y_tiles_count,
+        mh_dist,
+    )
 
 
 def match_gaussians_to_tiles_gpu(
