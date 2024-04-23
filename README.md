@@ -4,8 +4,12 @@ for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-ga
 
 This repository implements the forward and backwards passes using a PyTorch CUDA extension based on the algorithms descriped in the paper. Some details of the splatting and adaptive control algorithm are not explicitly described in the paper and there may be differences between this repo and the official implementation.
 
-The forward and backward pass algorithms are detailed in MATH.md
+## Motivation
 
+1. Provide a detailed explanation of the differential rasterization algorithm. The forward and backward pass algorithms are detailed in [MATH.md](/MATH.md)
+2. MIT License. The original implementation was never referenced during the development of this repo.
+3. Modular projection functions and gradient tests allow for easier experimentation with camera/pose gradients, new camera models etc. 
+4. Minimal dependencies
 
 ## Performance
 
@@ -18,21 +22,21 @@ Here are some comparisons with the with the official implementation (copied from
 | Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration   |
 |--------------|-------------|------|------|-------------|------------------|
 | Official-30k | Garden 1/4x | 27.41| 0.87 |             |                  |
-| Ours-30k     | Garden 1/4x | 26.80| 0.84 | 2.64M       | 22:57  (RTX4090) |
+| Ours-30k     | Garden 1/4x | 27.14| 0.85 | 3.17M       | 22:51  (RTX4090) |
 | Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k      | Garden 1/4x | 25.77| 0.80 | 1.48M       | 3:39   (RTX4090) |
+| Ours-7k      | Garden 1/4x | 25.79| 0.80 | 1.59M       | 3:16   (RTX4090) |
 | Official-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
-| Ours-30k     | Counter 1/2x| 28.60| 0.90 | 2.01M       | ~26min (RTX4090) |
+| Ours-30k     | Counter 1/2x| 28.61| 0.90 | 2.02M       | 25:14  (RTX4090) |
 | Official-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
-| Ours-7k      | Counter 1/2x| 27.57| 0.89 | 1.33M       | 5:03   (RTX4090) |
+| Ours-7k      | Counter 1/2x| 27.54| 0.89 | 1.38M       | 4:20   (RTX4090) |
 | Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
-| Ours-30k     | Bonsai  1/2x| 32.15| 0.94 | 2.60M       | 31:00  (RTX4090) |
+| Ours-30k     | Bonsai  1/2x| 32.14| 0.94 | 3.24M       | 30:16  (RTX4090) |
 | Official-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
-| Ours-7k      | Bonsai 1/2x | 30.16| 0.93 | 1.87M       | 5:12   (RTX4090) |
+| Ours-7k      | Bonsai 1/2x | 30.29| 0.93 | 1.98M       | 4:34   (RTX4090) |
 | Official-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
-| Ours-30k     | Room 1/2x   | 31.68| 0.92 | 1.48M       | 23:21  (RTX4090) |
+| Ours-30k     | Room 1/2x   | 30.68| 0.92 | 1.70M       | 20:31  (RTX4090) |
 | Official-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
-| Ours-7k      | Room 1/2x   | 30.28| 0.91 | 1.02M       | 3:46   (RTX4090) |
+| Ours-7k      | Room 1/2x   | 29.49| 0.91 | 1.08M       | 3:26   (RTX4090) |
 
 
 A comparison from one of the test images in the `garden` dataset. The official implementation and ground truth images appear to be more saturated since they are screen captures of the pdf.
@@ -110,3 +114,56 @@ To run all unit tests:
 python -m unittest discover test
 ```
 
+## References
+
+The original paper:
+```
+@Article{kerbl3Dgaussians,
+      author = {Kerbl, Bernhard and Kopanas, Georgios and Leimk{\"u}hler, Thomas and Drettakis, George},
+      title = {3D Gaussian Splatting for Real-Time Radiance Field Rendering},
+      journal = {ACM Transactions on Graphics},
+      number = {4},
+      volume = {42},
+      month = {July},
+      year = {2023},
+      url= {https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/}
+}
+```
+
+The EWA Splatting approach that is the basis for 3D Gaussian Splatting:
+```
+@Article{zwicker2002ewa,
+    author={M. Zwicker and H. Pfister and J. van Baar and M. Gross},
+    title={EWA Splatting},
+    journal={IEEE Transactions on Visualization and Computer Graphics},
+    number={3},
+    volume={8},
+    month={July},
+    year={2002},
+    publisher={IEEE},
+    url={https://www.cs.umd.edu/~zwicker/publications/EWASplatting-TVCG02.pdf}
+}
+```
+
+`gsplat` [Mathematical Supplement](https://arxiv.org/abs/2312.02121)
+```
+@misc{ye2023mathematical,
+    title={Mathematical Supplement for the $\texttt{gsplat}$ Library}, 
+    author={Vickie Ye and Angjoo Kanazawa},
+    year={2023},
+    eprint={2312.02121},
+    archivePrefix={arXiv},
+    primaryClass={cs.MS}
+}
+```
+
+A great reference for matrix derivatives:
+```
+@misc{giles2008extended,
+    title={An extended collection of matrix derivative results for forward and reverse mode algorithmic differentiation}, 
+    author={Mike Giles},
+    month={January}
+    year={2008},
+    url={https://people.maths.ox.ac.uk/gilesm/files/NA-08-01.pdf}
+}
+```
