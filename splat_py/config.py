@@ -61,6 +61,8 @@ class SplatConfig:
 
     """gaussians closer than this are culled alongside points outside of fov"""
     near_thresh: float = 0.3
+    """gaussians farther than this are culled alongside points outside of fov"""
+    far_thresh: float = 500.0
     """mahalanobis distance for tile culling 3.0 = 99.7%"""
     mh_dist: float = 3.0
     """keep gaussians that project within this padding of image during frustrum culling"""
@@ -128,7 +130,7 @@ class SplatConfig:
     adaptive_control_interval: int = 100
 
     """max number of gaussians"""
-    max_gaussians: int = 3250000
+    max_gaussians: int = 4250000
 
     """delete gaussians with opacity below this threshold"""
     delete_opacity_threshold: float = 0.1
