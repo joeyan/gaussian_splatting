@@ -40,7 +40,6 @@ def rasterize(
         | (xyz_camera_frame[:, 2] < near_thresh)
         | (xyz_camera_frame[:, 2] > far_thresh)
     )
-    # culling_mask = culling_mask | (xyz_camera_frame[:, 2] < near_thresh)
     culling_mask = (
         culling_mask
         | (uv[:, 0] < -1 * cull_mask_padding)

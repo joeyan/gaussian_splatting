@@ -185,9 +185,9 @@ __global__ void compute_tiles_kernel(
     const int n_tiles_y,
     const float mh_dist,
     const int N,
-    const float tile_idx_key_multiplier,
+    const double tile_idx_key_multiplier,
     int* __restrict__ gaussian_idx_by_splat_idx,
-    float* __restrict__ sort_keys
+    double* __restrict__ sort_keys
 ) {
     int gaussian_idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (gaussian_idx >= N) {
@@ -197,7 +197,7 @@ __global__ void compute_tiles_kernel(
     // get per gaussian values
     const float u = uvs[gaussian_idx * 2];
     const float v = uvs[gaussian_idx * 2 + 1];
-    const float z = xyz_camera_frame[gaussian_idx * 3 + 2];
+    const double z = (double)(xyz_camera_frame[gaussian_idx * 3 + 2]);
 
     const float a = conic[gaussian_idx * 3] + 0.25f;
     const float b = conic[gaussian_idx * 3 + 1] / 2.0f;
@@ -234,7 +234,7 @@ __global__ void compute_tiles_kernel(
                 // update gaussian index by splat index
                 gaussian_idx_by_splat_idx[output_start_idx + n_tiles] = gaussian_idx;
                 sort_keys[output_start_idx + n_tiles] =
-                    z + tile_idx_key_multiplier * __int2float_rn(tile_idx);
+                    z + tile_idx_key_multiplier * __int2double_rn(tile_idx);
                 n_tiles++;
             }
         }
@@ -297,15 +297,16 @@ std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
     torch::Tensor gaussian_idx_by_splat_idx =
         torch::zeros({num_splats}, torch::dtype(torch::kInt32).device(uvs.device()));
     torch::Tensor sort_keys =
-        torch::zeros({num_splats}, torch::dtype(torch::kFloat32).device(uvs.device()));
+        torch::zeros({num_splats}, torch::dtype(torch::kFloat64).device(uvs.device()));
 
     CHECK_FLOAT_TENSOR(xyz_camera_frame);
     CHECK_INT_TENSOR(splat_start_end_idx_by_gaussian_idx);
     CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
-    CHECK_FLOAT_TENSOR(sort_keys);
+    CHECK_DOUBLE_TENSOR(sort_keys);
 
     // max_depth + 1.0
-    const float tile_idx_key_multiplier = xyz_camera_frame.select(1, 2).max().item<float>() + 1.0f;
+    const double tile_idx_key_multiplier =
+        (double)(xyz_camera_frame.select(1, 2).max().item<float>() + 1.0f);
 
     // compute gaussian index and key for each gaussian-tile intersection
     compute_tiles_kernel<<<gridsize, blocksize>>>(
@@ -319,7 +320,7 @@ std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
         N,
         tile_idx_key_multiplier,
         gaussian_idx_by_splat_idx.data_ptr<int>(),
-        sort_keys.data_ptr<float>()
+        sort_keys.data_ptr<double>()
     );
     cudaDeviceSynchronize();
 

@@ -62,7 +62,7 @@ class SplatConfig:
     """gaussians closer than this are culled alongside points outside of fov"""
     near_thresh: float = 0.3
     """gaussians farther than this are culled alongside points outside of fov"""
-    far_thresh: float = 100.0
+    far_thresh: float = 500.0
     """mahalanobis distance for tile culling 3.0 = 99.7%"""
     mh_dist: float = 3.0
     """keep gaussians that project within this padding of image during frustrum culling"""
