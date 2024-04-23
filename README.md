@@ -41,8 +41,7 @@ Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This
 A comparison from one of the test images in the `garden` dataset. The official implementation and ground truth images appear to be more saturated since they are screen captures of the pdf.
 
 Ours - 30k:
-![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/1c2b8ec4-7718-442f-aad7-c4ce4c7a0c4a)
-
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/519a5f04-82f3-4291-b063-c122efd22c19)
 
 Official Inria implementation - 30k:
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/1460b7eb-a28c-43ed-b8e2-a2695f6ab805)
