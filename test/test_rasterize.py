@@ -20,6 +20,7 @@ class TestRasterize(unittest.TestCase):
 
     def test_rasterize_no_sh(self):
         near_thresh = 0.3
+        far_thresh = 100.0
         cull_mask_padding = 10
         mh_dist = 3.0
         use_sh_precompute = True
@@ -30,6 +31,7 @@ class TestRasterize(unittest.TestCase):
             self.camera_T_world,
             self.camera,
             near_thresh,
+            far_thresh,
             cull_mask_padding,
             mh_dist,
             use_sh_precompute,
@@ -53,6 +55,7 @@ class TestRasterize(unittest.TestCase):
 
     def test_rasterize_full_sh_use_precompute(self):
         near_thresh = 0.3
+        far_thresh = 100.0
         cull_mask_padding = 10
         mh_dist = 3.0
         use_sh_precompute = True
@@ -65,6 +68,7 @@ class TestRasterize(unittest.TestCase):
             self.camera_T_world,
             self.camera,
             near_thresh,
+            far_thresh,
             cull_mask_padding,
             mh_dist,
             use_sh_precompute,
@@ -89,6 +93,7 @@ class TestRasterize(unittest.TestCase):
 
     def test_rasterize_full_sh_use_per_pixel_viewdir(self):
         near_thresh = 0.3
+        far_thresh = 100.0
         cull_mask_padding = 10
         mh_dist = 3.0
         use_sh_precompute = False
@@ -102,6 +107,7 @@ class TestRasterize(unittest.TestCase):
             self.camera_T_world,
             self.camera,
             near_thresh,
+            far_thresh,
             cull_mask_padding,
             mh_dist,
             use_sh_precompute,
