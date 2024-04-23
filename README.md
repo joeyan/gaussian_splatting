@@ -4,53 +4,50 @@ for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-ga
 
 This repository implements the forward and backwards passes using a PyTorch CUDA extension based on the algorithms descriped in the paper. Some details of the splatting and adaptive control algorithm are not explicitly described in the paper and there may be differences between this repo and the official implementation.
 
-The forward and backward pass algorithms are detailed in MATH.md
+## Motivation
 
+1. Provide a detailed explanation of the differential rasterization algorithm. The forward and backward pass are detailed in [MATH.md](/MATH.md)
+2. Permissive license. The original implementation does not allow commercial use and was never referenced during the development of this repository.
+3. Modular projection functions and gradient checks allow for easier experimentation with camera/pose gradients, new camera models etc. 
+4. Minimal dependencies.
+
+If there are any issues/errors please open an Issue or Pull Request!
 
 ## Performance
 
-Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This corresponds to the 2x downsampled indoor scenes and 4x downsampled outdoor scenes. Every 8th image was used for the test split.
+Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This corresponds to the 2x downsampled indoor scenes and 4x downsampled outdoor scenes. Every 8th image was used for the test split. Here are some comparisons with the with the official Inria implementation (copied from "Per-Scene Error Metrics").
 
 
-Here are some comparisons with the with the official implementation (copied from "Per-Scene Error Metrics").
+| Method    | Dataset     | PSNR | SSIM | N Gaussians | Train Duration   |
+|-----------|-------------|------|------|-------------|------------------|
+| Inria-30k | Garden 1/4x | 27.41| 0.87 |             |                  |
+| Ours-30k  | Garden 1/4x | 27.14| 0.85 | 3.17M       | 22:51  (RTX4090) |
+| Inria-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
+| Ours-7k   | Garden 1/4x | 25.79| 0.80 | 1.59M       | 3:16   (RTX4090) |
+| Inria-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
+| Ours-30k  | Counter 1/2x| 28.61| 0.90 | 2.02M       | 25:14  (RTX4090) |
+| Inria-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
+| Ours-7k   | Counter 1/2x| 27.54| 0.89 | 1.38M       | 4:20   (RTX4090) |
+| Inria-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
+| Ours-30k  | Bonsai  1/2x| 32.14| 0.94 | 3.24M       | 30:16  (RTX4090) |
+| Inria-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
+| Ours-7k   | Bonsai 1/2x | 30.29| 0.93 | 1.98M       | 4:34   (RTX4090) |
+| Inria-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
+| Ours-30k  | Room 1/2x   | 30.68| 0.92 | 1.70M       | 20:31  (RTX4090) |
+| Inria-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
+| Ours-7k   | Room 1/2x   | 29.49| 0.91 | 1.08M       | 3:26   (RTX4090) |
 
-
-| Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration*  |
-|--------------|-------------|------|------|-------------|------------------|
-| Official-30k | Garden 1/4x | 27.41| 0.87 |             | ~35-45min (A6000)|
-| Ours-30k     | Garden 1/4x | 26.86| 0.85 | 2.78M       | ~21min (RTX4090) |
-| Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k      | Garden 1/4x | 25.80| 0.80 | 1.61M       | ~3min  (RTX4090) |
-| Official-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
-| Ours-30k     | Counter 1/2x| 28.60| 0.90 | 2.01M       | ~26min (RTX4090) |
-| Official-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
-| Ours-7k      | Counter 1/2x| 27.42| 0.89 | 1.40M       | ~5min  (RTX4090) |
-| Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
-| Ours-30k     | Bonsai  1/2x| 31.45| 0.94 | 0.84M       | ~18min (RTX4090) |
-| Official-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
-| Ours-7k      | Bonsai 1/2x | 29.98| 0.93 | 1.16M       | ~4min  (RTX4090) |
-| Official-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
-| Ours-30k     | Room 1/2x   | 31.52| 0.92 | 1.84M       | ~21min (RTX4090) |
-| Official-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
-| Ours-7k      | Room 1/2x   | 29.13| 0.90 | 1.01M       | ~3min  (RTX4090) |
-
-*The training time is not directly comparable between the different GPUs. The RTX4090 is faster than the A6000. The training speed between the two methods should be similar.
 
 A comparison from one of the test images in the `garden` dataset. The official implementation and ground truth images appear to be more saturated since they are screen captures of the pdf.
 
 Ours - 30k:
-![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/075c6fd3-b92b-4733-9ac6-370a4cde8d9a)
+![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/519a5f04-82f3-4291-b063-c122efd22c19)
 
 Official Inria implementation - 30k:
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/1460b7eb-a28c-43ed-b8e2-a2695f6ab805)
 
 Ground truth:
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/e3c1f0c2-3f36-41dc-8441-df856399e987)
-
-
-The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
-
- The discrepancy in PSNR are most likely due to differences in the adaptive control algorithm and tuning.
 
 
 ## Installation
@@ -63,15 +60,10 @@ pip install -r requirements.txt
 
 2. Install the PyTorch CUDA extension
 ```
-pip install -e ./
+python setup.py build_ext && python setup.py install
 ```
 Note:
 - Windows systems may need modify compilation flags in `setup.py`
-- This step may be sensitive to the version of `pip`. This step failed after upgrading from `23.0.1` to `23.3.2`
-- If `pip install` fails, this may work:
-```
-python setup.py build_ext && python setup.py install
-```
 
 Optional:
 This project uses `clang-format` to lint the C++/CUDA files:
@@ -110,3 +102,56 @@ To run all unit tests:
 python -m unittest discover test
 ```
 
+## References
+
+The original paper:
+```
+@Article{kerbl3Dgaussians,
+      author = {Kerbl, Bernhard and Kopanas, Georgios and Leimk{\"u}hler, Thomas and Drettakis, George},
+      title = {3D Gaussian Splatting for Real-Time Radiance Field Rendering},
+      journal = {ACM Transactions on Graphics},
+      number = {4},
+      volume = {42},
+      month = {July},
+      year = {2023},
+      url= {https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/}
+}
+```
+
+The EWA Splatting approach that is the basis for 3D Gaussian Splatting:
+```
+@Article{zwicker2002ewa,
+    author={M. Zwicker and H. Pfister and J. van Baar and M. Gross},
+    title={EWA Splatting},
+    journal={IEEE Transactions on Visualization and Computer Graphics},
+    number={3},
+    volume={8},
+    month={July},
+    year={2002},
+    publisher={IEEE},
+    url={https://www.cs.umd.edu/~zwicker/publications/EWASplatting-TVCG02.pdf}
+}
+```
+
+`gsplat` [Mathematical Supplement](https://arxiv.org/abs/2312.02121)
+```
+@misc{ye2023mathematical,
+    title={Mathematical Supplement for the $\texttt{gsplat}$ Library}, 
+    author={Vickie Ye and Angjoo Kanazawa},
+    year={2023},
+    eprint={2312.02121},
+    archivePrefix={arXiv},
+    primaryClass={cs.MS}
+}
+```
+
+A great reference for matrix derivatives:
+```
+@misc{giles2008extended,
+    title={An extended collection of matrix derivative results for forward and reverse mode algorithmic differentiation}, 
+    author={Mike Giles},
+    month={January}
+    year={2008},
+    url={https://people.maths.ox.ac.uk/gilesm/files/NA-08-01.pdf}
+}
+```

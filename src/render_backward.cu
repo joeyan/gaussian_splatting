@@ -43,6 +43,7 @@ __global__ void render_tiles_backward_kernel(
     const int splat_idx_end = splat_start_end_idx_by_tile_idx[tile_idx + 1];
     int num_splats_this_tile = splat_idx_end - splat_idx_start;
 
+    bool background_initialized = false;
     int num_splats_this_pixel;
     T weight;
     // make local copy for faster access
@@ -164,67 +165,73 @@ __global__ void render_tiles_backward_kernel(
 
                 // compute alpha, prevent divide by zero
                 T alpha = min(0.9999, _opacity[i] * norm_prob);
-                const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
 
-                // update weight if this is not the first iteration
-                if (i < num_splats_this_pixel - 1) {
-                    weight = weight * reciprocal_one_minus_alpha;
-                }
-                // if this is the first iteration and background blending was used, update
-                // color_accum with the background contribution
-                if (i == num_splats_this_pixel - 1) {
-                    const T background_weight = 1.0 - (alpha * weight + 1.0 - weight);
-                    if (background_weight > 0.001) {
-                        #pragma unroll
-                        for (int channel = 0; channel < 3; channel++) {
-                            color_accum[channel] += background_rgb[channel] * background_weight;
+                if (alpha > 0.00392156862 || !use_fast_exp) {
+                    // if this is the first iteration and background blending was used, update
+                    // color_accum with the background contribution
+                    if (!background_initialized) {
+                        const T background_weight = 1.0 - (alpha * weight + 1.0 - weight);
+                        if (background_weight > 0.001) {
+                            #pragma unroll
+                            for (int channel = 0; channel < 3; channel++) {
+                                color_accum[channel] += background_rgb[channel] * background_weight;
+                            }
                         }
+                        background_initialized = true;
                     }
-                }
+                    const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
 
-                T grad_rgb_local[3];
-                #pragma unroll
-                for (int channel = 0; channel < 3; channel++) {
-                    grad_rgb_local[channel] = alpha * weight * grad_image_local[channel];
-                }
+                    // update weight if this is not the first iteration
+                    if (i < num_splats_this_pixel - 1) {
+                        weight = weight * reciprocal_one_minus_alpha;
+                    }
 
-                // compute rgb from sh
-                T computed_rgb[3];
-                sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
+                    T grad_rgb_local[3];
+                    #pragma unroll
+                    for (int channel = 0; channel < 3; channel++) {
+                        grad_rgb_local[channel] = alpha * weight * grad_image_local[channel];
+                    }
 
-                // compute grad wrt spherical harmonic coeff
-                compute_sh_grad<T, N_SH>(grad_rgb_local, sh_at_view_dir, grad_sh);
+                    // compute rgb from sh
+                    T computed_rgb[3];
+                    sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
 
-                T grad_alpha = 0.0;
-                #pragma unroll
-                for (int channel = 0; channel < 3; channel++) {
-                    grad_alpha += (computed_rgb[channel] * weight -
-                                   color_accum[channel] * reciprocal_one_minus_alpha) *
-                                  grad_image_local[channel];
-                }
-                grad_opa = norm_prob * grad_alpha;
+                    // compute grad wrt spherical harmonic coeff
+                    compute_sh_grad<T, N_SH>(grad_rgb_local, sh_at_view_dir, grad_sh);
 
-                // compute gradient for probability
-                T grad_prob = _opacity[i] * grad_alpha;
-                T grad_mh_sq = -0.5 * norm_prob * grad_prob;
+                    T grad_alpha = 0.0;
+                    #pragma unroll
+                    for (int channel = 0; channel < 3; channel++) {
+                        grad_alpha += (computed_rgb[channel] * weight -
+                                       color_accum[channel] * reciprocal_one_minus_alpha) *
+                                      grad_image_local[channel];
+                    }
+                    grad_opa = norm_prob * grad_alpha;
 
-                // compute gradient for projected mean
-                grad_u = -(-b * v_diff - b * v_diff + 2 * c * u_diff) * reciprocal_det * grad_mh_sq;
-                grad_v = -(2 * a * v_diff - b * u_diff - b * u_diff) * reciprocal_det * grad_mh_sq;
+                    // compute gradient for probability
+                    T grad_prob = _opacity[i] * grad_alpha;
+                    T grad_mh_sq = -0.5 * norm_prob * grad_prob;
 
-                const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
-                                       b * u_diff * v_diff + c * u_diff * u_diff) *
-                                      reciprocal_det * reciprocal_det;
-                grad_conic_splat[0] =
-                    (-c * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_conic_splat[1] =
-                    (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
-                grad_conic_splat[2] =
-                    (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
+                    // compute gradient for projected mean
+                    grad_u =
+                        -(-b * v_diff - b * v_diff + 2 * c * u_diff) * reciprocal_det * grad_mh_sq;
+                    grad_v =
+                        -(2 * a * v_diff - b * u_diff - b * u_diff) * reciprocal_det * grad_mh_sq;
 
-                // update color_accum for next splat
-                for (int channel = 0; channel < 3; channel++) {
-                    color_accum[channel] += computed_rgb[channel] * alpha * weight;
+                    const T common_frac = (a * v_diff * v_diff - b * u_diff * v_diff -
+                                           b * u_diff * v_diff + c * u_diff * u_diff) *
+                                          reciprocal_det * reciprocal_det;
+                    grad_conic_splat[0] =
+                        (-c * common_frac + v_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                    grad_conic_splat[1] =
+                        (b * common_frac - u_diff * v_diff * reciprocal_det) * grad_mh_sq;
+                    grad_conic_splat[2] =
+                        (-a * common_frac + u_diff * u_diff * reciprocal_det) * grad_mh_sq;
+
+                    // update color_accum for next splat
+                    for (int channel = 0; channel < 3; channel++) {
+                        color_accum[channel] += computed_rgb[channel] * alpha * weight;
+                    }
                 }
             }
 

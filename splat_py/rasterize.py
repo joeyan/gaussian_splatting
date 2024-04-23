@@ -11,8 +11,7 @@ from splat_py.cuda_autograd_functions import (
 )
 from splat_py.structs import Gaussians, Tiles
 from splat_py.tile_culling import (
-    match_gaussians_to_tiles_gpu,
-    sort_gaussians,
+    get_splats,
 )
 
 
@@ -76,14 +75,9 @@ def rasterize(
 
     # perform tile culling
     tiles = Tiles(camera.height, camera.width, uv.device)
-    (
-        gaussian_idx_by_splat_idx,
-        splat_start_end_idx_by_tile_idx,
-        tile_idx_by_splat_idx,
-    ) = match_gaussians_to_tiles_gpu(uv, tiles, conic, mh_dist=mh_dist)
 
-    sorted_gaussian_idx_by_splat_idx = sort_gaussians(
-        xyz_camera_frame, gaussian_idx_by_splat_idx, tile_idx_by_splat_idx
+    sorted_gaussian_idx_by_splat_idx, splat_start_end_idx_by_tile_idx = get_splats(
+        uv, tiles, conic, xyz_camera_frame, mh_dist
     )
     rays = torch.zeros(1, 1, 1, dtype=gaussians.xyz.dtype, device=gaussians.xyz.device)
     if culled_gaussians.sh is not None:

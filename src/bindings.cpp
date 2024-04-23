@@ -80,22 +80,14 @@ void compute_conic_backward_cuda(
     torch::Tensor J_grad_in
 );
 
-void compute_tiles_cuda(
+std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
+    const int max_tiles_per_gaussian,
     torch::Tensor uvs,
+    torch::Tensor xyz_camera_frame,
     torch::Tensor conic,
-    int n_tiles_x,
-    int n_tiles_y,
-    float mh_dist,
-    torch::Tensor gaussian_indices_per_tile,
-    torch::Tensor num_gaussians_per_tile
-);
-
-void compute_splat_to_gaussian_id_vector_cuda(
-    torch::Tensor gaussian_indices_per_tile,
-    torch::Tensor num_gaussians_per_tile,
-    torch::Tensor splat_to_gaussian_id_vector_offsets,
-    torch::Tensor splat_to_gaussian_id_vector,
-    torch::Tensor tile_idx_by_splat_idx
+    const int n_tiles_x,
+    const int n_tiles_y,
+    const float mh_dist
 );
 
 void precompute_rgb_from_sh_cuda(
@@ -152,12 +144,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def(
         "compute_conic_backward_cuda", &compute_conic_backward_cuda, "compute conic backward CUDA"
     );
-    m.def("compute_tiles_cuda", &compute_tiles_cuda, "compute tiles CUDA");
-    m.def(
-        "compute_splat_to_gaussian_id_vector_cuda",
-        &compute_splat_to_gaussian_id_vector_cuda,
-        "compute tile to gaussian vector CUDA"
-    );
+    m.def("get_sorted_gaussian_list", &get_sorted_gaussian_list, "get sorted gaussian list");
     m.def(
         "precompute_rgb_from_sh_cuda",
         &precompute_rgb_from_sh_cuda,

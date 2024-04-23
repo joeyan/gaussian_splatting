@@ -95,7 +95,7 @@ class SplatConfig:
     """use background color"""
     use_background: bool = True
     """background color end interval"""
-    use_background_end: int = 5000
+    use_background_end: int = 6600
 
     """interval to reset all opacities to a fixed value"""
     reset_opacity_interval: int = 3001
@@ -127,6 +127,9 @@ class SplatConfig:
     """interval for adaptive control"""
     adaptive_control_interval: int = 100
 
+    """max number of gaussians"""
+    max_gaussians: int = 3250000
+
     """delete gaussians with opacity below this threshold"""
     delete_opacity_threshold: float = 0.1
     """clone gaussians with scale below this threshold"""
@@ -135,6 +138,8 @@ class SplatConfig:
     max_scale_norm: float = 0.5
     """densify a fixed fraction of gaussians every iteration"""
     use_fractional_densification: bool = True
+    """front load densification - slower but slightly higher psnr"""
+    use_adaptive_fractional_densification: bool = True
 
     """densify gaussians over this percentile - only used if use_fractional_densification is True"""
     uv_grad_percentile: float = 0.96
@@ -160,7 +165,7 @@ SplatConfigs = tyro.extras.subcommand_type_from_defaults(
             adaptive_control_end=27500,
             adaptive_control_interval=300,
             reset_opacity_end=27500,
-            use_background_end=27500,
+            use_background_end=28000,
         ),
     }
 )

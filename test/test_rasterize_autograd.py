@@ -3,8 +3,8 @@ import torch
 
 from splat_py.cuda_autograd_functions import RenderImage
 from splat_py.structs import Tiles, Camera
-from splat_py.tile_culling import match_gaussians_to_tiles_gpu
-from splat_py.utils import compute_rays_in_world_frame
+from splat_py.tile_culling import get_splats
+from splat_py.utils import compute_rays_in_world_frame, transform_points_torch
 
 
 class TestRasterizeAutograd(unittest.TestCase):
@@ -24,6 +24,14 @@ class TestRasterizeAutograd(unittest.TestCase):
         self.camera = Camera(60, 40, K)
         self.camera_T_world = torch.eye(4, dtype=torch.float64, device=self.device)
         self.rays = compute_rays_in_world_frame(self.camera, self.camera_T_world)
+
+        self.xyz = torch.tensor(
+            [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
+            dtype=torch.float64,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.xyz_camera_frame = transform_points_torch(self.xyz, self.camera_T_world)
 
         self.uv = torch.tensor(
             [
@@ -46,14 +54,14 @@ class TestRasterizeAutograd(unittest.TestCase):
             requires_grad=True,
         )
         self.tiles = Tiles(40, 60, self.device)
-
-        (
-            self.gaussian_indices_per_tile,
-            self.splat_start_end_idx_by_tile_idx,
-            self.tile_idx_by_splat_idx,
-        ) = match_gaussians_to_tiles_gpu(
-            self.uv.float(), self.tiles, self.conic.float(), mh_dist=3.0
+        self.sorted_gaussian_idx_by_splat_idx, self.splat_start_end_idx_by_tile_idx = get_splats(
+            self.uv.to(torch.float),
+            self.tiles,
+            self.conic.to(torch.float),
+            self.xyz_camera_frame.to(torch.float),
+            mh_dist=3.0,
         )
+
         self.opacity = torch.ones(
             self.uv.shape[0],
             1,
@@ -89,7 +97,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 image_size,
                 background_rgb,
             ),
@@ -124,7 +132,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 image_size,
                 background_rgb,
             ),
@@ -157,7 +165,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 test_size,
                 background_rgb,
             ),
@@ -190,7 +198,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 test_size,
                 background_rgb,
             ),
@@ -223,7 +231,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 test_size,
                 background_rgb,
             ),
@@ -256,7 +264,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 test_size,
                 background_rgb,
             ),
@@ -289,7 +297,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 test_size,
                 background_rgb,
             ),
@@ -323,7 +331,7 @@ class TestRasterizeAutograd(unittest.TestCase):
                 self.conic,
                 self.rays,
                 self.splat_start_end_idx_by_tile_idx,
-                self.gaussian_indices_per_tile,
+                self.sorted_gaussian_idx_by_splat_idx,
                 test_size,
                 background_rgb,
             ),
