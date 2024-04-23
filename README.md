@@ -6,37 +6,36 @@ This repository implements the forward and backwards passes using a PyTorch CUDA
 
 ## Motivation
 
-1. Provide a detailed explanation of the differential rasterization algorithm. The forward and backward pass algorithms are detailed in [MATH.md](/MATH.md)
-2. MIT License. The original implementation was never referenced during the development of this repo.
-3. Modular projection functions and gradient tests allow for easier experimentation with camera/pose gradients, new camera models etc. 
-4. Minimal dependencies
+1. Provide a detailed explanation of the differential rasterization algorithm. The forward and backward pass are detailed in [MATH.md](/MATH.md)
+2. Permissive license. The original implementation does not allow commercial use and was never referenced during the development of this repository.
+3. Modular projection functions and gradient checks allow for easier experimentation with camera/pose gradients, new camera models etc. 
+4. Minimal dependencies.
+
+If there are any issues/errors please open an Issue or Pull Request!
 
 ## Performance
 
-Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This corresponds to the 2x downsampled indoor scenes and 4x downsampled outdoor scenes. Every 8th image was used for the test split.
+Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This corresponds to the 2x downsampled indoor scenes and 4x downsampled outdoor scenes. Every 8th image was used for the test split. Here are some comparisons with the with the official Inria implementation (copied from "Per-Scene Error Metrics").
 
 
-Here are some comparisons with the with the official implementation (copied from "Per-Scene Error Metrics").
-
-
-| Method       | Dataset     | PSNR | SSIM | N Gaussians | Train Duration   |
-|--------------|-------------|------|------|-------------|------------------|
-| Official-30k | Garden 1/4x | 27.41| 0.87 |             |                  |
-| Ours-30k     | Garden 1/4x | 27.14| 0.85 | 3.17M       | 22:51  (RTX4090) |
-| Official-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k      | Garden 1/4x | 25.79| 0.80 | 1.59M       | 3:16   (RTX4090) |
-| Official-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
-| Ours-30k     | Counter 1/2x| 28.61| 0.90 | 2.02M       | 25:14  (RTX4090) |
-| Official-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
-| Ours-7k      | Counter 1/2x| 27.54| 0.89 | 1.38M       | 4:20   (RTX4090) |
-| Official-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
-| Ours-30k     | Bonsai  1/2x| 32.14| 0.94 | 3.24M       | 30:16  (RTX4090) |
-| Official-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
-| Ours-7k      | Bonsai 1/2x | 30.29| 0.93 | 1.98M       | 4:34   (RTX4090) |
-| Official-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
-| Ours-30k     | Room 1/2x   | 30.68| 0.92 | 1.70M       | 20:31  (RTX4090) |
-| Official-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
-| Ours-7k      | Room 1/2x   | 29.49| 0.91 | 1.08M       | 3:26   (RTX4090) |
+| Method    | Dataset     | PSNR | SSIM | N Gaussians | Train Duration   |
+|-----------|-------------|------|------|-------------|------------------|
+| Inria-30k | Garden 1/4x | 27.41| 0.87 |             |                  |
+| Ours-30k  | Garden 1/4x | 27.14| 0.85 | 3.17M       | 22:51  (RTX4090) |
+| Inria-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
+| Ours-7k   | Garden 1/4x | 25.79| 0.80 | 1.59M       | 3:16   (RTX4090) |
+| Inria-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
+| Ours-30k  | Counter 1/2x| 28.61| 0.90 | 2.02M       | 25:14  (RTX4090) |
+| Inria-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
+| Ours-7k   | Counter 1/2x| 27.54| 0.89 | 1.38M       | 4:20   (RTX4090) |
+| Inria-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
+| Ours-30k  | Bonsai  1/2x| 32.14| 0.94 | 3.24M       | 30:16  (RTX4090) |
+| Inria-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
+| Ours-7k   | Bonsai 1/2x | 30.29| 0.93 | 1.98M       | 4:34   (RTX4090) |
+| Inria-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
+| Ours-30k  | Room 1/2x   | 30.68| 0.92 | 1.70M       | 20:31  (RTX4090) |
+| Inria-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
+| Ours-7k   | Room 1/2x   | 29.49| 0.91 | 1.08M       | 3:26   (RTX4090) |
 
 
 A comparison from one of the test images in the `garden` dataset. The official implementation and ground truth images appear to be more saturated since they are screen captures of the pdf.
@@ -52,11 +51,6 @@ Ground truth:
 ![image](https://github.com/joeyan/gaussian_splatting/assets/17635504/e3c1f0c2-3f36-41dc-8441-df856399e987)
 
 
-The gradient computation kernels are currently templated to enable `float64` tensors which are required to use `torch.autograd.gradcheck`. All of the backward passes have gradcheck unit test coverage and should be computing the correct gradients for the corresponding forward pass. Additionally, the templated kernels do not allow for `float2/3/4` types which could improve performance with better memory alignment.
-
- The discrepancy in PSNR are most likely due to differences in the adaptive control algorithm and tuning.
-
-
 ## Installation
 This package requires CUDA which can be installed from [here](https://developer.nvidia.com/cuda-downloads). 
 
@@ -67,15 +61,10 @@ pip install -r requirements.txt
 
 2. Install the PyTorch CUDA extension
 ```
-pip install -e ./
+python setup.py build_ext && python setup.py install
 ```
 Note:
 - Windows systems may need modify compilation flags in `setup.py`
-- This step may be sensitive to the version of `pip`. This step failed after upgrading from `23.0.1` to `23.3.2`
-- If `pip install` fails, this may work:
-```
-python setup.py build_ext && python setup.py install
-```
 
 Optional:
 This project uses `clang-format` to lint the C++/CUDA files:
