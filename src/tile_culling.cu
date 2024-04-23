@@ -121,15 +121,13 @@ __device__ __forceinline__ int compute_obb(
     return radius_tiles;
 }
 
-__global__ void compute_tiles_kernel(
+__global__ void compute_num_splats_kernel(
     const float* __restrict__ uvs,
     const float* __restrict__ conic,
     const int n_tiles_x,
     const int n_tiles_y,
     const float mh_dist,
     const int N,
-    const int max_tiles_per_gaussian,
-    int* __restrict__ tile_indices_per_gaussian,
     int* __restrict__ num_tiles_per_gaussian,
     int* __restrict__ num_gaussians_per_tile
 ) {
@@ -147,9 +145,7 @@ __global__ void compute_tiles_kernel(
 
     float obb[8];
     const int radius_tiles = compute_obb(u, v, a, b, c, mh_dist, obb);
-    if (radius_tiles > 16) {
-        return;
-    }
+
     const int projected_tile_x = floorf(u / 16.0f);
     const int start_tile_x = fmaxf(0, projected_tile_x - radius_tiles);
     const int end_tile_x = fminf(n_tiles_x, projected_tile_x + radius_tiles);
@@ -161,9 +157,6 @@ __global__ void compute_tiles_kernel(
     int n_tiles = 0;
     // iterate through tiles
     for (int tile_x = start_tile_x; tile_x < end_tile_x; tile_x++) {
-        if (n_tiles >= max_tiles_per_gaussian) {
-            break;
-        }
         for (int tile_y = start_tile_y; tile_y < end_tile_y; tile_y++) {
             const int tile_idx = tile_y * n_tiles_x + tile_x;
 
@@ -174,59 +167,77 @@ __global__ void compute_tiles_kernel(
             tile_bounds[3] = __int2float_rn(tile_y + 1) * 16.0f;
 
             if (split_axis_test(obb, tile_bounds)) {
-                // add tile to list if there is overlap
-                if (n_tiles < max_tiles_per_gaussian) {
-                    // write tile index
-                    atomicAdd(num_gaussians_per_tile + tile_idx, 1);
-                    tile_indices_per_gaussian[gaussian_idx * max_tiles_per_gaussian + n_tiles] =
-                        tile_idx;
-                    n_tiles++;
-                } else {
-                    break;
-                }
+                // update tile counts
+                atomicAdd(num_gaussians_per_tile + tile_idx, 1);
+                n_tiles++;
             }
         }
     }
-    if (n_tiles < max_tiles_per_gaussian) {
-        num_tiles_per_gaussian[gaussian_idx] = n_tiles;
-    } else {
-        // don't render gaussians that cover more than the number of tiles
-        num_tiles_per_gaussian[gaussian_idx] = n_tiles;
-        printf(
-            "Gaussian %d greater than max_tiles_per_gaussian, has radius %d\n",
-            gaussian_idx,
-            radius_tiles
-        );
-    }
+    num_tiles_per_gaussian[gaussian_idx] = n_tiles;
 }
 
-__global__ void generate_gaussian_and_sort_list_kernel(
+__global__ void compute_tiles_kernel(
+    const float* __restrict__ uvs,
     const float* __restrict__ xyz_camera_frame,
-    const int* __restrict__ tile_indices_per_gaussian,
+    const float* __restrict__ conic,
     const int* __restrict__ splat_start_end_idx_by_gaussian_idx,
-    const int n_gaussians,
-    const int max_tiles_per_gaussian,
+    const int n_tiles_x,
+    const int n_tiles_y,
+    const float mh_dist,
+    const int N,
     const float tile_idx_key_multiplier,
     int* __restrict__ gaussian_idx_by_splat_idx,
     float* __restrict__ sort_keys
 ) {
-    // get gaussian index
-    const int gaussian_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (gaussian_idx >= n_gaussians) {
+    int gaussian_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (gaussian_idx >= N) {
         return;
     }
 
+    // get per gaussian values
+    const float u = uvs[gaussian_idx * 2];
+    const float v = uvs[gaussian_idx * 2 + 1];
     const float z = xyz_camera_frame[gaussian_idx * 3 + 2];
 
-    // output start / stop indices
+    const float a = conic[gaussian_idx * 3] + 0.25f;
+    const float b = conic[gaussian_idx * 3 + 1] / 2.0f;
+    const float c = conic[gaussian_idx * 3 + 2] + 0.25f;
+
     const int output_start_idx = splat_start_end_idx_by_gaussian_idx[gaussian_idx];
     const int output_end_idx = splat_start_end_idx_by_gaussian_idx[gaussian_idx + 1];
 
-    for (int i = 0; i < output_end_idx - output_start_idx; i++) {
-        const int tile_idx = tile_indices_per_gaussian[gaussian_idx * max_tiles_per_gaussian + i];
-        gaussian_idx_by_splat_idx[output_start_idx + i] = gaussian_idx;
-        // sort key is depth + (max_depth + 1.0) * tile_idx
-        sort_keys[output_start_idx + i] = z + tile_idx_key_multiplier * __int2float_rn(tile_idx);
+    float obb[8];
+    const int radius_tiles = compute_obb(u, v, a, b, c, mh_dist, obb);
+
+    const int projected_tile_x = floorf(u / 16.0f);
+    const int start_tile_x = fmaxf(0, projected_tile_x - radius_tiles);
+    const int end_tile_x = fminf(n_tiles_x, projected_tile_x + radius_tiles);
+
+    const int projected_tile_y = floorf(v / 16.0f);
+    const int start_tile_y = fmaxf(0, projected_tile_y - radius_tiles);
+    const int end_tile_y = fminf(n_tiles_y, projected_tile_y + radius_tiles);
+
+    int n_tiles = 0;
+    // iterate through tiles
+    for (int tile_x = start_tile_x; tile_x < end_tile_x; tile_x++) {
+        for (int tile_y = start_tile_y; tile_y < end_tile_y; tile_y++) {
+            const int tile_idx = tile_y * n_tiles_x + tile_x;
+
+            float tile_bounds[4]; // [left, right, top, bottom]
+            tile_bounds[0] = __int2float_rn(tile_x) * 16.0f;
+            tile_bounds[1] = __int2float_rn(tile_x + 1) * 16.0f;
+            tile_bounds[2] = __int2float_rn(tile_y) * 16.0f;
+            tile_bounds[3] = __int2float_rn(tile_y + 1) * 16.0f;
+
+            if (split_axis_test(obb, tile_bounds) &&
+                (output_start_idx + n_tiles) < output_end_idx) {
+                // update gaussian index by splat index
+                gaussian_idx_by_splat_idx[output_start_idx + n_tiles] = gaussian_idx;
+                sort_keys[output_start_idx + n_tiles] =
+                    z + tile_idx_key_multiplier * __int2float_rn(tile_idx);
+                n_tiles++;
+            }
+        }
     }
 }
 
@@ -254,60 +265,58 @@ std::tuple<torch::Tensor, torch::Tensor> get_sorted_gaussian_list(
     dim3 gridsize(num_blocks, 1, 1);
     dim3 blocksize(max_threads_per_block, 1, 1);
 
-    // create tensors for output
-    torch::Tensor tile_indices_per_gaussian =
-        torch::zeros({N, max_tiles_per_gaussian}, torch::dtype(torch::kInt32).device(uvs.device()));
+    // compute number of splats per gaussian/tile
     torch::Tensor num_tiles_per_gaussian =
         torch::zeros({N}, torch::dtype(torch::kInt32).device(uvs.device()));
+
     torch::Tensor num_gaussians_per_tile =
         torch::zeros({n_tiles_x * n_tiles_y}, torch::dtype(torch::kInt32).device(uvs.device()));
 
-    compute_tiles_kernel<<<gridsize, blocksize>>>(
+    compute_num_splats_kernel<<<gridsize, blocksize>>>(
         uvs.data_ptr<float>(),
         conic.data_ptr<float>(),
         n_tiles_x,
         n_tiles_y,
         mh_dist,
         N,
-        max_tiles_per_gaussian,
-        tile_indices_per_gaussian.data_ptr<int>(),
         num_tiles_per_gaussian.data_ptr<int>(),
         num_gaussians_per_tile.data_ptr<int>()
     );
     cudaDeviceSynchronize();
 
-    // create intermediate values
+    // create vector of gaussian indices for each splat and sort keys
     torch::Tensor cumsum = num_tiles_per_gaussian.cumsum(0);
     torch::Tensor splat_start_end_idx_by_gaussian_idx = torch::cat(
         {torch::zeros({1}, torch::dtype(torch::kInt32).device(uvs.device())),
          cumsum.to(torch::kInt32)},
         0
     );
-    CHECK_INT_TENSOR(splat_start_end_idx_by_gaussian_idx);
 
+    // create output gaussian idx vector and sort key vector
     const int num_splats = splat_start_end_idx_by_gaussian_idx[N].item<int>();
-
-    // max_depth + 1.0
-    const float tile_idx_key_multiplier = xyz_camera_frame.select(1, 2).max().item<float>() + 1.0f;
-
-    // outputs
     torch::Tensor gaussian_idx_by_splat_idx =
         torch::zeros({num_splats}, torch::dtype(torch::kInt32).device(uvs.device()));
     torch::Tensor sort_keys =
         torch::zeros({num_splats}, torch::dtype(torch::kFloat32).device(uvs.device()));
 
     CHECK_FLOAT_TENSOR(xyz_camera_frame);
-    CHECK_INT_TENSOR(tile_indices_per_gaussian);
     CHECK_INT_TENSOR(splat_start_end_idx_by_gaussian_idx);
     CHECK_INT_TENSOR(gaussian_idx_by_splat_idx);
     CHECK_FLOAT_TENSOR(sort_keys);
 
-    generate_gaussian_and_sort_list_kernel<<<gridsize, blocksize>>>(
+    // max_depth + 1.0
+    const float tile_idx_key_multiplier = xyz_camera_frame.select(1, 2).max().item<float>() + 1.0f;
+
+    // compute gaussian index and key for each gaussian-tile intersection
+    compute_tiles_kernel<<<gridsize, blocksize>>>(
+        uvs.data_ptr<float>(),
         xyz_camera_frame.data_ptr<float>(),
-        tile_indices_per_gaussian.data_ptr<int>(),
+        conic.data_ptr<float>(),
         splat_start_end_idx_by_gaussian_idx.data_ptr<int>(),
+        n_tiles_x,
+        n_tiles_y,
+        mh_dist,
         N,
-        max_tiles_per_gaussian,
         tile_idx_key_multiplier,
         gaussian_idx_by_splat_idx.data_ptr<int>(),
         sort_keys.data_ptr<float>()
