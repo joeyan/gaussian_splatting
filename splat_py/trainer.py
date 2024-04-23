@@ -228,13 +228,16 @@ class SplatTrainer:
         if (delete_count > 0) and self.config.use_delete:
             self.delete_gaussians(keep_mask)
 
+        if len(self.gaussians) > self.config.max_gaussians:
+            print("Max gaussians exceeded, skipping densification")
+            self.reset_grad_accum()
+            return
+
         # Step 2. Densify gaussians
         uv_grad_avg = self.uv_grad_accum / self.grad_accum_count.unsqueeze(1).float()
         xyz_grad_avg = self.xyz_grad_accum / self.grad_accum_count.unsqueeze(1).float()
 
         uv_grad_avg_norm = torch.norm(uv_grad_avg, dim=1)
-
-        n_gaussians = self.gaussians.xyz.shape[0]
 
         if self.config.use_fractional_densification:
             if self.config.use_adaptive_fractional_densification:

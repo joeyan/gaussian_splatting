@@ -127,6 +127,9 @@ class SplatConfig:
     """interval for adaptive control"""
     adaptive_control_interval: int = 100
 
+    """max number of gaussians"""
+    max_gaussians: int = 3250000
+
     """delete gaussians with opacity below this threshold"""
     delete_opacity_threshold: float = 0.1
     """clone gaussians with scale below this threshold"""
