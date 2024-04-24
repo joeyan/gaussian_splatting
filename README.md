@@ -21,21 +21,21 @@ Evaluations done with the Mip-NeRF 360 dataset at ~1 megapixel resoloution. This
 | Method    | Dataset     | PSNR | SSIM | N Gaussians | Train Duration   |
 |-----------|-------------|------|------|-------------|------------------|
 | Inria-30k | Garden 1/4x | 27.41| 0.87 |             |                  |
-| Ours-30k  | Garden 1/4x | 27.14| 0.85 | 3.17M       | 22:51  (RTX4090) |
+| Ours-30k  | Garden 1/4x | 27.05| 0.85 | 2.86M       | 20:18  (RTX4090) |
 | Inria-7k  | Garden 1/4x | 26.24| 0.83 |             |                  |
-| Ours-7k   | Garden 1/4x | 25.79| 0.80 | 1.59M       | 3:16   (RTX4090) |
+| Ours-7k   | Garden 1/4x | 25.83| 0.80 | 1.52M       | 3:05   (RTX4090) |
 | Inria-30k | Counter 1/2x| 28.70| 0.91 |             |                  |
-| Ours-30k  | Counter 1/2x| 28.61| 0.90 | 2.02M       | 25:14  (RTX4090) |
+| Ours-30k  | Counter 1/2x| 28.75| 0.90 | 1.84M       | 23:37  (RTX4090) |
 | Inria-7k  | Counter 1/2x| 26.70| 0.87 |             |                  |
-| Ours-7k   | Counter 1/2x| 27.54| 0.89 | 1.38M       | 4:20   (RTX4090) |
+| Ours-7k   | Counter 1/2x| 27.59| 0.89 | 1.37M       | 4:10   (RTX4090) |
 | Inria-30k | Bonsai  1/2x| 31.98| 0.94 |             |                  |
-| Ours-30k  | Bonsai  1/2x| 32.14| 0.94 | 3.24M       | 30:16  (RTX4090) |
+| Ours-30k  | Bonsai  1/2x| 32.21| 0.95 | 2.85M       | 27:22  (RTX4090) |
 | Inria-7k  | Bonsai 1/2x | 28.85| 0.91 |             |                  |
-| Ours-7k   | Bonsai 1/2x | 30.29| 0.93 | 1.98M       | 4:34   (RTX4090) |
+| Ours-7k   | Bonsai 1/2x | 30.42| 0.93 | 1.86M       | 4:19   (RTX4090) |
 | Inria-30k | Room 1/2x   | 30.63| 0.91 |             |                  |
-| Ours-30k  | Room 1/2x   | 30.68| 0.92 | 1.70M       | 20:31  (RTX4090) |
+| Ours-30k  | Room 1/2x   | 31.73| 0.93 | 1.53M       | 20:13  (RTX4090) |
 | Inria-7k  | Room 1/2x   | 28.14| 0.88 |             |                  |
-| Ours-7k   | Room 1/2x   | 29.49| 0.91 | 1.08M       | 3:26   (RTX4090) |
+| Ours-7k   | Room 1/2x   | 30.30| 0.91 | 1.01M       | 3:17   (RTX4090) |
 
 
 A comparison from one of the test images in the `garden` dataset. The official implementation and ground truth images appear to be more saturated since they are screen captures of the pdf.
