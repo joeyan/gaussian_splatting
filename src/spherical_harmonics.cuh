@@ -37,9 +37,9 @@ compute_sh_coeffs_for_view_dir(const T* __restrict__ view_dir, T* __restrict__ s
     const T z = view_dir[2];
 
     // Band 1
-    sh_at_view_dir[1] = T(SH_1[0]) * x;
-    sh_at_view_dir[2] = T(SH_1[1]) * y;
-    sh_at_view_dir[3] = T(SH_1[2]) * z;
+    sh_at_view_dir[1] = T(SH_1[0]) * y;
+    sh_at_view_dir[2] = T(SH_1[1]) * z;
+    sh_at_view_dir[3] = T(SH_1[2]) * x;
 
     if (N_SH < 9)
         return;
