@@ -65,11 +65,10 @@ __global__ void render_tiles_kernel(
         _image[i] = 0.0;
     }
 
+    __syncthreads(); // make sure data is zeroed before modifying inputs
     const int num_chunks = (num_splats_this_tile + CHUNK_SIZE - 1) / CHUNK_SIZE;
     // copy chunks
     for (int chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
-        __syncthreads(); // make sure previous iteration is complete before
-                         // modifying inputs
         for (int i = thread_id; i < CHUNK_SIZE; i += block_size) {
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
             if (tile_splat_idx >= num_splats_this_tile) {
@@ -162,6 +161,7 @@ __global__ void render_tiles_kernel(
                 alpha_accum += weight;
                 num_splats++;
             } // end splat loop
+            __syncthreads();
         }     // valid pixel check
     }         // end chunk loop
 
