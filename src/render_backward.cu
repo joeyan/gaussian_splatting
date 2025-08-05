@@ -192,12 +192,17 @@ __global__ void render_tiles_backward_kernel(
                         grad_rgb_local[channel] = alpha * weight * grad_image_local[channel];
                     }
 
-                    // compute rgb from sh
+                    // compute rgb from sh and clamp to valid rgb range
                     T computed_rgb[3];
+                    bool was_clamped[3];
                     sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
+                    for (int channel = 0; channel < 3; channel++) {
+                        was_clamped[channel] = (computed_rgb[channel] < T(0));
+                        computed_rgb[channel] = fmax(computed_rgb[channel], T(0));
+                    }
 
                     // compute grad wrt spherical harmonic coeff
-                    compute_sh_grad<T, N_SH>(grad_rgb_local, sh_at_view_dir, grad_sh);
+                    compute_sh_grad<T, N_SH>(grad_rgb_local, sh_at_view_dir, grad_sh, was_clamped);
 
                     T grad_alpha = 0.0;
                     #pragma unroll

@@ -124,7 +124,7 @@ class ColmapData(GaussianSplattingDataset):
         for _, point in sparse_points.items():
             self.xyz[row] = torch.tensor(point.xyz, dtype=torch.float32)
             self.rgb[row] = torch.tensor(
-                point.rgb / 255.0 / 0.28209479177387814, dtype=torch.float32
+                (point.rgb / 255.0 - 0.5) / 0.28209479177387814, dtype=torch.float32
             )
             row += 1
 
