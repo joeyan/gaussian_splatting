@@ -142,7 +142,8 @@ __global__ void render_tiles_kernel(
                     }
                     alpha = _opacity[i] * norm_prob;
                 }
-                if (alpha < 0.00392156862 || !use_fast_exp) {
+                // Skip pixel if alpha is less than 1/255 and we are in 'inaccurate' mode
+                if (alpha < 0.00392156862 && use_fast_exp) {
                     num_splats++;
                     continue;
                 }

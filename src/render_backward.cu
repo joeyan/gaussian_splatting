@@ -166,7 +166,7 @@ __global__ void render_tiles_backward_kernel(
                 // compute alpha, prevent divide by zero
                 T alpha = min(0.9999, _opacity[i] * norm_prob);
 
-                if (alpha > 0.00392156862 || !use_fast_exp) {
+                if (alpha >= 0.00392156862 || !use_fast_exp) {
                     // if this is the first iteration and background blending was used, update
                     // color_accum with the background contribution
                     if (!background_initialized) {
