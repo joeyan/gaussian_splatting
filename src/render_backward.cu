@@ -117,6 +117,7 @@ __global__ void render_tiles_backward_kernel(
         // compute gradients for this chunk
         int chunk_start = chunk_idx * CHUNK_SIZE;
         int chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, num_splats_this_tile);
+        bool after_first_contribution = false;
         for (int i = chunk_end - chunk_start - 1; i >= 0; i--) {
             const int tile_splat_idx = chunk_idx * CHUNK_SIZE + i;
             T grad_sh[3 * N_SH] = {0.0};
@@ -182,8 +183,10 @@ __global__ void render_tiles_backward_kernel(
                     const T reciprocal_one_minus_alpha = 1.0 / (1.0 - alpha);
 
                     // update weight if this is not the first iteration
-                    if (i < num_splats_this_pixel - 1) {
+                    if (after_first_contribution) {
                         weight = weight * reciprocal_one_minus_alpha;
+                    } else {
+                        after_first_contribution = true;
                     }
 
                     T grad_rgb_local[3];
