@@ -84,14 +84,20 @@ __device__ __inline__ void sh_to_rgb(
     }
 
     // add higher order values if needed
-    if (N_SH < 4)
-        return;
-    #pragma unroll
-    for (int sh = 1; sh < N_SH; sh++) {
+    if (N_SH >= 4) {
         #pragma unroll
-        for (int channel = 0; channel < 3; channel++) {
-            rgb[channel] += sh_at_view_dir[sh] * sh_coeff[N_SH * channel + sh];
+        for (int sh = 1; sh < N_SH; sh++) {
+            #pragma unroll
+            for (int channel = 0; channel < 3; channel++) {
+                rgb[channel] += sh_at_view_dir[sh] * sh_coeff[N_SH * channel + sh];
+            }
         }
+    }
+
+    // Add bias offset
+    #pragma unroll
+    for (int channel = 0; channel < 3; channel++) {
+        rgb[channel] += T(0.5);
     }
 }
 
@@ -99,13 +105,14 @@ template <typename T, unsigned int N_SH>
 __device__ __inline__ void compute_sh_grad(
     const T* __restrict__ grad_rgb,
     const T* __restrict__ sh_at_view_dir,
-    T* __restrict__ grad_sh
+    T* __restrict__ grad_sh,
+    const bool* __restrict__ was_clamped
 ) {
     #pragma unroll
     for (int sh = 0; sh < N_SH; sh++) {
         #pragma unroll
         for (int channel = 0; channel < 3; channel++) {
-            grad_sh[N_SH * channel + sh] = sh_at_view_dir[sh] * grad_rgb[channel];
+            grad_sh[N_SH * channel + sh] = sh_at_view_dir[sh] * grad_rgb[channel] * (was_clamped[channel] ? T(0) : T(1));
         }
     }
 }

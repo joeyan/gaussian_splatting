@@ -148,9 +148,13 @@ __global__ void render_tiles_kernel(
                 }
                 alpha_weight = 1.0 - alpha_accum;
                 const T weight = alpha * (1.0 - alpha_accum);
-                // compute rgb
+
+                //compute rgb from sh and clamp to valid rgb range
                 T computed_rgb[3];
                 sh_to_rgb<T, N_SH>(_rgb + i * 3 * N_SH, sh_at_view_dir, computed_rgb);
+                for (int channel = 0; channel < 3; channel++) {
+                    computed_rgb[channel] = fmax(computed_rgb[channel], T(0));
+                }
 
                 // update image
                 #pragma unroll
