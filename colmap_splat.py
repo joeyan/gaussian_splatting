@@ -9,6 +9,7 @@ import yaml
 
 from splat_py.config import SplatConfigs
 from splat_py.dataloader import ColmapData
+from splat_py.exporter import export_model_as_ply
 from splat_py.trainer import SplatTrainer
 
 
@@ -74,6 +75,7 @@ end = time.time()
 
 # save gaussians
 torch.save(gaussians, os.path.join(config.output_dir, "gaussians_final.pt"))
+export_model_as_ply(gaussians, os.path.join(config.output_dir, "gaussians_final.ply"))
 
 # training time
 seconds = end - start
