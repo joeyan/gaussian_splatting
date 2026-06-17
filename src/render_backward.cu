@@ -1,5 +1,7 @@
 #include <cooperative_groups.h>
+#if !defined(USE_ROCM)
 #include <cooperative_groups/reduce.h>
+#endif
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
@@ -8,6 +10,24 @@
 #include "spherical_harmonics.cuh"
 
 namespace cg = cooperative_groups;
+
+#if defined(USE_ROCM)
+// ROCm has no <cooperative_groups/reduce.h>/cg::reduce. Sum-reduce across the
+// 32-lane tile with a shfl_xor butterfly; the tile's shfl_xor uses the tile
+// width (32) so it stays within the tile's lanes on a 64-wide wavefront. Every
+// lane ends with the tile-wide sum, matching cg::reduce(plus) all-reduce.
+template <typename T>
+__device__ __forceinline__ T warpReduceSum(const cg::thread_block_tile<32>& warp, T val) {
+    #pragma unroll
+    for (int offset = warp.size() / 2; offset > 0; offset >>= 1) {
+        val += warp.shfl_xor(val, offset);
+    }
+    return val;
+}
+#define WARP_REDUCE_SUM(warp, val) warpReduceSum(warp, val)
+#else
+#define WARP_REDUCE_SUM(warp, val) cg::reduce(warp, val, cg::plus<T>())
+#endif
 
 template <typename T, unsigned int CHUNK_SIZE, unsigned int N_SH>
 __global__ void render_tiles_backward_kernel(
@@ -241,22 +261,22 @@ __global__ void render_tiles_backward_kernel(
             // reduce gradients across warp_cg
             // large speedup here by reducing the number of atomicAdd calls
             warp_cg.sync();
-            grad_opa = cg::reduce(warp_cg, grad_opa, cg::plus<T>());
-            grad_u = cg::reduce(warp_cg, grad_u, cg::plus<T>());
-            grad_v = cg::reduce(warp_cg, grad_v, cg::plus<T>());
+            grad_opa = WARP_REDUCE_SUM(warp_cg, grad_opa);
+            grad_u = WARP_REDUCE_SUM(warp_cg, grad_u);
+            grad_v = WARP_REDUCE_SUM(warp_cg, grad_v);
 
             #pragma unroll
             for (int channel = 0; channel < 3; channel++) {
                 #pragma unroll
                 for (int sh_idx = 0; sh_idx < N_SH; sh_idx++) {
                     grad_sh[(channel * N_SH) + sh_idx] =
-                        cg::reduce(warp_cg, grad_sh[(channel * N_SH) + sh_idx], cg::plus<T>());
+                        WARP_REDUCE_SUM(warp_cg, grad_sh[(channel * N_SH) + sh_idx]);
                 }
             }
 
             #pragma unroll
             for (int j = 0; j < 3; j++) {
-                grad_conic_splat[j] = cg::reduce(warp_cg, grad_conic_splat[j], cg::plus<T>());
+                grad_conic_splat[j] = WARP_REDUCE_SUM(warp_cg, grad_conic_splat[j]);
             }
 
             // write gradients to global memory
