@@ -51,7 +51,9 @@ Ground truth:
 
 
 ## Installation
-This package requires CUDA which can be installed from [here](https://developer.nvidia.com/cuda-downloads). 
+This package requires CUDA which can be installed from [here](https://developer.nvidia.com/cuda-downloads).
+
+The extension also builds on AMD GPUs with ROCm. Install a ROCm build of PyTorch (see [pytorch.org](https://pytorch.org/get-started/locally/)); PyTorch's `CUDAExtension` automatically hipifies the `.cu`/`.cuh` sources at build time, so the same `setup.py` is used. Select the target AMD architecture with `PYTORCH_ROCM_ARCH` (for example `gfx90a` or `gfx1201`) before building. No CUDA toolkit is required on the ROCm path.
 
 1. Install Python dependencies
 ```
@@ -61,6 +63,10 @@ pip install -r requirements.txt
 2. Install the PyTorch CUDA extension
 ```
 python setup.py build_ext && python setup.py install
+```
+On AMD GPUs with ROCm, set the target architecture first, then build the same way:
+```
+PYTORCH_ROCM_ARCH=gfx90a python setup.py build_ext && python setup.py install
 ```
 Note:
 - Windows systems may need modify compilation flags in `setup.py`
